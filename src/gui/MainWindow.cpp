@@ -293,19 +293,19 @@ const QStringList &canonicalCommonOrder()
         QStringLiteral("30d554db-541e-4f62-8970-a1c6dcfeb2bc"), // Параметры функц. опций
         QStringLiteral("c045099e-13b9-4fb6-9d50-fca00202971e"), // Определяемые типы
         QStringLiteral("46b4cd97-fd13-4eaa-aba2-3bddd7699218"), // Хранилища настроек
-        QStringLiteral("07ee8426-87f1-11d5-b99c-0050bae0a95d"), // Общие формы
         QStringLiteral("2f1a5187-fb0e-4b05-9489-dc5dd6412348"), // Общие команды
         QStringLiteral("1c57eabe-7349-44b3-b1de-ebfeab67b47d"), // Группы команд
+        QStringLiteral("07ee8426-87f1-11d5-b99c-0050bae0a95d"), // Общие формы
         QStringLiteral("0c89c792-16c3-11d5-b96b-0050bae0a95d"), // Общие макеты
         QStringLiteral("7dcd43d9-aca5-4926-b549-1842e6a4e8cf"), // Общие картинки
         QStringLiteral("cc9df798-7c94-4616-97d2-7aa0b7bc515e"), // XDTO-пакеты
         QStringLiteral("8657032e-7740-4e1d-a3ba-5dd6e8afb78f"), // Web-сервисы
         QStringLiteral("0fffc09c-8f4c-47cc-b41c-8d5c5a221d79"), // HTTP-сервисы
-        QStringLiteral("a7641777-7813-45c6-96ef-9d51587a6ac6"), // WebSocket-клиенты
         QStringLiteral("d26096fb-7a5d-4df9-af63-47d04771fa9b"), // WS-ссылки
+        QStringLiteral("a7641777-7813-45c6-96ef-9d51587a6ac6"), // WebSocket-клиенты
         QStringLiteral("bf3420b0-f6f9-41a0-b83a-fe9d4ab0b65d"), // Сервисы интеграции
-        QStringLiteral("3e5404af-6ef8-4c73-ad11-91bd2dfac4c8"), // Стили
         QStringLiteral("58848766-36ea-4076-8800-e91eb49590d7"), // Элементы стиля
+        QStringLiteral("3e5404af-6ef8-4c73-ad11-91bd2dfac4c8"), // Стили
         QStringLiteral("9cd510ce-abfc-11d4-9434-004095e12fc7"), // Языки
         QStringLiteral("39bddf6a-0c3c-452b-921c-d99cfa1c2f1b"), // Интерфейсы (устар.)
     };
