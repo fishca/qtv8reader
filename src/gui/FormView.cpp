@@ -341,7 +341,8 @@ private:
                 return 0.0;
             return item.heightUnits > 0 ? item.heightUnits * 10.0 : 19.0;
         case Type::Table:
-            return 360.0;
+            // В форме списка таблица занимает основную часть формы.
+            return m_document.runtimeListCommands ? 470.0 : 360.0;
         case Type::Group: {
             if (item.groupKind == 1)
                 return 27.0;
@@ -767,8 +768,9 @@ private:
     {
         PreviewControl control;
         control.kind = PreviewControl::Kind::Table;
+        const double tableHeight = m_document.runtimeListCommands ? 470.0 : 360.0;
         control.rect = QRectF(rect.left(), rect.top(), rect.width(),
-                              std::min(rect.height(), 360.0));
+                              std::min(rect.height(), tableHeight));
         QVector<int> widthUnits;
         tableColumns(item, item.name, &control.columns, &widthUnits);
 
