@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     QApplication application(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("qtv8reader"));
     QCoreApplication::setApplicationName(QStringLiteral("qtv8reader"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.2.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.3.0"));
 
     QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
 

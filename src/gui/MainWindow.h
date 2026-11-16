@@ -6,6 +6,7 @@
 
 #include <QByteArray>
 #include <QHash>
+#include <QIcon>
 #include <QMainWindow>
 #include <QStringList>
 #include <QVector>
@@ -57,21 +58,34 @@ private slots:
     void extractAll();
     void showAbout();
     void onTreeSelectionChanged();
+    void onTreeItemExpanded(QTreeWidgetItem *item);
     void onModuleChanged(int index);
     void onContainerDoubleClicked(QTreeWidgetItem *item, int column);
     void onContainerContextMenu(const QPoint &position);
     void openRecentFile();
 
 private:
+    // Вид узла дерева метаданных.
     enum ItemKind {
-        CategoryItem = 1,
-        ObjectItem = 2
+        RootItem = 1,
+        GroupItem,
+        CategoryItem,
+        ObjectItem,
+        SectionItem,
+        EntryItem,
+        ModuleNodeItem
     };
 
     enum ItemRole {
         KindRole = Qt::UserRole,
-        GuidRole,
-        IndexRole
+        GuidRole,          // GUID объекта для Object/Section/Entry/Module
+        SectionKindRole,   // MetadataSectionKind для Section/Entry
+        EntryIndexRole,    // индекс элемента раздела
+        ChildIndexRole,    // индекс вложенного реквизита ТЧ
+        ModuleIndexRole,   // индекс модуля объекта
+        LoadedRole,        // дочерние узлы объекта уже построены
+        IndexRole          // индекс элемента контейнера (вкладка «Контейнер»)
+
     };
 
     void setupUi();
@@ -85,14 +99,33 @@ private:
     void addRecentFile(const QString &path);
 
     void buildTree();
+    QTreeWidgetItem *addCategoryItem(QTreeWidgetItem *parent,
+                                     const MetadataCategory &category);
+    QTreeWidgetItem *addObjectItem(QTreeWidgetItem *parent,
+                                   const MetadataObject &object);
     void applyTreeFilter(const QString &text);
+    bool filterTreeItem(QTreeWidgetItem *item, const QString &needle);
+    void updateTreeHint();
     void buildContainerTree();
+
+    MetadataObject *objectForItem(const QTreeWidgetItem *item) const;
+    QTreeWidgetItem *findObjectItem(const QString &guid) const;
+    void populateObjectItem(QTreeWidgetItem *item, MetadataObject &object);
+    void ensureObjectItemChildren(const QString &guid);
+
     void clearObjectView();
     void setProperties(const QVector<QPair<QString, QString>> &rows);
     void showConfiguration();
+    void showGroup(const QString &title, const QVector<const MetadataCategory *> &categories);
     void showCategory(const MetadataCategory &category);
     void showObject(MetadataObject &object);
+    void showSection(MetadataObject &object, MetadataSectionKind kind);
+    void showEntry(MetadataObject &object, MetadataSectionKind kind, int entryIndex,
+                   int childIndex);
+    void showModuleNode(MetadataObject &object, int moduleIndex);
     void fillComposition(const MetadataObject &object);
+    void fillSectionComposition(MetadataObject &object, MetadataSectionKind kind);
+    void fillEntryComposition(const MetadataEntry &entry);
     void fillModules(const MetadataObject &object);
     void fillMetadata(const MetadataObject &object);
     void previewElement(int index);
@@ -126,6 +159,13 @@ private:
 
     QStringList m_recentFiles;
     QString m_currentPath;
+
+    QIcon m_rootIcon;
+    QIcon m_groupIcon;
+    QIcon m_categoryIcon;
+    QIcon m_sectionIcon;
+    QIcon m_entryIcon;
+    QIcon m_moduleIcon;
 };
 
 } // namespace v8reader

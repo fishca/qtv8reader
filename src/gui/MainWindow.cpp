@@ -8,7 +8,9 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QBrush>
 #include <QCloseEvent>
+#include <QColor>
 #include <QComboBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -21,6 +23,8 @@
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
+#include <QPixmap>
 #include <QShortcut>
 #include <QMenu>
 #include <QMenuBar>
@@ -28,6 +32,7 @@
 #include <QMimeData>
 #include <QPlainTextEdit>
 #include <QPoint>
+#include <QSet>
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
@@ -43,6 +48,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <functional>
 
 namespace v8reader {
 namespace {
@@ -101,11 +107,155 @@ QTableWidgetItem *readOnlyItem(const QString &text)
     return item;
 }
 
+QIcon makeFolderIcon(const QColor &color)
+{
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(color.darker(140), 1));
+    painter.setBrush(QBrush(color));
+    painter.drawRoundedRect(QRectF(1.5, 3.0, 13.0, 10.5), 2.0, 2.0);
+    painter.setBrush(QBrush(color.lighter(130)));
+    painter.drawRoundedRect(QRectF(1.5, 1.8, 6.0, 3.4), 1.4, 1.4);
+    painter.end();
+    return QIcon(pixmap);
+}
+
+QIcon makeDotIcon(const QColor &color)
+{
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(color.darker(140), 1));
+    painter.setBrush(QBrush(color));
+    painter.drawEllipse(QRectF(3.0, 3.0, 10.0, 10.0));
+    painter.end();
+    return QIcon(pixmap);
+}
+
+// Цвет значка для категории объектов метаданных.
+QColor categoryColor(const QString &guid)
+{
+    static const QHash<QString, QColor> colors = [] {
+        QHash<QString, QColor> map;
+        const auto add = [&map](const char *categoryGuid, const char *color) {
+            map.insert(QString::fromLatin1(categoryGuid), QColor(QString::fromLatin1(color)));
+        };
+        add("0195e80c-b157-11d4-9435-004095e12fc7", "#B8860B"); // Константы
+        add("cf4abea6-37b2-11d4-940f-008048da11f9", "#1E88E5"); // Справочники
+        add("061d872a-5787-460e-95ac-ed74ea3a3e84", "#43A047"); // Документы
+        add("4612bd75-71b7-4a5c-8cc5-2b0b65f9fa0d", "#00897B"); // Журналы документов
+        add("f6a80749-5ad7-400b-8519-39dc5dff2542", "#8E24AA"); // Перечисления
+        add("631b75a0-29e2-11d6-a3c7-0050bae0a776", "#EF6C00"); // Отчеты
+        add("bf845118-327b-4682-b5c6-285d2a0eb296", "#D81B60"); // Обработки
+        add("857c4a91-e5f4-4fac-86ec-787626f1c108", "#6D4C41"); // Планы обмена
+        add("238e7e88-3c5f-48b2-8a3b-81ebbecb20ed", "#37474F"); // Планы счетов
+        add("82a1b659-b220-4d94-a9bd-14d757b95a48", "#5E35B1"); // ПВХ
+        add("30b100d6-b29f-47ac-aec7-cb8ca8a54767", "#546E7A"); // ПВР
+        add("13134201-f60b-11d5-a3c7-0050bae0a776", "#039BE5"); // Регистры сведений
+        add("b64d9a40-1642-11d6-a3c7-0050bae0a776", "#00ACC1"); // Регистры накопления
+        add("2deed9b8-0056-4ffe-a473-c20a6c32a0bc", "#3949AB"); // Регистры бухгалтерии
+        add("f2de87a8-64e5-45eb-a22d-b3aedab050e7", "#7CB342"); // Регистры расчета
+        add("bc587f20-35d9-11d6-a3c7-0050bae0a776", "#8D6E63"); // Последовательности
+        add("fcd3404e-1523-48ce-9bc0-ecdb822684a1", "#C0CA33"); // Бизнес-процессы
+        add("3e63355c-1378-4953-be9b-1deb5fb6bec5", "#F4511E"); // Задачи
+        add("5274d9fc-9c3a-4a71-8f5e-a0db8ab23de5", "#6D4C41"); // Внешние источники
+        add("0fe48980-252d-11d6-a3c7-0050bae0a776", "#FB8C00"); // Общие модули
+        add("07ee8426-87f1-11d5-b99c-0050bae0a95d", "#29B6F6"); // Общие формы
+        add("0c89c792-16c3-11d5-b96b-0050bae0a95d", "#AB47BC"); // Общие макеты
+        return map;
+    }();
+    const auto it = colors.constFind(guid.toLower());
+    return it != colors.constEnd() ? it.value() : QColor(QStringLiteral("#78909C"));
+}
+
+QColor sectionColor(MetadataSectionKind kind)
+{
+    switch (kind) {
+    case MetadataSectionKind::Templates:
+        return QColor(QStringLiteral("#8E24AA"));
+    case MetadataSectionKind::Commands:
+        return QColor(QStringLiteral("#D81B60"));
+    case MetadataSectionKind::TabularSections:
+        return QColor(QStringLiteral("#6D4C41"));
+    case MetadataSectionKind::Attributes:
+        return QColor(QStringLiteral("#2E7D32"));
+    case MetadataSectionKind::Forms:
+        return QColor(QStringLiteral("#1565C0"));
+    case MetadataSectionKind::TabularAttributes:
+        return QColor(QStringLiteral("#558B2F"));
+    case MetadataSectionKind::Dimensions:
+        return QColor(QStringLiteral("#00838F"));
+    case MetadataSectionKind::Resources:
+        return QColor(QStringLiteral("#0277BD"));
+    case MetadataSectionKind::Values:
+        return QColor(QStringLiteral("#8E24AA"));
+    case MetadataSectionKind::AccountingFlags:
+    case MetadataSectionKind::SubcontoFlags:
+        return QColor(QStringLiteral("#616161"));
+    case MetadataSectionKind::Columns:
+    case MetadataSectionKind::JournalColumns:
+        return QColor(QStringLiteral("#546E7A"));
+    }
+    return QColor(QStringLiteral("#546E7A"));
+}
+
+// Категории, которые в дереве 1С собраны в группу «Общие».
+bool isCommonCategoryGuid(const QString &guid)
+{
+    static const QSet<QString> guids = [] {
+        QSet<QString> set;
+        const char *values[] = {
+            "0fe48980-252d-11d6-a3c7-0050bae0a776", // Общие модули
+            "07ee8426-87f1-11d5-b99c-0050bae0a95d", // Общие формы
+            "0c89c792-16c3-11d5-b96b-0050bae0a95d", // Общие макеты
+            "7dcd43d9-aca5-4926-b549-1842e6a4e8cf", // Общие картинки
+            "2f1a5187-fb0e-4b05-9489-dc5dd6412348", // Общие команды
+            "1c57eabe-7349-44b3-b1de-ebfeab67b47d", // Группы команд
+            "15794563-ccec-41f6-a83c-ec5f7b9a5bc1", // Общие реквизиты
+            "09736b02-9cac-4e3f-b4f7-d3e9576ab948", // Роли
+            "37f2fa9a-b276-11d4-9435-004095e12fc7", // Подсистемы
+            "24c43748-c938-45d0-8d14-01424a72b11e", // Параметры сеанса
+            "af547940-3268-434f-a3e7-e47d6d2638c3", // Функциональные опции
+            "30d554db-541e-4f62-8970-a1c6dcfeb2bc", // Параметры функц. опций
+            "c045099e-13b9-4fb6-9d50-fca00202971e", // Определяемые типы
+            "3e7bfcc0-067d-11d6-a3c7-0050bae0a776", // Критерии отбора
+            "4e828da6-0f44-4b5b-b1c0-a2b3cfe7bdcc", // Подписки на события
+            "11bdaf85-d5ad-4d91-bb24-aa0eee139052", // Регламентные задания
+            "46b4cd97-fd13-4eaa-aba2-3bddd7699218", // Хранилища настроек
+            "3e5404af-6ef8-4c73-ad11-91bd2dfac4c8", // Стили
+            "58848766-36ea-4076-8800-e91eb49590d7", // Элементы стиля
+            "9cd510ce-abfc-11d4-9434-004095e12fc7", // Языки
+            "39bddf6a-0c3c-452b-921c-d99cfa1c2f1b", // Интерфейсы
+            "0fffc09c-8f4c-47cc-b41c-8d5c5a221d79", // HTTP-сервисы
+            "8657032e-7740-4e1d-a3ba-5dd6e8afb78f", // Web-сервисы
+            "d26096fb-7a5d-4df9-af63-47d04771fa9b", // WS-ссылки
+            "cc9df798-7c94-4616-97d2-7aa0b7bc515e", // XDTO-пакеты
+            "6e6dc072-b7ac-41e7-8f88-278d25b6da2a", // Боты
+            "a7641777-7813-45c6-96ef-9d51587a6ac6", // WebSocket-клиенты
+            "bf3420b0-f6f9-41a0-b83a-fe9d4ab0b65d", // Сервисы интеграции
+        };
+        for (const char *value : values)
+            set.insert(QString::fromLatin1(value));
+        return set;
+    }();
+    return guids.contains(guid.toLower());
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    m_rootIcon = makeFolderIcon(QColor(QStringLiteral("#1F3A93")));
+    m_groupIcon = makeFolderIcon(QColor(QStringLiteral("#546E7A")));
+    m_categoryIcon = makeFolderIcon(QColor(QStringLiteral("#607D8B")));
+    m_sectionIcon = makeFolderIcon(QColor(QStringLiteral("#6D4C41")));
+    m_entryIcon = makeDotIcon(QColor(QStringLiteral("#546E7A")));
+    m_moduleIcon = makeDotIcon(QColor(QStringLiteral("#F57C00")));
+
     setupUi();
     setupMenus();
     setupToolBar();
@@ -149,7 +299,7 @@ void MainWindow::setupUi()
 
     m_treeFilter = new QLineEdit(leftPanel);
     m_treeFilter->setObjectName(QStringLiteral("treeFilter"));
-    m_treeFilter->setPlaceholderText(QStringLiteral("Поиск объекта (Ctrl+F)…"));
+    m_treeFilter->setPlaceholderText(QStringLiteral("Поиск по объектам и метаданным (Ctrl+F)…"));
     m_treeFilter->setClearButtonEnabled(true);
     leftLayout->addWidget(m_treeFilter);
 
@@ -269,6 +419,8 @@ void MainWindow::setupTree()
 {
     connect(m_tree, &QTreeWidget::itemSelectionChanged,
             this, &MainWindow::onTreeSelectionChanged);
+    connect(m_tree, &QTreeWidget::itemExpanded,
+            this, &MainWindow::onTreeItemExpanded);
 }
 
 void MainWindow::setupTabs()
@@ -388,9 +540,7 @@ bool MainWindow::openFile(const QString &path)
     showConfiguration();
 
     const Configuration &configuration = m_reader->configuration();
-    m_treeHint->setText(QStringLiteral("%1\nОбъектов: %2")
-                            .arg(QFileInfo(path).fileName())
-                            .arg(configuration.objectCount()));
+    updateTreeHint();
     setWindowTitle(QStringLiteral("V8 Reader — %1").arg(QFileInfo(path).fileName()));
 
     m_closeAction->setEnabled(true);
@@ -436,14 +586,28 @@ QString MainWindow::smokeReport()
     lines << QStringLiteral("вид: %1").arg(configuration.kindTitle);
     lines << QStringLiteral("объектов: %1").arg(configuration.objectCount());
 
-    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *categoryItem = m_tree->topLevelItem(i);
-        if (categoryItem->childCount() > 0) {
-            m_tree->setCurrentItem(categoryItem->child(0));
-            break;
+    std::function<QTreeWidgetItem *(QTreeWidgetItem *)> findObject =
+        [&](QTreeWidgetItem *item) -> QTreeWidgetItem * {
+        if (item->data(0, KindRole).toInt() == ObjectItem)
+            return item;
+        for (int i = 0; i < item->childCount(); ++i) {
+            if (QTreeWidgetItem *found = findObject(item->child(i)))
+                return found;
         }
+        return nullptr;
+    };
+
+    QTreeWidgetItem *firstObject = nullptr;
+    for (int i = 0; i < m_tree->topLevelItemCount() && !firstObject; ++i)
+        firstObject = findObject(m_tree->topLevelItem(i));
+
+    if (firstObject) {
+        m_tree->setCurrentItem(firstObject);
+        m_tree->scrollToItem(firstObject);
     }
     QCoreApplication::processEvents();
+    lines << QStringLiteral("дерево: %1 узлов верхнего уровня")
+                 .arg(m_tree->topLevelItemCount());
 
     lines << QStringLiteral("состав: %1 разделов").arg(m_composition->topLevelItemCount());
     lines << QStringLiteral("свойства: %1 строк").arg(m_properties->rowCount());
@@ -451,6 +615,83 @@ QString MainWindow::smokeReport()
                  .arg(m_moduleEdit->toPlainText().size());
     lines << QStringLiteral("метаданные: %1 символов")
                  .arg(m_metadataEdit->toPlainText().size());
+
+    // Проверяем узлы разделов и элементов на объекте, у которого есть состав.
+    const QString preferredTypes[] = {QStringLiteral("Документ"),
+                                      QStringLiteral("Справочник"),
+                                      QStringLiteral("Регистр сведений")};
+    QTreeWidgetItem *richObject = nullptr;
+    for (const QString &typeTitle : preferredTypes) {
+        for (const MetadataCategory &category : configuration.categories) {
+            if (category.typeTitle != typeTitle || category.objects.isEmpty())
+                continue;
+            const QString guid = category.objects.at(0).guid;
+            ensureObjectItemChildren(guid);
+            if (QTreeWidgetItem *candidate = findObjectItem(guid)) {
+                richObject = candidate;
+                break;
+            }
+        }
+        if (richObject)
+            break;
+    }
+    if (!richObject)
+        richObject = firstObject;
+
+    int sectionCount = 0;
+    int entryCount = 0;
+    int moduleCount = 0;
+    if (richObject) {
+        for (int i = 0; i < richObject->childCount(); ++i) {
+            const int kind = richObject->child(i)->data(0, KindRole).toInt();
+            if (kind == SectionItem)
+                ++sectionCount;
+            else if (kind == ModuleNodeItem)
+                ++moduleCount;
+        }
+        QTreeWidgetItem *preferredSection = nullptr;
+        for (int i = 0; i < richObject->childCount(); ++i) {
+            QTreeWidgetItem *candidate = richObject->child(i);
+            if (candidate->data(0, KindRole).toInt() != SectionItem)
+                continue;
+            if (!preferredSection)
+                preferredSection = candidate;
+            if (candidate->data(0, SectionKindRole).toInt()
+                == static_cast<int>(MetadataSectionKind::TabularSections)) {
+                preferredSection = candidate;
+                break;
+            }
+        }
+        for (int i = 0; i < richObject->childCount(); ++i) {
+            QTreeWidgetItem *child = richObject->child(i);
+            if (child != preferredSection)
+                continue;
+            m_tree->setCurrentItem(child);
+            QCoreApplication::processEvents();
+            entryCount = child->childCount();
+            if (entryCount > 0) {
+                QTreeWidgetItem *firstEntry = child->child(0);
+                m_tree->setCurrentItem(firstEntry);
+                QCoreApplication::processEvents();
+                if (firstEntry->childCount() > 0) {
+                    m_tree->setCurrentItem(firstEntry->child(0));
+                    QCoreApplication::processEvents();
+                    lines << QStringLiteral("реквизитов ТЧ: %1")
+                                 .arg(firstEntry->childCount());
+                }
+            }
+            break;
+        }
+        m_tree->setCurrentItem(richObject);
+        QCoreApplication::processEvents();
+    }
+
+    lines << QStringLiteral("узлы объекта: разделов %1, модулей %2")
+                 .arg(sectionCount)
+                 .arg(moduleCount);
+    lines << QStringLiteral("элементов выбранного раздела: %1").arg(entryCount);
+    lines << QStringLiteral("состав после выбора: %1")
+                 .arg(m_composition->topLevelItemCount());
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -476,15 +717,10 @@ void MainWindow::refreshCurrent()
     if (!openFile(m_currentPath) || selectedGuid.isEmpty())
         return;
 
-    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *categoryItem = m_tree->topLevelItem(i);
-        for (int j = 0; j < categoryItem->childCount(); ++j) {
-            QTreeWidgetItem *objectItem = categoryItem->child(j);
-            if (objectItem->data(0, GuidRole).toString() == selectedGuid) {
-                m_tree->setCurrentItem(objectItem);
-                return;
-            }
-        }
+    if (QTreeWidgetItem *objectItem = findObjectItem(selectedGuid)) {
+        ensureObjectItemChildren(selectedGuid);
+        m_tree->setCurrentItem(objectItem);
+        m_tree->scrollToItem(objectItem);
     }
 }
 
@@ -623,46 +859,64 @@ void MainWindow::buildTree()
     if (!m_reader)
         return;
 
-    const Configuration &configuration = m_reader->configuration();
-    const QIcon categoryIcon = style()->standardIcon(QStyle::SP_DirIcon);
-    const QIcon objectIcon = style()->standardIcon(QStyle::SP_FileIcon);
+    Configuration &configuration = m_reader->configuration();
+    m_tree->setUpdatesEnabled(false);
 
-    for (const MetadataCategory &category : configuration.categories) {
-        auto *categoryItem = new QTreeWidgetItem(m_tree);
-        categoryItem->setText(0, QStringLiteral("%1 (%2)")
-                                     .arg(category.title)
-                                     .arg(category.objects.size()));
-        categoryItem->setIcon(0, categoryIcon);
-        categoryItem->setData(0, KindRole, CategoryItem);
-        categoryItem->setData(0, GuidRole, category.guid);
-        categoryItem->setToolTip(0, QStringLiteral("%1\nGUID: %2")
-                                        .arg(category.title, category.guid));
-        QFont font = categoryItem->font(0);
+    auto *rootItem = new QTreeWidgetItem(m_tree);
+    rootItem->setText(0, QStringLiteral("%1 (%2)")
+                             .arg(configuration.displayName(),
+                                  configuration.kindTitle));
+    rootItem->setIcon(0, m_rootIcon);
+    rootItem->setData(0, KindRole, RootItem);
+    rootItem->setToolTip(0, QStringLiteral("%1\nФайл: %2\nОбъектов: %3")
+                                .arg(configuration.kindTitle,
+                                     configuration.sourcePath)
+                                .arg(configuration.objectCount()));
+    {
+        QFont font = rootItem->font(0);
         font.setBold(true);
-        categoryItem->setFont(0, font);
-
-        for (const MetadataObject &object : category.objects) {
-            auto *objectItem = new QTreeWidgetItem(categoryItem);
-            objectItem->setText(0, object.displayName());
-            objectItem->setIcon(0, objectIcon);
-            objectItem->setData(0, KindRole, ObjectItem);
-            objectItem->setData(0, GuidRole, object.guid);
-
-            QString tooltip = QStringLiteral("%1: %2\nGUID: %3")
-                                  .arg(object.typeTitle,
-                                       object.displayName(),
-                                       object.guid);
-            if (!object.synonym.isEmpty())
-                tooltip += QStringLiteral("\nСиноним: %1").arg(object.synonym);
-            if (!object.elementFound)
-                tooltip += QStringLiteral("\nЭлемент контейнера не найден");
-            objectItem->setToolTip(0, tooltip);
-        }
-
-        categoryItem->setExpanded(category.objects.size() <= 50);
+        rootItem->setFont(0, font);
     }
 
+    QVector<const MetadataCategory *> commonCategories;
+    QVector<const MetadataCategory *> mainCategories;
+    for (MetadataCategory &category : configuration.categories) {
+        if (isCommonCategoryGuid(category.guid))
+            commonCategories.append(&category);
+        else
+            mainCategories.append(&category);
+    }
+
+    if (!commonCategories.isEmpty()) {
+        int objectCount = 0;
+        for (const MetadataCategory *category : commonCategories)
+            objectCount += category->objects.size();
+
+        auto *groupItem = new QTreeWidgetItem(rootItem);
+        groupItem->setText(0, QStringLiteral("Общие (%1)").arg(objectCount));
+        groupItem->setIcon(0, m_groupIcon);
+        groupItem->setData(0, KindRole, GroupItem);
+        groupItem->setData(0, GuidRole, QStringLiteral("__common__"));
+        groupItem->setToolTip(0, QStringLiteral("Общие объекты конфигурации"));
+        QFont groupFont = groupItem->font(0);
+        groupFont.setBold(true);
+        groupItem->setFont(0, groupFont);
+
+        for (const MetadataCategory *category : commonCategories)
+            addCategoryItem(groupItem, *category);
+    }
+
+    for (const MetadataCategory *category : mainCategories)
+        addCategoryItem(rootItem, *category);
+
+    rootItem->setExpanded(true);
+    if (rootItem->childCount() > 0)
+        rootItem->child(0)->setExpanded(true);
+
+    m_tree->setUpdatesEnabled(true);
+
     applyTreeFilter(m_treeFilter->text());
+    updateTreeHint();
 
     if (m_tree->topLevelItemCount() == 0) {
         auto *item = new QTreeWidgetItem(m_tree);
@@ -672,33 +926,285 @@ void MainWindow::buildTree()
     }
 }
 
+QTreeWidgetItem *MainWindow::addCategoryItem(QTreeWidgetItem *parent,
+                                             const MetadataCategory &category)
+{
+    auto *categoryItem = new QTreeWidgetItem(parent);
+    categoryItem->setText(0, QStringLiteral("%1 (%2)")
+                                 .arg(category.title)
+                                 .arg(category.objects.size()));
+    categoryItem->setIcon(0, makeFolderIcon(categoryColor(category.guid)));
+    categoryItem->setData(0, KindRole, CategoryItem);
+    categoryItem->setData(0, GuidRole, category.guid);
+    categoryItem->setToolTip(0, QStringLiteral("%1\nТип объекта: %2\nGUID: %3\nОбъектов: %4")
+                                    .arg(category.title, category.typeTitle, category.guid)
+                                    .arg(category.objects.size()));
+    QFont font = categoryItem->font(0);
+    font.setBold(true);
+    categoryItem->setFont(0, font);
+
+    for (const MetadataObject &object : category.objects)
+        addObjectItem(categoryItem, object);
+
+    categoryItem->setExpanded(category.objects.size() <= 30);
+    return categoryItem;
+}
+
+QTreeWidgetItem *MainWindow::addObjectItem(QTreeWidgetItem *parent,
+                                           const MetadataObject &object)
+{
+    auto *objectItem = new QTreeWidgetItem(parent);
+    objectItem->setText(0, object.displayName());
+    objectItem->setIcon(0, makeDotIcon(categoryColor(object.categoryGuid)));
+    objectItem->setData(0, KindRole, ObjectItem);
+    objectItem->setData(0, GuidRole, object.guid);
+    objectItem->setData(0, LoadedRole, false);
+
+    QString tooltip = QStringLiteral("%1: %2\nGUID: %3")
+                          .arg(object.typeTitle, object.displayName(), object.guid);
+    if (!object.synonym.isEmpty())
+        tooltip += QStringLiteral("\nСиноним: %1").arg(object.synonym);
+    if (!object.comment.isEmpty())
+        tooltip += QStringLiteral("\nКомментарий: %1").arg(object.comment);
+    if (!object.elementFound)
+        tooltip += QStringLiteral("\nЭлемент контейнера не найден");
+    objectItem->setToolTip(0, tooltip);
+
+    if (object.elementFound) {
+        // Заглушка, чтобы у объекта был раскрыватель; заменяется при раскрытии.
+        auto *placeholder = new QTreeWidgetItem(objectItem);
+        placeholder->setText(0, QStringLiteral("…"));
+        placeholder->setFlags(placeholder->flags() & ~Qt::ItemIsSelectable);
+    }
+
+    return objectItem;
+}
+
+void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &object)
+{
+    if (!item || !m_reader)
+        return;
+
+    item->setData(0, LoadedRole, true);
+    while (item->childCount() > 0)
+        delete item->takeChild(0);
+
+    m_reader->loadSections(object);
+
+    if (!m_moduleCache.contains(object.guid)) {
+        ModuleExtractor extractor(m_reader->container());
+        m_moduleCache.insert(object.guid, extractor.extractForObject(object));
+    }
+    const QVector<ModuleInfo> modules = m_moduleCache.value(object.guid);
+    for (int i = 0; i < modules.size(); ++i) {
+        const ModuleInfo &module = modules.at(i);
+        auto *moduleItem = new QTreeWidgetItem(item);
+        moduleItem->setText(0, module.name.isEmpty() ? QStringLiteral("Модуль")
+                                                     : module.name);
+        moduleItem->setIcon(0, m_moduleIcon);
+        moduleItem->setData(0, KindRole, ModuleNodeItem);
+        moduleItem->setData(0, GuidRole, object.guid);
+        moduleItem->setData(0, ModuleIndexRole, i);
+        moduleItem->setToolTip(0, QStringLiteral("%1\nЭлемент: %2")
+                                    .arg(module.name, module.elementName));
+    }
+
+    for (const MetadataSection &section : object.sections) {
+        if (section.entries.isEmpty())
+            continue;
+
+        auto *sectionItem = new QTreeWidgetItem(item);
+        sectionItem->setText(0, QStringLiteral("%1 (%2)")
+                                    .arg(section.title)
+                                    .arg(section.entries.size()));
+        sectionItem->setIcon(0, makeFolderIcon(sectionColor(section.kind)));
+        sectionItem->setData(0, KindRole, SectionItem);
+        sectionItem->setData(0, GuidRole, object.guid);
+        sectionItem->setData(0, SectionKindRole, static_cast<int>(section.kind));
+        sectionItem->setToolTip(0, QStringLiteral("%1\nGUID раздела: %2")
+                                    .arg(section.title, section.guid));
+        QFont sectionFont = sectionItem->font(0);
+        sectionFont.setBold(true);
+        sectionItem->setFont(0, sectionFont);
+
+        for (int i = 0; i < section.entries.size(); ++i) {
+            const MetadataEntry &entry = section.entries.at(i);
+            auto *entryItem = new QTreeWidgetItem(sectionItem);
+            entryItem->setText(0, entry.displayName());
+            entryItem->setIcon(0, makeDotIcon(sectionColor(section.kind)));
+            entryItem->setData(0, KindRole, EntryItem);
+            entryItem->setData(0, GuidRole, object.guid);
+            entryItem->setData(0, SectionKindRole, static_cast<int>(section.kind));
+            entryItem->setData(0, EntryIndexRole, i);
+            entryItem->setData(0, ChildIndexRole, -1);
+
+            QString entryTooltip = QStringLiteral("%1: %2")
+                                       .arg(entry.typeTitle, entry.displayName());
+            if (!entry.guid.isEmpty())
+                entryTooltip += QStringLiteral("\nGUID: %1").arg(entry.guid);
+            if (!entry.synonym.isEmpty())
+                entryTooltip += QStringLiteral("\nСиноним: %1").arg(entry.synonym);
+            if (!entry.comment.isEmpty())
+                entryTooltip += QStringLiteral("\nКомментарий: %1").arg(entry.comment);
+            entryItem->setToolTip(0, entryTooltip);
+
+            for (int j = 0; j < entry.children.size(); ++j) {
+                const MetadataEntry &child = entry.children.at(j);
+                auto *childItem = new QTreeWidgetItem(entryItem);
+                childItem->setText(0, child.displayName());
+                childItem->setIcon(0, makeDotIcon(
+                    sectionColor(MetadataSectionKind::TabularAttributes)));
+                childItem->setData(0, KindRole, EntryItem);
+                childItem->setData(0, GuidRole, object.guid);
+                childItem->setData(0, SectionKindRole,
+                                   static_cast<int>(MetadataSectionKind::TabularAttributes));
+                childItem->setData(0, EntryIndexRole, i);
+                childItem->setData(0, ChildIndexRole, j);
+                childItem->setToolTip(0, QStringLiteral("%1: %2\nGUID: %3")
+                                             .arg(child.typeTitle,
+                                                  child.displayName(),
+                                                  child.guid));
+            }
+        }
+        sectionItem->setExpanded(true);
+    }
+
+    if (item->childCount() > 0) {
+        item->setExpanded(true);
+    } else {
+        auto *emptyItem = new QTreeWidgetItem(item);
+        emptyItem->setText(0, QStringLiteral("(состав и модули не найдены)"));
+        emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
+        emptyItem->setForeground(0, palette().mid());
+    }
+}
+
+void MainWindow::onTreeItemExpanded(QTreeWidgetItem *item)
+{
+    if (!item || !m_reader)
+        return;
+    if (item->data(0, KindRole).toInt() != ObjectItem)
+        return;
+    if (item->data(0, LoadedRole).toBool())
+        return;
+
+    MetadataObject *object = objectForItem(item);
+    if (!object)
+        return;
+
+    populateObjectItem(item, *object);
+    applyTreeFilter(m_treeFilter->text());
+}
+
+void MainWindow::ensureObjectItemChildren(const QString &guid)
+{
+    QTreeWidgetItem *item = findObjectItem(guid);
+    if (!item || !m_reader)
+        return;
+    MetadataObject *object = objectForItem(item);
+    if (object && !item->data(0, LoadedRole).toBool()) {
+        populateObjectItem(item, *object);
+        applyTreeFilter(m_treeFilter->text());
+    }
+}
+
+MetadataObject *MainWindow::objectForItem(const QTreeWidgetItem *item) const
+{
+    if (!item || !m_reader)
+        return nullptr;
+    const int kind = item->data(0, KindRole).toInt();
+    if (kind != ObjectItem && kind != SectionItem && kind != EntryItem
+        && kind != ModuleNodeItem) {
+        return nullptr;
+    }
+    const QString guid = item->data(0, GuidRole).toString();
+    return m_reader->configuration().object(guid);
+}
+
+QTreeWidgetItem *MainWindow::findObjectItem(const QString &guid) const
+{
+    if (!m_tree)
+        return nullptr;
+
+    std::function<QTreeWidgetItem *(QTreeWidgetItem *)> find =
+        [&](QTreeWidgetItem *item) -> QTreeWidgetItem * {
+        if (item->data(0, KindRole).toInt() == ObjectItem
+            && item->data(0, GuidRole).toString() == guid) {
+            return item;
+        }
+        for (int i = 0; i < item->childCount(); ++i) {
+            if (QTreeWidgetItem *found = find(item->child(i)))
+                return found;
+        }
+        return nullptr;
+    };
+
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        if (QTreeWidgetItem *found = find(m_tree->topLevelItem(i)))
+            return found;
+    }
+    return nullptr;
+}
+
 void MainWindow::applyTreeFilter(const QString &text)
 {
     const QString needle = text.trimmed();
-
-    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *categoryItem = m_tree->topLevelItem(i);
-        if (categoryItem->data(0, KindRole).toInt() != CategoryItem)
-            continue;
-
-        int visible = 0;
-        for (int j = 0; j < categoryItem->childCount(); ++j) {
-            QTreeWidgetItem *objectItem = categoryItem->child(j);
-            const QString name = objectItem->text(0);
-            const QString guid = objectItem->data(0, GuidRole).toString();
-            const bool match = needle.isEmpty()
-                || name.contains(needle, Qt::CaseInsensitive)
-                || guid.contains(needle, Qt::CaseInsensitive);
-            objectItem->setHidden(!match);
-            if (match)
-                ++visible;
-        }
-
-        categoryItem->setHidden(!needle.isEmpty() && visible == 0);
-        if (!needle.isEmpty() && visible > 0)
-            categoryItem->setExpanded(true);
-    }
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i)
+        filterTreeItem(m_tree->topLevelItem(i), needle);
 }
+
+bool MainWindow::filterTreeItem(QTreeWidgetItem *item, const QString &needle)
+{
+    const int kind = item->data(0, KindRole).toInt();
+
+    if (needle.isEmpty()) {
+        item->setHidden(false);
+        for (int i = 0; i < item->childCount(); ++i)
+            filterTreeItem(item->child(i), needle);
+        return true;
+    }
+
+    bool selfMatch = false;
+    if (kind == RootItem || kind == GroupItem || kind == CategoryItem
+        || kind == ObjectItem || kind == SectionItem || kind == EntryItem) {
+        selfMatch = item->text(0).contains(needle, Qt::CaseInsensitive)
+            || item->data(0, GuidRole).toString().contains(needle, Qt::CaseInsensitive);
+    }
+
+    bool childMatch = false;
+    for (int i = 0; i < item->childCount(); ++i) {
+        if (filterTreeItem(item->child(i), needle))
+            childMatch = true;
+    }
+
+    const bool visible = selfMatch || childMatch;
+    item->setHidden(!visible);
+
+    if (visible && (childMatch || kind == CategoryItem || kind == GroupItem))
+        item->setExpanded(true);
+
+    return visible;
+}
+
+void MainWindow::updateTreeHint()
+{
+    if (!m_reader) {
+        m_treeHint->setText(QStringLiteral("Файл не открыт"));
+        return;
+    }
+
+    const Configuration &configuration = m_reader->configuration();
+    QString text = QStringLiteral("%1\nОбъектов: %2 · категорий: %3")
+                       .arg(configuration.displayName())
+                       .arg(configuration.objectCount())
+                       .arg(configuration.categories.size());
+    if (!configuration.warnings.isEmpty()) {
+        text += QStringLiteral("\nПредупреждений: %1")
+                    .arg(configuration.warnings.size());
+    }
+    m_treeHint->setText(text);
+}
+
 
 void MainWindow::buildContainerTree()
 {
@@ -810,8 +1316,15 @@ void MainWindow::showCategory(const MetadataCategory &category)
     rows.append({QStringLiteral("Объектов"), QString::number(category.objects.size())});
 
     QStringList names;
-    for (const MetadataObject &object : category.objects)
+    constexpr int kNameLimit = 300;
+    for (const MetadataObject &object : category.objects) {
+        if (names.size() >= kNameLimit) {
+            names.append(QStringLiteral("… ещё %1")
+                             .arg(category.objects.size() - kNameLimit));
+            break;
+        }
         names.append(object.displayName());
+    }
     rows.append({QStringLiteral("Объекты"), names.join(QStringLiteral("\n"))});
     setProperties(rows);
 
@@ -876,8 +1389,295 @@ void MainWindow::showObject(MetadataObject &object)
 
     setProperties(rows);
     m_extractAction->setEnabled(true);
+    ensureObjectItemChildren(object.guid);
     statusBar()->showMessage(QStringLiteral("%1: %2")
                                  .arg(object.typeTitle, object.displayName()));
+}
+
+void MainWindow::showGroup(const QString &title,
+                           const QVector<const MetadataCategory *> &categories)
+{
+    clearObjectView();
+
+    QVector<QPair<QString, QString>> rows;
+    rows.append({QStringLiteral("Группа"), title});
+
+    int objectCount = 0;
+    QStringList categorySummary;
+    for (const MetadataCategory *category : categories) {
+        objectCount += category->objects.size();
+        categorySummary.append(QStringLiteral("%1: %2")
+                                   .arg(category->title)
+                                   .arg(category->objects.size()));
+    }
+    rows.append({QStringLiteral("Категорий"), QString::number(categories.size())});
+    rows.append({QStringLiteral("Объектов"), QString::number(objectCount)});
+    rows.append({QStringLiteral("Состав группы"),
+                 categorySummary.join(QStringLiteral("\n"))});
+    setProperties(rows);
+
+    m_composition->clear();
+    auto *root = new QTreeWidgetItem(m_composition);
+    root->setText(0, QStringLiteral("Категория"));
+    root->setText(1, title);
+    root->setIcon(0, m_groupIcon);
+    for (const MetadataCategory *category : categories) {
+        auto *categoryItem = new QTreeWidgetItem(root);
+        categoryItem->setText(0, QStringLiteral("Категория"));
+        categoryItem->setText(1, QStringLiteral("%1 (%2)")
+                                     .arg(category->title)
+                                     .arg(category->objects.size()));
+        categoryItem->setText(3, category->guid);
+        categoryItem->setIcon(0, makeFolderIcon(categoryColor(category->guid)));
+        for (const MetadataObject &object : category->objects) {
+            auto *objectItem = new QTreeWidgetItem(categoryItem);
+            objectItem->setText(0, object.typeTitle);
+            objectItem->setText(1, object.displayName());
+            objectItem->setText(2, object.synonym);
+            objectItem->setText(3, object.guid);
+            objectItem->setText(4, object.comment);
+            objectItem->setIcon(0, makeDotIcon(categoryColor(category->guid)));
+        }
+    }
+    root->setExpanded(true);
+
+    m_metadataEdit->setPlainText(
+        QStringLiteral("Группа «%1». Выберите категорию или объект метаданных.")
+            .arg(title));
+    m_moduleEdit->setPlainText(QStringLiteral("Выберите объект метаданных."));
+    m_extractAction->setEnabled(false);
+    statusBar()->showMessage(QStringLiteral("Группа: %1 (%2 объектов)")
+                                 .arg(title)
+                                 .arg(objectCount));
+}
+
+void MainWindow::showSection(MetadataObject &object, MetadataSectionKind kind)
+{
+    if (!m_reader)
+        return;
+
+    m_reader->loadSections(object);
+    const MetadataSection *section = object.section(kind);
+    if (!section) {
+        showObject(object);
+        return;
+    }
+
+    clearObjectView();
+    m_currentObject = &object;
+    fillModules(object);
+    fillSectionComposition(object, kind);
+
+    QVector<QPair<QString, QString>> rows;
+    rows.append({QStringLiteral("Раздел"), section->title});
+    rows.append({QStringLiteral("Объект"), object.displayName()});
+    rows.append({QStringLiteral("Тип объекта"), object.typeTitle});
+    rows.append({QStringLiteral("Категория"), object.categoryTitle});
+    rows.append({QStringLiteral("Элементов"), QString::number(section->entries.size())});
+    rows.append({QStringLiteral("GUID раздела"), section->guid});
+    rows.append({QStringLiteral("GUID объекта"), object.guid});
+    setProperties(rows);
+
+    m_metadataEdit->setPlainText(
+        QStringLiteral("Раздел «%1» объекта «%2»: %3 элементов.\n"
+                       "Выберите элемент для просмотра свойств.")
+            .arg(section->title, object.displayName())
+            .arg(section->entries.size()));
+
+    m_extractAction->setEnabled(true);
+    statusBar()->showMessage(QStringLiteral("%1: %2 (%3)")
+                                 .arg(object.displayName(),
+                                      section->title)
+                                 .arg(section->entries.size()));
+}
+
+void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
+                           int entryIndex, int childIndex)
+{
+    if (!m_reader)
+        return;
+
+    m_reader->loadSections(object);
+    const MetadataSection *section = object.section(kind);
+    const MetadataSection *attributesSection = nullptr;
+    if (!section && kind == MetadataSectionKind::TabularAttributes)
+        attributesSection = object.section(MetadataSectionKind::TabularSections);
+    if (!section && !attributesSection) {
+        showObject(object);
+        return;
+    }
+
+    QVector<MetadataEntry> emptyEntries;
+    const QVector<MetadataEntry> &rootEntries =
+        section ? section->entries : attributesSection->entries;
+    if (entryIndex < 0 || entryIndex >= rootEntries.size()) {
+        showObject(object);
+        return;
+    }
+
+    const MetadataEntry &parentEntry = rootEntries.at(entryIndex);
+    const MetadataEntry *entry = &parentEntry;
+    if (childIndex >= 0 && childIndex < parentEntry.children.size())
+        entry = &parentEntry.children.at(childIndex);
+
+    clearObjectView();
+    m_currentObject = &object;
+    fillModules(object);
+    fillEntryComposition(*entry);
+
+    QVector<QPair<QString, QString>> rows;
+    rows.append({QStringLiteral("Вид"), entry->typeTitle});
+    rows.append({QStringLiteral("Имя"), entry->name});
+    rows.append({QStringLiteral("Синоним"), entry->synonym});
+    rows.append({QStringLiteral("Комментарий"), entry->comment});
+    rows.append({QStringLiteral("GUID"), entry->guid});
+    rows.append({QStringLiteral("Раздел"),
+                 section ? section->title
+                         : MetadataCatalog::sectionTitle(
+                               MetadataSectionKind::TabularSections)});
+    if (childIndex >= 0) {
+        rows.append({QStringLiteral("Входит в"), parentEntry.displayName()});
+        rows.append({QStringLiteral("Табличная часть"), parentEntry.guid});
+    }
+    rows.append({QStringLiteral("Объект"), object.displayName()});
+    rows.append({QStringLiteral("Тип объекта"), object.typeTitle});
+    setProperties(rows);
+
+    m_metadataEdit->clear();
+    if (!entry->guid.isEmpty()) {
+        QString text;
+        QString readError;
+        if (m_reader->readElementText(entry->guid, &text, &readError)) {
+            constexpr qsizetype kLimit = 1024 * 1024;
+            if (text.size() > kLimit)
+                text = text.left(kLimit) + QStringLiteral("\n… (обрезано)");
+            m_metadataEdit->setPlainText(text);
+        } else {
+            m_metadataEdit->setPlainText(
+                QStringLiteral("Не удалось прочитать элемент «%1»:\n%2")
+                    .arg(entry->guid, readError));
+        }
+    }
+    if (m_metadataEdit->toPlainText().isEmpty()) {
+        m_metadataEdit->setPlainText(
+            QStringLiteral("Для элемента нет отдельного текста метаданных в контейнере."));
+    }
+
+    // Для формы сразу открываем её модуль, если он найден.
+    if (kind == MetadataSectionKind::Forms) {
+        for (int i = 0; i < m_currentModules.size(); ++i) {
+            if (m_currentModules.at(i).name.contains(entry->displayName(),
+                                                     Qt::CaseInsensitive)) {
+                m_moduleCombo->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+
+    m_extractAction->setEnabled(true);
+    statusBar()->showMessage(QStringLiteral("%1: %2")
+                                 .arg(entry->typeTitle, entry->displayName()));
+}
+
+void MainWindow::showModuleNode(MetadataObject &object, int moduleIndex)
+{
+    if (!m_reader)
+        return;
+
+    clearObjectView();
+    m_currentObject = &object;
+    fillModules(object);
+
+    QVector<QPair<QString, QString>> rows;
+    rows.append({QStringLiteral("Объект"), object.displayName()});
+    rows.append({QStringLiteral("Тип объекта"), object.typeTitle});
+    rows.append({QStringLiteral("GUID объекта"), object.guid});
+
+    if (moduleIndex >= 0 && moduleIndex < m_currentModules.size()) {
+        const ModuleInfo &module = m_currentModules.at(moduleIndex);
+        rows.append({QStringLiteral("Модуль"), module.name});
+        rows.append({QStringLiteral("Элемент контейнера"), module.elementName});
+        rows.append({QStringLiteral("Источник"), module.source});
+        rows.append({QStringLiteral("Символов"), QString::number(module.text.size())});
+        m_moduleCombo->setCurrentIndex(moduleIndex);
+        m_composition->clear();
+        m_metadataEdit->setPlainText(
+            QStringLiteral("Модуль «%1» объекта «%2».\nЭлемент контейнера: %3")
+                .arg(module.name, object.displayName(), module.elementName));
+    } else {
+        rows.append({QStringLiteral("Модуль"), QStringLiteral("не найден")});
+    }
+
+    setProperties(rows);
+    m_extractAction->setEnabled(true);
+    statusBar()->showMessage(QStringLiteral("%1 — %2")
+                                 .arg(object.displayName(),
+                                      moduleIndex >= 0 && moduleIndex < m_currentModules.size()
+                                          ? m_currentModules.at(moduleIndex).name
+                                          : QStringLiteral("модуль")));
+}
+
+void MainWindow::fillSectionComposition(MetadataObject &object,
+                                        MetadataSectionKind kind)
+{
+    m_composition->clear();
+    const MetadataSection *section = object.section(kind);
+    if (!section)
+        return;
+
+    auto *sectionItem = new QTreeWidgetItem(m_composition);
+    sectionItem->setText(0, QStringLiteral("Раздел"));
+    sectionItem->setText(1, QStringLiteral("%1 (%2)")
+                               .arg(section->title)
+                               .arg(section->entries.size()));
+    sectionItem->setText(3, section->guid);
+    sectionItem->setIcon(0, makeFolderIcon(sectionColor(kind)));
+
+    for (const MetadataEntry &entry : section->entries) {
+        auto *entryItem = new QTreeWidgetItem(sectionItem);
+        entryItem->setText(0, entry.typeTitle);
+        entryItem->setText(1, entry.displayName());
+        entryItem->setText(2, entry.synonym);
+        entryItem->setText(3, entry.guid);
+        entryItem->setText(4, entry.comment);
+        entryItem->setIcon(0, makeDotIcon(sectionColor(kind)));
+        for (const MetadataEntry &child : entry.children) {
+            auto *childItem = new QTreeWidgetItem(entryItem);
+            childItem->setText(0, child.typeTitle);
+            childItem->setText(1, child.displayName());
+            childItem->setText(2, child.synonym);
+            childItem->setText(3, child.guid);
+            childItem->setText(4, child.comment);
+            childItem->setIcon(0, makeDotIcon(
+                sectionColor(MetadataSectionKind::TabularAttributes)));
+        }
+    }
+    sectionItem->setExpanded(true);
+}
+
+void MainWindow::fillEntryComposition(const MetadataEntry &entry)
+{
+    m_composition->clear();
+
+    auto *entryItem = new QTreeWidgetItem(m_composition);
+    entryItem->setText(0, entry.typeTitle);
+    entryItem->setText(1, entry.displayName());
+    entryItem->setText(2, entry.synonym);
+    entryItem->setText(3, entry.guid);
+    entryItem->setText(4, entry.comment);
+    entryItem->setIcon(0, makeDotIcon(sectionColor(MetadataSectionKind::Attributes)));
+
+    for (const MetadataEntry &child : entry.children) {
+        auto *childItem = new QTreeWidgetItem(entryItem);
+        childItem->setText(0, child.typeTitle);
+        childItem->setText(1, child.displayName());
+        childItem->setText(2, child.synonym);
+        childItem->setText(3, child.guid);
+        childItem->setText(4, child.comment);
+        childItem->setIcon(0, makeDotIcon(
+            sectionColor(MetadataSectionKind::TabularAttributes)));
+    }
+    entryItem->setExpanded(true);
 }
 
 void MainWindow::fillComposition(const MetadataObject &object)
@@ -991,17 +1791,64 @@ void MainWindow::onTreeSelectionChanged()
     if (!m_reader)
         return;
 
-    if (MetadataObject *object = selectedObject()) {
+    QTreeWidgetItem *item = m_tree->currentItem();
+    if (!item) {
+        showConfiguration();
+        return;
+    }
+
+    const int kind = item->data(0, KindRole).toInt();
+    if (kind == RootItem) {
+        showConfiguration();
+        return;
+    }
+
+    if (kind == GroupItem) {
+        QVector<const MetadataCategory *> commonCategories;
+        for (const MetadataCategory &category : m_reader->configuration().categories) {
+            if (isCommonCategoryGuid(category.guid))
+                commonCategories.append(&category);
+        }
+        showGroup(QStringLiteral("Общие"), commonCategories);
+        return;
+    }
+
+    if (kind == CategoryItem) {
+        if (MetadataCategory *category = selectedCategory())
+            showCategory(*category);
+        return;
+    }
+
+    MetadataObject *object = objectForItem(item);
+    if (!object) {
+        showConfiguration();
+        return;
+    }
+
+    switch (kind) {
+    case ObjectItem:
+        ensureObjectItemChildren(object->guid);
         showObject(*object);
-        return;
+        break;
+    case SectionItem:
+        showSection(*object,
+                    static_cast<MetadataSectionKind>(
+                        item->data(0, SectionKindRole).toInt()));
+        break;
+    case EntryItem:
+        showEntry(*object,
+                  static_cast<MetadataSectionKind>(
+                      item->data(0, SectionKindRole).toInt()),
+                  item->data(0, EntryIndexRole).toInt(),
+                  item->data(0, ChildIndexRole).toInt());
+        break;
+    case ModuleNodeItem:
+        showModuleNode(*object, item->data(0, ModuleIndexRole).toInt());
+        break;
+    default:
+        showConfiguration();
+        break;
     }
-
-    if (MetadataCategory *category = selectedCategory()) {
-        showCategory(*category);
-        return;
-    }
-
-    showConfiguration();
 }
 
 MetadataObject *MainWindow::selectedObject()
