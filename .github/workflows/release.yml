@@ -240,7 +240,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          cat > notes.md <<'NOTES'
+          NOTES_FILE="docs/release-notes-${RELEASE_TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            cp "$NOTES_FILE" notes.md
+          else
+            cat > notes.md <<'NOTES'
           ## qtv8reader
 
           Просмотр конфигураций и внешних обработок 1С:Предприятие 8
@@ -278,6 +282,7 @@ jobs:
 
           Проект: https://github.com/fishca/qtv8reader
           NOTES
+          fi
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber

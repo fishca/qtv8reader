@@ -1,6 +1,7 @@
 # qtv8reader
 
 [![Build](https://github.com/fishca/qtv8reader/actions/workflows/build.yml/badge.svg)](https://github.com/fishca/qtv8reader/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/fishca/qtv8reader)](https://github.com/fishca/qtv8reader/releases/latest)
 
 Чтение конфигураций и внешних обработок 1С:Предприятие 8 на C++17 и Qt6.
 
