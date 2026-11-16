@@ -193,22 +193,19 @@ double MxlView::cellPixelHeight(int rowIndex) const
         if (units > 0.0)
             return units / kInchUnits * kDpi;
 
-        double fontHeight = fontPixelSize(baseFont()) * 1.35 + 4.0;
+        double maxFontPx = fontPixelSize(baseFont());
         const mxl::CellFormat *rowFormat = m_document.formatAt(row.format);
-        if (rowFormat) {
-            const QFont font = fontForFormat(rowFormat);
-            fontHeight = std::max(fontHeight, fontPixelSize(font) * 1.35 + 4.0);
-        }
+        if (rowFormat)
+            maxFontPx = std::max(maxFontPx, fontPixelSize(fontForFormat(rowFormat)));
         for (const auto &cell : row.cells) {
             const mxl::CellFormat *format = m_document.formatAt(cell.second.format);
             if (!format)
                 continue;
-            const QFont font = fontForFormat(format);
-            fontHeight = std::max(fontHeight, fontPixelSize(font) * 1.35 + 4.0);
+            maxFontPx = std::max(maxFontPx, fontPixelSize(fontForFormat(format)));
         }
-        return fontHeight;
+        return std::max(20.0, std::ceil(maxFontPx * 1.2 + 8.0));
     }
-    return fontPixelSize(baseFont()) * 1.35 + 4.0;
+    return std::max(20.0, std::ceil(fontPixelSize(baseFont()) * 1.2 + 8.0));
 }
 
 void MxlView::rebuildLayout()
@@ -376,13 +373,18 @@ void MxlView::drawCell(QPainter &painter, int rowIndex, int column,
             return;
 
         QPen pen(borderColor);
-        pen.setWidthF(std::max(0.8, style.thickness * 0.6));
+        pen.setWidthF(std::max(1.0, style.thickness * 0.8));
         switch (style.kind) {
         case 2: pen.setStyle(Qt::DotLine); break;
         case 3: pen.setStyle(Qt::SolidLine); pen.setWidthF(2.2); break;
-        case 4: pen.setStyle(Qt::DashDotLine); break;
-        case 5: pen.setStyle(Qt::DashLine); break;
-        case 6: pen.setStyle(Qt::CustomDashLine); break;
+        case 4: pen.setStyle(Qt::DashLine); break;                     // тонкий пунктир
+        case 5: pen.setStyle(Qt::DashLine); pen.setWidthF(2.0); break; // жирный пунктир
+        case 6: {                                                       // большой пунктир
+            pen.setStyle(Qt::CustomDashLine);
+            pen.setWidthF(2.0);
+            pen.setDashPattern({6.0, 3.0});
+            break;
+        }
         default: pen.setStyle(Qt::SolidLine); break;
         }
         painter.setPen(pen);
