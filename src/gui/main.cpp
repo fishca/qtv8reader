@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     QApplication application(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("qtv8reader"));
     QCoreApplication::setApplicationName(QStringLiteral("qtv8reader"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.3.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.4.0"));
 
     QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
 
@@ -24,6 +24,7 @@ int main(int argc, char *argv[])
     QString screenshotPath;
     QString mxlPdfPath;
     QString mxlObject;
+    QString selectMxl;
     bool showAreas = false;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
@@ -60,6 +61,11 @@ int main(int argc, char *argv[])
             showAreas = true;
             continue;
         }
+        if (argument == QStringLiteral("--select-mxl")
+            && i + 1 < arguments.size()) {
+            selectMxl = arguments.at(++i);
+            continue;
+        }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
     }
@@ -68,6 +74,9 @@ int main(int argc, char *argv[])
                                                  Qt::CaseInsensitive);
     if (!filePath.isEmpty() && !standaloneMxl)
         window.openInitialFile(filePath);
+
+    if (!selectMxl.isEmpty() && window.isFileOpen())
+        window.selectTemplateForObject(selectMxl);
 
     if (expandCommon)
         window.expandCommonBranch();
