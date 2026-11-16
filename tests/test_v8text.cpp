@@ -7,6 +7,7 @@ using namespace v8reader;
 
 int runV8ContainerTests(int argc, char **argv);
 int runMetadataTests(int argc, char **argv);
+int runMxlTests(int argc, char **argv);
 
 class TestV8Text : public QObject
 {
@@ -207,6 +208,7 @@ int main(int argc, char *argv[])
     }
     status |= runV8ContainerTests(argc, argv);
     status |= runMetadataTests(argc, argv);
+    status |= runMxlTests(argc, argv);
     return status;
 }
 

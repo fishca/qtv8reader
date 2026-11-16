@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.3.0
+    VERSION 0.4.0
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Test Concurrent)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Test Concurrent)
 find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup()
@@ -33,6 +33,10 @@ add_library(qtv8reader_core STATIC
     src/core/ModuleExtractor.cpp
     src/core/Extractor.h
     src/core/Extractor.cpp
+    src/core/MxlDocument.h
+    src/core/MxlDocument.cpp
+    src/core/MxlReader.h
+    src/core/MxlReader.cpp
 )
 
 target_include_directories(qtv8reader_core PUBLIC src)
@@ -45,9 +49,15 @@ qt_add_executable(qtv8reader WIN32
     src/gui/MainWindow.cpp
     src/gui/PreviewDialog.h
     src/gui/PreviewDialog.cpp
+    src/gui/MxlView.h
+    src/gui/MxlView.cpp
+    src/gui/MxlRenderer.h
+    src/gui/MxlRenderer.cpp
+    src/gui/MxlPrinter.h
+    src/gui/MxlPrinter.cpp
 )
 
-target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets)
+target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
 
 add_executable(v8reader_cli
     src/cli/main.cpp
@@ -61,6 +71,7 @@ qt_add_executable(qtv8reader_tests
     tests/test_v8text.cpp
     tests/test_v8container.cpp
     tests/test_metadata.cpp
+    tests/test_mxl.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
 )

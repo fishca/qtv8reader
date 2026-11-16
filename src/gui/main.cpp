@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     QApplication application(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("qtv8reader"));
     QCoreApplication::setApplicationName(QStringLiteral("qtv8reader"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.3.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.4.0"));
 
     QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
 
@@ -22,6 +22,10 @@ int main(int argc, char *argv[])
     bool expandCommon = false;
     bool expandDocuments = false;
     QString screenshotPath;
+    QString mxlPdfPath;
+    QString mxlObject;
+    QString selectMxl;
+    bool showAreas = false;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
     for (int i = 1; i < arguments.size(); ++i) {
@@ -43,17 +47,72 @@ int main(int argc, char *argv[])
             screenshotPath = arguments.at(++i);
             continue;
         }
+        if (argument == QStringLiteral("--mxl-pdf")
+            && i + 1 < arguments.size()) {
+            mxlPdfPath = arguments.at(++i);
+            continue;
+        }
+        if (argument == QStringLiteral("--mxl-object")
+            && i + 1 < arguments.size()) {
+            mxlObject = arguments.at(++i);
+            continue;
+        }
+        if (argument == QStringLiteral("--show-areas")) {
+            showAreas = true;
+            continue;
+        }
+        if (argument == QStringLiteral("--select-mxl")
+            && i + 1 < arguments.size()) {
+            selectMxl = arguments.at(++i);
+            continue;
+        }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
     }
 
-    if (!filePath.isEmpty())
+    const bool standaloneMxl = filePath.endsWith(QStringLiteral(".mxl"),
+                                                 Qt::CaseInsensitive);
+    if (!filePath.isEmpty() && !standaloneMxl)
         window.openInitialFile(filePath);
+
+    if (!selectMxl.isEmpty() && window.isFileOpen())
+        window.selectTemplateForObject(selectMxl);
 
     if (expandCommon)
         window.expandCommonBranch();
     if (expandDocuments)
         window.expandDocumentsBranch();
+    if (showAreas)
+        window.setShowNamedAreas(true);
+
+    if (!mxlPdfPath.isEmpty()) {
+        QTextStream out(stdout);
+        out.setEncoding(QStringConverter::Utf8);
+        if (filePath.endsWith(QStringLiteral(".mxl"), Qt::CaseInsensitive)) {
+            const bool exported = window.exportMxlFileToPdf(filePath, mxlPdfPath);
+            out << QStringLiteral("MXL PDF: %1 (%2)\n")
+                       .arg(exported ? QStringLiteral("OK") : QStringLiteral("FAILED"),
+                            mxlPdfPath);
+            return exported ? 0 : 1;
+        }
+
+        if (!window.isFileOpen()) {
+            out << QStringLiteral("MXL PDF: файл не открыт\n");
+            return 1;
+        }
+        const bool selected = mxlObject.isEmpty()
+            ? window.selectFirstTemplate()
+            : window.selectTemplateForObject(mxlObject);
+        if (!selected) {
+            out << QStringLiteral("MXL PDF: макет не найден\n");
+            return 1;
+        }
+        const bool exported = window.exportCurrentMxlPdf(mxlPdfPath);
+        out << QStringLiteral("MXL PDF: %1 (%2)\n")
+                   .arg(exported ? QStringLiteral("OK") : QStringLiteral("FAILED"),
+                        mxlPdfPath);
+        return exported ? 0 : 1;
+    }
 
     if (smokeTest || !screenshotPath.isEmpty()) {
         QCoreApplication::processEvents();
