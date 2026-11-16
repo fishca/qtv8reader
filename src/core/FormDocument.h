@@ -1,6 +1,7 @@
 #ifndef QTV8READER_FORMDOCUMENT_H
 #define QTV8READER_FORMDOCUMENT_H
 
+#include <QHash>
 #include <QString>
 #include <QVector>
 
@@ -16,6 +17,7 @@ struct FormItem
         Table,
         Decoration,
         Column,
+        Search,
         AutoCommandBar,
         Other
     };
@@ -56,6 +58,8 @@ struct FormDocument
     QVector<FormItem> items;
     QVector<FormAttribute> attributes;
     QVector<FormCommand> commands;
+    // Синонимы реквизитов объекта/формы: имя -> заголовок.
+    QHash<QString, QString> titles;
 
     int itemCount() const;
     int fieldCount() const;

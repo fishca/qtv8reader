@@ -176,7 +176,7 @@ FormItem parseItem(const V8TextNode &node)
         item.type = FormItem::Type::Decoration;
         break;
     case 5:
-        item.type = FormItem::Type::Column;
+        item.type = FormItem::Type::Search;
         break;
     case 2:
         item.type = FormItem::Type::AutoCommandBar;
@@ -298,6 +298,8 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
                 continue;
             attribute.synonym = localizedText(*entry);
             attribute.typeHint = typeHintFromAttributes(*entry);
+            if (!attribute.name.isEmpty() && !attribute.synonym.isEmpty())
+                document->titles.insert(attribute.name, attribute.synonym);
             document->attributes.append(attribute);
         }
     }

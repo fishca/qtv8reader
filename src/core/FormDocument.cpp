@@ -32,6 +32,8 @@ QString FormItem::typeTitle() const
         return QStringLiteral("Декорация");
     case Type::Column:
         return QStringLiteral("Колонка");
+    case Type::Search:
+        return QStringLiteral("Поиск");
     case Type::AutoCommandBar:
         return QStringLiteral("Командная панель формы");
     case Type::Other:

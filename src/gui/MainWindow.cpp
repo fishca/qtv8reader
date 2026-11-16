@@ -2296,6 +2296,21 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
 
     document.name = entry.name;
     document.synonym = entry.synonym;
+    if (m_currentObject) {
+        QHash<QString, QString> objectTitles;
+        for (const MetadataSection &section : m_currentObject->sections) {
+            for (const MetadataEntry &sectionEntry : section.entries) {
+                if (!sectionEntry.name.isEmpty() && !sectionEntry.synonym.isEmpty())
+                    objectTitles.insert(sectionEntry.name, sectionEntry.synonym);
+                for (const MetadataEntry &child : sectionEntry.children) {
+                    if (!child.name.isEmpty() && !child.synonym.isEmpty())
+                        objectTitles.insert(child.name, child.synonym);
+                }
+            }
+        }
+        for (auto it = objectTitles.constBegin(); it != objectTitles.constEnd(); ++it)
+            document.titles.insert(it.key(), it.value());
+    }
     m_formDocument = document;
     m_formDocumentValid = true;
     m_formView->setDocument(document);
