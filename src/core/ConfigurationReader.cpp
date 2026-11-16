@@ -1,0 +1,1042 @@
+#include "core/ConfigurationReader.h"
+
+#include <QFileInfo>
+#include <QtConcurrent>
+
+#include <algorithm>
+#include <functional>
+
+namespace v8reader {
+namespace {
+
+constexpr int kMaxSearchDepth = 64;
+constexpr int kMaxTableScanDepth = 10;
+
+QString scalarAt(const V8TextNode &node, int index)
+{
+    const V8TextNode *child = node.child(index);
+    return child && child->isScalar() ? child->value.trimmed() : QString();
+}
+
+bool integerAt(const V8TextNode &node, int index, qint64 *value)
+{
+    const V8TextNode *child = node.child(index);
+    if (!child || child->isList())
+        return false;
+
+    bool ok = false;
+    const qint64 parsed = child->toInteger(&ok);
+    if (!ok)
+        return false;
+    if (value)
+        *value = parsed;
+    return true;
+}
+
+bool isGuidNode(const V8TextNode &node)
+{
+    return node.isScalar() && V8Text::isGuid(node.value);
+}
+
+QString guidOfNode(const V8TextNode &node)
+{
+    return isGuidNode(node) ? node.normalizedGuid() : QString();
+}
+
+QString findFirstGuidDeep(const V8TextNode &node, int depth = 0)
+{
+    if (depth > kMaxSearchDepth)
+        return QString();
+
+    if (node.isScalar()) {
+        const QString guid = V8Text::normalizeGuid(node.value);
+        if (!guid.isEmpty() && guid != MetadataCatalog::zeroGuid())
+            return guid;
+        return QString();
+    }
+
+    for (const V8TextNode &child : node.children) {
+        const QString guid = findFirstGuidDeep(child, depth + 1);
+        if (!guid.isEmpty())
+            return guid;
+    }
+    return QString();
+}
+
+QString pickLocalized(const V8TextNode &node)
+{
+    if (node.isScalar())
+        return node.value;
+
+    if (node.children.size() >= 3) {
+        for (int i = 1; i + 1 < node.children.size(); i += 2) {
+            const V8TextNode &language = node.children.at(i);
+            const V8TextNode &text = node.children.at(i + 1);
+            if (language.isScalar()
+                && language.value.compare(QStringLiteral("ru"), Qt::CaseInsensitive) == 0
+                && text.isScalar()) {
+                return text.value;
+            }
+        }
+    }
+
+    if (node.children.size() >= 3 && node.children.at(2).isScalar())
+        return node.children.at(2).value;
+    if (node.children.size() >= 2 && node.children.at(1).isScalar())
+        return node.children.at(1).value;
+    return QString();
+}
+
+// Синоним из описателя объекта (индекс 3), если он присутствует.
+QString synonymOf(const V8TextNode &descriptor)
+{
+    if (!descriptor.isList() || descriptor.children.size() <= 3)
+        return QString();
+    return pickLocalized(descriptor.children.at(3));
+}
+
+// Описание объекта метаданных 1С:
+// {<вид>, {<признак>, <флаг>, <GUID>}, "<имя>", {<локализация>}, "<комментарий>", ...}
+bool descriptorGuid(const V8TextNode &node, QString *guid)
+{
+    if (!node.isList() || node.children.size() < 3)
+        return false;
+
+    const V8TextNode &kind = node.children.at(0);
+    if (kind.isList())
+        return false;
+
+    bool kindOk = false;
+    const qint64 kindValue = kind.toInteger(&kindOk);
+    if (!kindOk || kindValue < 0 || kindValue > 20)
+        return false;
+
+    const V8TextNode &identity = node.children.at(1);
+    // У настоящего описателя идентичность имеет вид {<признак>, <флаг>, <GUID>}:
+    // в формате 1.6 это {1, 0, <GUID>}, в формате 1.5 — {0, 0, <GUID>}.
+    if (!identity.isList() || identity.children.size() != 3)
+        return false;
+    if (!identity.children.at(0).isScalar() || !identity.children.at(1).isScalar())
+        return false;
+    bool firstOk = false;
+    bool secondOk = false;
+    const qint64 identityFlag = identity.children.at(0).toInteger(&firstOk);
+    const qint64 identitySubFlag = identity.children.at(1).toInteger(&secondOk);
+    if (!firstOk || !secondOk)
+        return false;
+    if (identityFlag < 0 || identityFlag > 2 || identitySubFlag < 0
+        || identitySubFlag > 2) {
+        return false;
+    }
+
+    const V8TextNode &guidNode = identity.children.at(2);
+    if (!isGuidNode(guidNode))
+        return false;
+
+    if (node.children.at(2).isList())
+        return false;
+
+    const QString normalized = guidNode.normalizedGuid();
+    if (normalized.isEmpty() || normalized == MetadataCatalog::zeroGuid())
+        return false;
+
+    if (guid)
+        *guid = normalized;
+    return true;
+}
+
+const V8TextNode *findDescriptorByGuid(const V8TextNode &node, const QString &guid,
+                                       int depth)
+{
+    if (depth > kMaxSearchDepth)
+        return nullptr;
+
+    QString nodeGuid;
+    if (descriptorGuid(node, &nodeGuid) && nodeGuid == guid)
+        return &node;
+
+    for (const V8TextNode &child : node.children) {
+        if (const V8TextNode *found = findDescriptorByGuid(child, guid, depth + 1))
+            return found;
+    }
+    return nullptr;
+}
+
+const V8TextNode *findFirstDescriptor(const V8TextNode &node, int depth)
+{
+    if (depth > kMaxSearchDepth)
+        return nullptr;
+
+    QString nodeGuid;
+    if (descriptorGuid(node, &nodeGuid) && !scalarAt(node, 2).isEmpty())
+        return &node;
+
+    for (const V8TextNode &child : node.children) {
+        if (const V8TextNode *found = findFirstDescriptor(child, depth + 1))
+            return found;
+    }
+    return nullptr;
+}
+
+int sectionRank(MetadataSectionKind kind)
+{
+    switch (kind) {
+    case MetadataSectionKind::Templates:
+        return 0;
+    case MetadataSectionKind::Commands:
+        return 1;
+    case MetadataSectionKind::TabularSections:
+        return 2;
+    case MetadataSectionKind::Attributes:
+        return 3;
+    case MetadataSectionKind::Dimensions:
+        return 4;
+    case MetadataSectionKind::Resources:
+        return 5;
+    case MetadataSectionKind::Values:
+        return 6;
+    case MetadataSectionKind::Forms:
+        return 7;
+    case MetadataSectionKind::JournalColumns:
+        return 8;
+    case MetadataSectionKind::AccountingFlags:
+        return 9;
+    case MetadataSectionKind::SubcontoFlags:
+        return 10;
+    case MetadataSectionKind::TabularAttributes:
+        return 11;
+    case MetadataSectionKind::Columns:
+        return 12;
+    }
+    return 13;
+}
+
+void sortSections(QVector<MetadataSection> *sections)
+{
+    std::stable_sort(sections->begin(), sections->end(),
+                     [](const MetadataSection &left, const MetadataSection &right) {
+                         return sectionRank(left.kind) < sectionRank(right.kind);
+                     });
+}
+
+bool hasSection(const QVector<MetadataSection> &sections, MetadataSectionKind kind)
+{
+    for (const MetadataSection &section : sections) {
+        if (section.kind == kind)
+            return true;
+    }
+    return false;
+}
+
+ConfigurationKind kindForPath(const QString &path)
+{
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    if (suffix == QStringLiteral("epf"))
+        return ConfigurationKind::ExternalProcessing;
+    if (suffix == QStringLiteral("erf"))
+        return ConfigurationKind::ExternalReport;
+    if (suffix == QStringLiteral("cfe"))
+        return ConfigurationKind::Extension;
+    if (suffix == QStringLiteral("cf") || suffix == QStringLiteral("cfu"))
+        return ConfigurationKind::Configuration;
+    return ConfigurationKind::Unknown;
+}
+
+QString kindTitleFor(ConfigurationKind kind)
+{
+    switch (kind) {
+    case ConfigurationKind::Configuration:
+        return QStringLiteral("Конфигурация");
+    case ConfigurationKind::Extension:
+        return QStringLiteral("Расширение конфигурации");
+    case ConfigurationKind::ExternalProcessing:
+        return QStringLiteral("Внешняя обработка");
+    case ConfigurationKind::ExternalReport:
+        return QStringLiteral("Внешний отчет");
+    case ConfigurationKind::Unknown:
+        break;
+    }
+    return QStringLiteral("Файл 1С");
+}
+
+const char *categoryGuidForKind(ConfigurationKind kind)
+{
+    switch (kind) {
+    case ConfigurationKind::ExternalProcessing:
+        return "bf845118-327b-4682-b5c6-285d2a0eb296"; // Обработки
+    case ConfigurationKind::ExternalReport:
+        return "631b75a0-29e2-11d6-a3c7-0050bae0a776"; // Отчеты
+    default:
+        return nullptr;
+    }
+}
+
+QString extractVersionNumber(const V8TextNode &root)
+{
+    if (root.isList()) {
+        const V8TextNode *format = root.child(2);
+        if (format && format->isList()) {
+            const V8TextNode *number = format->child(0);
+            if (number && number->isInteger())
+                return number->value.trimmed();
+        }
+    }
+
+    qint64 maximum = -1;
+    std::function<void(const V8TextNode &, int)> walk = [&](const V8TextNode &node,
+                                                            int depth) {
+        if (depth > 16)
+            return;
+        if (node.isScalar()) {
+            bool ok = false;
+            const qint64 value = node.toInteger(&ok);
+            if (ok && value > maximum)
+                maximum = value;
+            return;
+        }
+        for (const V8TextNode &child : node.children)
+            walk(child, depth + 1);
+    };
+    walk(root, 0);
+
+    return maximum > 0 ? QString::number(maximum) : QString();
+}
+
+} // namespace
+
+ConfigurationReader::ConfigurationReader() = default;
+
+void ConfigurationReader::clear()
+{
+    m_container.clear();
+    m_configuration = Configuration();
+    m_referenceNames.clear();
+}
+
+bool ConfigurationReader::open(const QString &filePath, QString *error)
+{
+    if (error)
+        error->clear();
+
+    clear();
+
+    if (!m_container.open(filePath, error))
+        return false;
+
+    m_configuration.sourcePath = filePath;
+    m_configuration.formatVersion = m_container.format().version;
+    m_configuration.formatLabel = m_container.format().label();
+    m_configuration.fileSize = m_container.size();
+    m_configuration.kind = kindForPath(filePath);
+    m_configuration.kindTitle = kindTitleFor(m_configuration.kind);
+
+    QString rootGuid;
+    if (!readRootGuid(&rootGuid)) {
+        if (m_configuration.kind == ConfigurationKind::Unknown) {
+            m_configuration.kind = ConfigurationKind::Configuration;
+            m_configuration.kindTitle = kindTitleFor(m_configuration.kind);
+        }
+        addWarning(QStringLiteral("В контейнере нет элемента «root» — "
+                                  "метаданные не найдены"));
+        return true;
+    }
+
+    m_configuration.configGuid = rootGuid;
+    if (m_configuration.kind == ConfigurationKind::Unknown) {
+        m_configuration.kind = ConfigurationKind::Configuration;
+        m_configuration.kindTitle = kindTitleFor(m_configuration.kind);
+    }
+
+    V8TextNode objectRoot;
+    if (!parseElementTree(rootGuid, &objectRoot)) {
+        addWarning(QStringLiteral("Не удалось прочитать объект метаданных %1")
+                       .arg(rootGuid));
+        return true;
+    }
+
+    if (m_configuration.kind == ConfigurationKind::ExternalProcessing
+        || m_configuration.kind == ConfigurationKind::ExternalReport) {
+        buildExternalObject(objectRoot, rootGuid);
+        return true;
+    }
+
+    buildConfigurationMetadata(objectRoot);
+    if (m_configuration.categories.isEmpty()) {
+        // Возможно, это внешняя обработка с неверным расширением файла.
+        const DescriptorInfo descriptor = descriptorFor(objectRoot);
+        if (descriptor.found && !descriptor.name.isEmpty()) {
+            m_configuration.kind = ConfigurationKind::ExternalProcessing;
+            m_configuration.kindTitle = kindTitleFor(m_configuration.kind);
+            buildExternalObject(objectRoot, rootGuid);
+            return true;
+        }
+    }
+
+    const V8TextNode *descriptor = findDescriptorByGuid(objectRoot, rootGuid, 0);
+    if (!descriptor)
+        descriptor = findFirstDescriptor(objectRoot, 0);
+    if (descriptor) {
+        m_configuration.name = scalarAt(*descriptor, 2);
+        m_configuration.synonym = synonymOf(*descriptor);
+        m_configuration.comment = scalarAt(*descriptor, 4);
+    }
+
+    const V8Element *versionElement = m_container.find(QStringLiteral("version"));
+    if (versionElement) {
+        QByteArray versionPayload;
+        if (m_container.elementPayload(*versionElement, &versionPayload, nullptr, nullptr)) {
+            QString versionText;
+            if (readPayloadText(versionPayload, &versionText, nullptr)) {
+                V8TextNode versionRoot;
+                if (V8Text::parse(versionText, versionRoot, nullptr))
+                    m_configuration.version = extractVersionNumber(versionRoot);
+            }
+        }
+    }
+
+    if (m_configuration.categories.isEmpty())
+        addWarning(QStringLiteral("В объекте конфигурации не найдены таблицы метаданных"));
+
+    return true;
+}
+
+bool ConfigurationReader::readRootGuid(QString *rootGuid)
+{
+    if (rootGuid)
+        rootGuid->clear();
+
+    V8TextNode rootText;
+    if (m_container.find(QStringLiteral("root"))) {
+        if (!parseElementTree(QStringLiteral("root"), &rootText)) {
+            addWarning(QStringLiteral("Не удалось разобрать элемент «root»"));
+            return false;
+        }
+
+        const V8TextNode *second = rootText.child(1);
+        if (second && isGuidNode(*second)) {
+            const QString guid = second->normalizedGuid();
+            if (!guid.isEmpty()) {
+                if (rootGuid)
+                    *rootGuid = guid;
+                return true;
+            }
+        }
+
+        const QString guid = findFirstGuidDeep(rootText);
+        if (guid.isEmpty()) {
+            addWarning(QStringLiteral("В элементе «root» не найден идентификатор объекта"));
+            return false;
+        }
+        if (rootGuid)
+            *rootGuid = guid;
+        return true;
+    }
+
+    // Расширения конфигурации (.cfe) хранят ссылку на объект конфигурации
+    // в элементе configinfo.
+    if (m_container.find(QStringLiteral("configinfo"))) {
+        if (!parseElementTree(QStringLiteral("configinfo"), &rootText)) {
+            addWarning(QStringLiteral("Не удалось разобрать элемент «configinfo»"));
+            return false;
+        }
+        const QString guid = findFirstGuidDeep(rootText);
+        if (guid.isEmpty()) {
+            addWarning(QStringLiteral("В элементе «configinfo» не найден "
+                                      "идентификатор объекта конфигурации"));
+            return false;
+        }
+        if (rootGuid)
+            *rootGuid = guid;
+        if (m_configuration.kind == ConfigurationKind::Unknown) {
+            m_configuration.kind = ConfigurationKind::Extension;
+            m_configuration.kindTitle = kindTitleFor(m_configuration.kind);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+bool ConfigurationReader::parseElementTree(const QString &elementName,
+                                           V8TextNode *root) const
+{
+    if (root)
+        *root = V8TextNode();
+
+    const V8Element *element = m_container.find(elementName);
+    if (!element)
+        return false;
+
+    QByteArray payload;
+    if (!m_container.elementPayload(*element, &payload, nullptr, nullptr)
+        || payload.isEmpty()) {
+        return false;
+    }
+
+    QString text;
+    if (!readPayloadText(payload, &text, nullptr) || text.trimmed().isEmpty())
+        return false;
+
+    V8TextNode parsed;
+    if (!V8Text::parseSequence(text, parsed, nullptr))
+        return false;
+
+    if (root)
+        *root = std::move(parsed);
+    return true;
+}
+
+void ConfigurationReader::buildConfigurationMetadata(const V8TextNode &configRoot)
+{
+    QHash<QString, QStringList> references;
+    std::function<void(const V8TextNode &, int)> scan = [&](const V8TextNode &node,
+                                                          int depth) {
+        if (depth > kMaxSearchDepth)
+            return;
+
+        if (node.isList() && node.children.size() >= 2) {
+            const V8TextNode &first = node.children.at(0);
+            qint64 count = 0;
+            if (first.isScalar() && MetadataCatalog::category(first.value)
+                && integerAt(node, 1, &count)) {
+                const QString categoryGuid = V8Text::normalizeGuid(first.value);
+                const qint64 available = static_cast<qint64>(node.children.size()) - 2;
+                if (count > available)
+                    count = available;
+                QStringList &list = references[categoryGuid];
+                for (qint64 i = 0; i < count; ++i) {
+                    const V8TextNode &item = node.children.at(static_cast<int>(i) + 2);
+                    const QString guid = guidOfNode(item);
+                    if (!guid.isEmpty() && !list.contains(guid))
+                        list.append(guid);
+                }
+            }
+        }
+
+        for (const V8TextNode &child : node.children)
+            scan(child, depth + 1);
+    };
+    scan(configRoot, 0);
+
+    struct Task
+    {
+        int categoryIndex = 0;
+        QString guid;
+        const MetadataCategoryInfo *info = nullptr;
+    };
+
+    QVector<Task> tasks;
+    QVector<MetadataCategory> categories;
+
+    for (const MetadataCategoryInfo &info : MetadataCatalog::categories()) {
+        const QStringList guids = references.value(info.guid);
+        if (guids.isEmpty())
+            continue;
+
+        MetadataCategory category;
+        category.guid = info.guid;
+        category.title = info.title;
+        category.typeTitle = info.typeTitle;
+
+        QStringList seen;
+        for (const QString &guid : guids) {
+            if (seen.contains(guid))
+                continue;
+            seen.append(guid);
+            Task task;
+            task.categoryIndex = categories.size();
+            task.guid = guid;
+            task.info = &info;
+            tasks.append(task);
+        }
+
+        if (seen.isEmpty())
+            continue;
+        categories.append(category);
+    }
+
+    if (tasks.isEmpty())
+        return;
+
+    // Объекты независимы друг от друга: разбираем их параллельно.
+    const auto buildOne = [this](const Task &task) {
+        return buildObject(task.guid, *task.info);
+    };
+    QVector<MetadataObject> built =
+        QtConcurrent::blockingMapped<QVector<MetadataObject>>(tasks, buildOne);
+
+    for (int i = 0; i < tasks.size() && i < built.size(); ++i)
+        categories[tasks.at(i).categoryIndex].objects.append(built.at(i));
+
+    for (const MetadataCategory &category : categories) {
+        if (!category.objects.isEmpty())
+            m_configuration.categories.append(category);
+    }
+}
+
+void ConfigurationReader::buildExternalObject(const V8TextNode &objectRoot,
+                                              const QString &rootGuid)
+{
+    const char *categoryGuid = categoryGuidForKind(m_configuration.kind);
+    if (!categoryGuid)
+        return;
+
+    const MetadataCategoryInfo *info = MetadataCatalog::category(
+        QString::fromLatin1(categoryGuid));
+    if (!info)
+        return;
+
+    MetadataCategory category;
+    category.guid = info->guid;
+    category.title = m_configuration.kindTitle;
+    category.typeTitle = info->typeTitle;
+
+    MetadataObject object;
+    object.categoryGuid = info->guid;
+    object.categoryTitle = category.title;
+    object.typeTitle = info->typeTitle;
+    object.elementName = rootGuid;
+    object.elementFound = true;
+    object.rootObject = true;
+
+    const DescriptorInfo descriptor = descriptorFor(objectRoot);
+    if (descriptor.found) {
+        object.descriptorFound = true;
+        object.guid = descriptor.guid.isEmpty() ? rootGuid : descriptor.guid;
+        object.name = descriptor.name;
+        object.synonym = descriptor.synonym;
+        object.comment = descriptor.comment;
+    } else {
+        object.guid = rootGuid;
+    }
+
+    object.sections = buildSectionsByTableGuids(objectRoot, kMaxTableScanDepth);
+    if (object.sections.isEmpty())
+        object.sections = buildSectionsByTableGuids(objectRoot, kMaxSearchDepth);
+    if (object.sections.isEmpty())
+        object.sections = buildSectionsFallback(objectRoot);
+    object.sectionsLoaded = true;
+
+    m_configuration.name = object.name;
+    m_configuration.synonym = object.synonym;
+    m_configuration.comment = object.comment;
+    if (m_configuration.configGuid.isEmpty())
+        m_configuration.configGuid = object.guid;
+
+    category.objects.append(object);
+    m_configuration.categories.append(category);
+}
+
+MetadataObject ConfigurationReader::buildObject(const QString &guid,
+                                                const MetadataCategoryInfo &category) const
+{
+    MetadataObject object;
+    object.guid = guid;
+    object.elementName = guid;
+    object.name = guid;
+    object.categoryGuid = category.guid;
+    object.categoryTitle = category.title;
+    object.typeTitle = category.typeTitle;
+
+    const V8Element *element = m_container.find(guid);
+    if (!element)
+        return object;
+
+    object.elementFound = true;
+
+    V8TextNode root;
+    if (!parseElementTree(guid, &root))
+        return object;
+
+    return objectFromRoot(guid, category, root);
+}
+
+MetadataObject ConfigurationReader::objectFromRoot(const QString &guid,
+                                                   const MetadataCategoryInfo &category,
+                                                   const V8TextNode &objectRoot) const
+{
+    MetadataObject object;
+    object.guid = guid;
+    object.elementName = guid;
+    object.name = guid;
+    object.categoryGuid = category.guid;
+    object.categoryTitle = category.title;
+    object.typeTitle = category.typeTitle;
+    object.elementFound = true;
+
+    const V8TextNode *descriptor = findDescriptorByGuid(objectRoot, guid, 0);
+    if (!descriptor)
+        descriptor = findFirstDescriptor(objectRoot, 0);
+    if (descriptor) {
+        object.descriptorFound = true;
+        const QString name = scalarAt(*descriptor, 2);
+        if (!name.isEmpty())
+            object.name = name;
+        object.synonym = synonymOf(*descriptor);
+        object.comment = scalarAt(*descriptor, 4);
+    }
+
+    return object;
+}
+
+QVector<MetadataSection> ConfigurationReader::buildSections(const V8TextNode &objectRoot,
+                                                            const QString &categoryGuid) const
+{
+    QVector<MetadataSection> sections = buildSectionsByTableGuids(objectRoot,
+                                                                  kMaxTableScanDepth);
+
+    const MetadataLayout *layout = MetadataCatalog::layoutForCategory(categoryGuid);
+    if (layout) {
+        for (const SectionLayout &spec : layout->sections) {
+            if (spec.tableIndex < 0 || hasSection(sections, spec.kind))
+                continue;
+
+            const V8TextNode *table = objectRoot.child(spec.tableIndex);
+            if (!table || !table->isList() || table->children.size() < 2)
+                continue;
+
+            // Не подменяем таблицу другого вида: проверяем GUID таблицы,
+            // если он известен.
+            const QString tableGuid = scalarAt(*table, 0);
+            MetadataSectionKind knownKind = spec.kind;
+            if (!tableGuid.isEmpty()
+                && MetadataCatalog::sectionKindForTableGuid(tableGuid, &knownKind)
+                && knownKind != spec.kind) {
+                continue;
+            }
+
+            MetadataSection section;
+            if (buildSectionFromTable(*table, spec.kind, &section))
+                sections.append(section);
+        }
+    }
+
+    sortSections(&sections);
+    return sections;
+}
+
+QVector<MetadataSection> ConfigurationReader::buildSectionsByTableGuids(
+    const V8TextNode &objectRoot, int maxDepth) const
+{
+    QVector<MetadataSection> sections;
+
+    std::function<void(const V8TextNode &, int)> scan = [&](const V8TextNode &node,
+                                                          int depth) {
+        if (depth > maxDepth)
+            return;
+
+        if (node.isList() && node.children.size() >= 2) {
+            const QString tableGuid = guidOfNode(node.children.at(0));
+            MetadataSectionKind kind = MetadataSectionKind::Attributes;
+            if (!tableGuid.isEmpty()
+                && MetadataCatalog::sectionKindForTableGuid(tableGuid, &kind)
+                && kind != MetadataSectionKind::TabularAttributes
+                && !hasSection(sections, kind)) {
+                MetadataSection section;
+                if (buildSectionFromTable(node, kind, &section))
+                    sections.append(section);
+            }
+        }
+
+        for (const V8TextNode &child : node.children)
+            scan(child, depth + 1);
+    };
+    scan(objectRoot, 0);
+
+    sortSections(&sections);
+    return sections;
+}
+
+QVector<MetadataSection> ConfigurationReader::buildSectionsFallback(
+    const V8TextNode &objectRoot) const
+{
+    return buildSectionsByTableGuids(objectRoot, kMaxTableScanDepth);
+}
+
+bool ConfigurationReader::buildSectionFromTable(const V8TextNode &table,
+                                                MetadataSectionKind kind,
+                                                MetadataSection *section) const
+{
+    if (!section)
+        return false;
+
+    *section = MetadataSection();
+    section->kind = kind;
+    section->guid = MetadataCatalog::sectionGuid(kind);
+    section->title = MetadataCatalog::sectionTitle(kind);
+
+    if (!table.isList() || table.children.size() < 2)
+        return false;
+
+    qint64 count = 0;
+    const qint64 available = static_cast<qint64>(table.children.size()) - 2;
+    if (!integerAt(table, 1, &count))
+        return false;
+    if (count < 0 || count > available)
+        count = available;
+
+    const bool referenceSection = kind == MetadataSectionKind::Forms
+        || kind == MetadataSectionKind::Templates;
+
+    for (qint64 i = 0; i < count; ++i) {
+        const V8TextNode &item = table.children.at(static_cast<int>(i) + 2);
+
+        MetadataEntry entry;
+        if (referenceSection) {
+            const QString guid = isGuidNode(item) ? item.normalizedGuid()
+                                                  : findFirstGuidDeep(item);
+            if (guid.isEmpty())
+                continue;
+            entry = buildReferenceEntry(guid, kind);
+        } else {
+            entry = buildEntryFromItem(item, kind);
+        }
+
+        if (entry.name.isEmpty() && entry.guid.isEmpty())
+            continue;
+
+        if (kind == MetadataSectionKind::TabularSections)
+            attachTabularAttributes(item, &entry);
+
+        section->entries.append(entry);
+    }
+
+    return true;
+}
+
+MetadataEntry ConfigurationReader::buildEntryFromItem(const V8TextNode &item,
+                                                      MetadataSectionKind kind) const
+{
+    MetadataEntry entry;
+    entry.typeTitle = MetadataCatalog::sectionEntryTitle(kind);
+
+    const DescriptorInfo descriptor = descriptorFor(item);
+    if (descriptor.found) {
+        entry.guid = descriptor.guid;
+        entry.name = descriptor.name;
+        entry.synonym = descriptor.synonym;
+        entry.comment = descriptor.comment;
+        return entry;
+    }
+
+    const QString guid = isGuidNode(item) ? item.normalizedGuid()
+                                          : findFirstGuidDeep(item);
+    if (!guid.isEmpty()) {
+        const ReferenceName name = referenceName(guid);
+        entry.guid = guid;
+        entry.name = name.name;
+        entry.synonym = name.synonym;
+    }
+    return entry;
+}
+
+MetadataEntry ConfigurationReader::buildReferenceEntry(const QString &guid,
+                                                       MetadataSectionKind kind) const
+{
+    MetadataEntry entry;
+    entry.guid = guid;
+    entry.typeTitle = MetadataCatalog::sectionEntryTitle(kind);
+
+    const ReferenceName name = referenceName(guid);
+    entry.name = name.name;
+    entry.synonym = name.synonym;
+    return entry;
+}
+
+void ConfigurationReader::attachTabularAttributes(const V8TextNode &item,
+                                                  MetadataEntry *entry) const
+{
+    if (!entry)
+        return;
+
+    const V8TextNode *table = nullptr;
+    std::function<void(const V8TextNode &, int)> scan = [&](const V8TextNode &node,
+                                                          int depth) {
+        if (table || depth > kMaxTableScanDepth)
+            return;
+        if (node.isList() && node.children.size() >= 2) {
+            const QString tableGuid = guidOfNode(node.children.at(0));
+            MetadataSectionKind kind = MetadataSectionKind::Attributes;
+            if (!tableGuid.isEmpty()
+                && MetadataCatalog::sectionKindForTableGuid(tableGuid, &kind)
+                && kind == MetadataSectionKind::TabularAttributes) {
+                table = &node;
+                return;
+            }
+        }
+        for (const V8TextNode &child : node.children) {
+            scan(child, depth + 1);
+            if (table)
+                return;
+        }
+    };
+    scan(item, 0);
+
+    if (!table)
+        return;
+
+    MetadataSection section;
+    if (buildSectionFromTable(*table, MetadataSectionKind::TabularAttributes, &section))
+        entry->children = section.entries;
+}
+
+const V8TextNode *ConfigurationReader::findDescriptor(const V8TextNode &root,
+                                                      const QString &guid) const
+{
+    if (!guid.isEmpty()) {
+        if (const V8TextNode *found = findDescriptorByGuid(root, guid, 0))
+            return found;
+    }
+    return findFirstDescriptor(root, 0);
+}
+
+ConfigurationReader::DescriptorInfo ConfigurationReader::descriptorFor(
+    const V8TextNode &root) const
+{
+    DescriptorInfo info;
+    const V8TextNode *descriptor = findFirstDescriptor(root, 0);
+    if (!descriptor)
+        return info;
+
+    info.found = true;
+    QString guid;
+    descriptorGuid(*descriptor, &guid);
+    info.guid = guid;
+    info.name = scalarAt(*descriptor, 2);
+    info.synonym = synonymOf(*descriptor);
+    info.comment = scalarAt(*descriptor, 4);
+    return info;
+}
+
+ConfigurationReader::ReferenceName ConfigurationReader::referenceName(
+    const QString &guid) const
+{
+    const auto cached = m_referenceNames.constFind(guid);
+    if (cached != m_referenceNames.constEnd())
+        return cached.value();
+
+    ReferenceName result;
+    result.name = guid;
+
+    V8TextNode root;
+    if (parseElementTree(guid, &root)) {
+        const V8TextNode *descriptor = findDescriptorByGuid(root, guid, 0);
+        if (!descriptor)
+            descriptor = findFirstDescriptor(root, 0);
+        if (descriptor) {
+            const QString name = scalarAt(*descriptor, 2);
+            if (!name.isEmpty())
+                result.name = name;
+            result.synonym = synonymOf(*descriptor);
+        }
+    }
+
+    m_referenceNames.insert(guid, result);
+    return result;
+}
+
+bool ConfigurationReader::readReferenceName(const QString &guid, QString *name,
+                                            QString *synonym, QString *error) const
+{
+    if (name)
+        name->clear();
+    if (synonym)
+        synonym->clear();
+    if (error)
+        error->clear();
+
+    if (guid.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("Не указан идентификатор объекта");
+        return false;
+    }
+
+    const ReferenceName reference = referenceName(guid);
+    if (name)
+        *name = reference.name;
+    if (synonym)
+        *synonym = reference.synonym;
+    return true;
+}
+
+bool ConfigurationReader::readElementText(const QString &elementName, QString *text,
+                                          QString *error) const
+{
+    if (text)
+        text->clear();
+    if (error)
+        error->clear();
+
+    const V8Element *element = m_container.find(elementName);
+    if (!element) {
+        if (error)
+            *error = QStringLiteral("Элемент «%1» не найден").arg(elementName);
+        return false;
+    }
+
+    QByteArray payload;
+    if (!m_container.elementPayload(*element, &payload, nullptr, error))
+        return false;
+
+    return readPayloadText(payload, text, error);
+}
+
+bool ConfigurationReader::readPayloadText(const QByteArray &payload, QString *text,
+                                          QString *error) const
+{
+    if (text)
+        text->clear();
+    if (error)
+        error->clear();
+
+    if (payload.isEmpty())
+        return true;
+
+    QString encoding;
+    QString decodeError;
+    const QString decoded = V8Text::decode(payload, &encoding, &decodeError);
+    if (decoded.isEmpty() && !payload.isEmpty()) {
+        if (error) {
+            *error = decodeError.isEmpty()
+                ? QStringLiteral("Пустой текст после декодирования")
+                : decodeError;
+        }
+        return false;
+    }
+
+    if (text)
+        *text = decoded;
+    return true;
+}
+
+bool ConfigurationReader::readObjectText(const MetadataObject &object, QString *text,
+                                         QString *error) const
+{
+    const QString name = object.elementName.isEmpty() ? object.guid : object.elementName;
+    return readElementText(name, text, error);
+}
+
+bool ConfigurationReader::loadSections(MetadataObject &object) const
+{
+    if (object.sectionsLoaded)
+        return true;
+
+    object.sectionsLoaded = true;
+
+    const QString elementName = object.elementName.isEmpty() ? object.guid
+                                                             : object.elementName;
+    V8TextNode objectRoot;
+    if (!parseElementTree(elementName, &objectRoot))
+        return false;
+
+    object.sections = buildSections(objectRoot, object.categoryGuid);
+    return true;
+}
+
+void ConfigurationReader::addWarning(const QString &message)
+{
+    if (!m_configuration.warnings.contains(message))
+        m_configuration.warnings.append(message);
+}
+
+} // namespace v8reader

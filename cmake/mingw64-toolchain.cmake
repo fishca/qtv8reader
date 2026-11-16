@@ -1,0 +1,24 @@
+# Toolchain for building qtv8reader with the MSYS2 mingw64 environment.
+#
+# Usage:
+#   set MSYS2_ROOT=C:\work\cpp\msys64
+#   cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw64-toolchain.cmake
+
+if(DEFINED ENV{MSYS2_ROOT} AND NOT "$ENV{MSYS2_ROOT}" STREQUAL "")
+    set(MSYS2_ROOT "$ENV{MSYS2_ROOT}" CACHE PATH "MSYS2 installation root")
+else()
+    set(MSYS2_ROOT "C:/msys64" CACHE PATH "MSYS2 installation root")
+endif()
+
+set(MSYS2_MINGW64 "${MSYS2_ROOT}/mingw64")
+
+if(NOT EXISTS "${MSYS2_MINGW64}/bin/g++.exe")
+    message(FATAL_ERROR
+        "MSYS2 mingw64 toolchain not found at '${MSYS2_MINGW64}'.\n"
+        "Set the MSYS2_ROOT environment variable to your MSYS2 directory.")
+endif()
+
+set(CMAKE_CXX_COMPILER "${MSYS2_MINGW64}/bin/g++.exe" CACHE FILEPATH "")
+set(CMAKE_RC_COMPILER "${MSYS2_MINGW64}/bin/windres.exe" CACHE FILEPATH "")
+
+list(PREPEND CMAKE_PREFIX_PATH "${MSYS2_MINGW64}")

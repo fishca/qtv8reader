@@ -1,0 +1,128 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  linux:
+    name: Linux (GCC, Qt 6)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libgl1-mesa-dev \
+            zlib1g-dev
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          g++ --version
+          dpkg -l | grep -E 'qt6-base-dev|zlib1g-dev'
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/qtv8reader build/v8reader_cli dist/
+          chmod +x dist/qtv8reader dist/v8reader_cli
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qtv8reader-linux-x86_64
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows (MSYS2/MinGW, Qt 6)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-zlib
+
+      - name: Show tool versions
+        run: |
+          cmake --version
+          g++ --version
+          qmake6 --version || qmake --version || true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$MINGW_PREFIX"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package with Qt runtime
+        run: |
+          mkdir -p dist
+          cp build/qtv8reader.exe build/v8reader_cli.exe dist/
+          WINDEPLOYQT=""
+          for candidate in windeployqt6 windeployqt; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              WINDEPLOYQT="$candidate"
+              break
+            fi
+          done
+          if [ -n "$WINDEPLOYQT" ]; then
+            "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw dist/qtv8reader.exe
+            "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw dist/v8reader_cli.exe
+          else
+            echo "windeployqt не найден: артефакт будет без DLL Qt"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qtv8reader-windows-x86_64
+          path: dist/*
+          if-no-files-found: error

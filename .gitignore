@@ -1,0 +1,30 @@
+# Сборочные каталоги
+/build/
+/out/
+/install/
+
+# Временные файлы анализа и экспериментов
+/_analysis/
+
+# Qt/CMake служебные файлы
+CMakeCache.txt
+CMakeFiles/
+*.user
+*.autosave
+.qt/
+qtv8reader_autogen/
+*_autogen/
+
+# Бинарные артефакты
+*.exe
+*.dll
+*.a
+*.lib
+*.obj
+*.o
+*.pdb
+
+# Логи и временные данные
+*.log
+*.tmp
+Testing/
