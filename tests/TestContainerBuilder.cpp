@@ -79,7 +79,8 @@ QByteArray elementHeader(const QString &name)
 {
     // 2024-01-02 03:04:05 UTC в единицах 1C (100 мкс от 0001-01-01).
     constexpr qint64 kUnitsToUnixEpoch = 621355968000000LL;
-    const qint64 msecs = QDateTime(QDate(2024, 1, 2), QTime(3, 4, 5), QTimeZone::UTC)
+    const qint64 msecs = QDateTime(QDate(2024, 1, 2), QTime(3, 4, 5),
+                                   QTimeZone(QByteArrayLiteral("UTC")))
                              .toMSecsSinceEpoch();
     const quint64 ticks = static_cast<quint64>(msecs * 10 + kUnitsToUnixEpoch);
 
