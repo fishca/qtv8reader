@@ -107,7 +107,6 @@ const TableGuidDefinition kSectionTableGuids[] = {
     {"a49a35ce-120a-4c80-8eea-b0618479cd70", MetadataSectionKind::Commands},
 
     // Прочие таблицы команд (известные GUID-ы 1С).
-    {"23fa3b84-220a-40e9-8331-e588bed87f7d", MetadataSectionKind::Commands},
     {"f27c2152-a2c9-4c30-adb1-130f5eb2590f", MetadataSectionKind::Commands},
     {"7a3e533c-f232-40d5-a932-6a311d2480bf", MetadataSectionKind::Commands},
     {"b44ba719-945c-445c-8aab-1088fa4df16e", MetadataSectionKind::Commands},
@@ -115,6 +114,13 @@ const TableGuidDefinition kSectionTableGuids[] = {
     {"d5207c64-11d5-4d46-bba2-55b7b07ff4eb", MetadataSectionKind::Commands},
     {"0df30176-6865-4787-9fc8-609eb144174f", MetadataSectionKind::Commands},
     {"99f328af-a77f-4572-a2d8-80ed20c81890", MetadataSectionKind::Commands},
+
+    // Критерии отбора: формы и команды.
+    {"00867c40-06b1-11d6-a3c7-0050bae0a776", MetadataSectionKind::Forms},
+    {"23fa3b84-220a-40e9-8331-e588bed87f7d", MetadataSectionKind::Commands},
+
+    // Хранилища настроек: формы.
+    {"b8533c0c-2342-4db3-91a2-c2b08cbf6b23", MetadataSectionKind::Forms},
 };
 
 QString lower(const char *value)
@@ -298,6 +304,20 @@ const QHash<QString, MetadataLayout> &layouts()
                         {MetadataSectionKind::TabularSections, 7},
                         {MetadataSectionKind::Commands, 8}},
                        true));
+
+        // Критерии отбора: формы и команды. Таблицы ищутся по GUID
+        // (00867c40-… — формы, 23fa3b84-… — команды), индексы не фиксированы.
+        add("3e7bfcc0-067d-11d6-a3c7-0050bae0a776",
+            makeLayout({{MetadataSectionKind::Forms, -1},
+                        {MetadataSectionKind::Commands, -1}},
+                       false));
+
+        // Хранилища настроек: формы и макеты. Таблицы ищутся по GUID
+        // (b8533c0c-… — формы, 3daea016-… — макеты).
+        add("46b4cd97-fd13-4eaa-aba2-3bddd7699218",
+            makeLayout({{MetadataSectionKind::Forms, -1},
+                        {MetadataSectionKind::Templates, -1}},
+                       false));
 
         return map;
     }();

@@ -184,30 +184,33 @@ const V8TextNode *findFirstDescriptor(const V8TextNode &node, int depth)
     return nullptr;
 }
 
+// Порядок разделов состава как в конфигураторе 1С: сначала данные объекта
+// (измерения, ресурсы, реквизиты, признаки учёта, значения, графы, табличные
+// части), затем формы, команды и макеты.
 int sectionRank(MetadataSectionKind kind)
 {
     switch (kind) {
-    case MetadataSectionKind::Templates:
-        return 0;
-    case MetadataSectionKind::Commands:
-        return 1;
-    case MetadataSectionKind::TabularSections:
-        return 2;
-    case MetadataSectionKind::Attributes:
-        return 3;
     case MetadataSectionKind::Dimensions:
-        return 4;
+        return 0;
     case MetadataSectionKind::Resources:
-        return 5;
-    case MetadataSectionKind::Values:
-        return 6;
-    case MetadataSectionKind::Forms:
-        return 7;
-    case MetadataSectionKind::JournalColumns:
-        return 8;
+        return 1;
+    case MetadataSectionKind::Attributes:
+        return 2;
     case MetadataSectionKind::AccountingFlags:
-        return 9;
+        return 3;
     case MetadataSectionKind::SubcontoFlags:
+        return 4;
+    case MetadataSectionKind::Values:
+        return 5;
+    case MetadataSectionKind::JournalColumns:
+        return 6;
+    case MetadataSectionKind::TabularSections:
+        return 7;
+    case MetadataSectionKind::Forms:
+        return 8;
+    case MetadataSectionKind::Commands:
+        return 9;
+    case MetadataSectionKind::Templates:
         return 10;
     case MetadataSectionKind::TabularAttributes:
         return 11;
@@ -716,6 +719,19 @@ QVector<MetadataSection> ConfigurationReader::buildSections(const V8TextNode &ob
             MetadataSection section;
             if (buildSectionFromTable(*table, spec.kind, &section))
                 sections.append(section);
+        }
+
+        // Как в конфигураторе 1С: разделы состава показываются всегда, даже
+        // если в них нет элементов, — пустой родительский контейнер.
+        for (const SectionLayout &spec : layout->sections) {
+            if (hasSection(sections, spec.kind))
+                continue;
+
+            MetadataSection empty;
+            empty.kind = spec.kind;
+            empty.guid = MetadataCatalog::sectionGuid(spec.kind);
+            empty.title = MetadataCatalog::sectionTitle(spec.kind);
+            sections.append(empty);
         }
     }
 

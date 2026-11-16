@@ -1522,19 +1522,22 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
     }
 
     for (const MetadataSection &section : object.sections) {
-        if (section.entries.isEmpty())
-            continue;
-
         auto *sectionItem = new QTreeWidgetItem(item);
-        sectionItem->setText(0, QStringLiteral("%1 (%2)")
-                                    .arg(section.title)
-                                    .arg(section.entries.size()));
+        sectionItem->setText(0,
+                             section.entries.isEmpty()
+                                 ? section.title
+                                 : QStringLiteral("%1 (%2)")
+                                       .arg(section.title)
+                                       .arg(section.entries.size()));
         sectionItem->setIcon(0, metadataIcon(sectionIconName(section.kind)));
         sectionItem->setData(0, KindRole, SectionItem);
         sectionItem->setData(0, GuidRole, object.guid);
         sectionItem->setData(0, SectionKindRole, static_cast<int>(section.kind));
-        sectionItem->setToolTip(0, QStringLiteral("%1\nGUID раздела: %2")
-                                    .arg(section.title, section.guid));
+        QString sectionTooltip = QStringLiteral("%1\nGUID раздела: %2")
+                                     .arg(section.title, section.guid);
+        if (section.entries.isEmpty())
+            sectionTooltip += QStringLiteral("\nРаздел пуст");
+        sectionItem->setToolTip(0, sectionTooltip);
         QFont sectionFont = sectionItem->font(0);
         sectionFont.setBold(true);
         sectionItem->setFont(0, sectionFont);
