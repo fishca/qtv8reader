@@ -213,6 +213,9 @@ jobs:
     needs: [windows, linux]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Download packages
         uses: actions/download-artifact@v5
         with:
@@ -265,10 +268,11 @@ jobs:
           Проект: https://github.com/fishca/qtv8reader
           NOTES
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release/* --clobber
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
               --title "qtv8reader ${RELEASE_TAG}" \
               --notes-file notes.md \
               --target "$GITHUB_SHA" \
