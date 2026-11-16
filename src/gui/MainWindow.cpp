@@ -4,6 +4,8 @@
 #include "core/Extractor.h"
 #include "core/V8Container.h"
 #include "core/V8Text.h"
+#include "core/FormReader.h"
+#include "gui/FormView.h"
 #include "gui/MxlPrinter.h"
 #include "gui/MxlView.h"
 
@@ -646,6 +648,14 @@ void MainWindow::setupTabs()
     connect(m_containerTree, &QTreeWidget::customContextMenuRequested,
             this, &MainWindow::onContainerContextMenu);
     m_tabs->addTab(m_containerTree, QStringLiteral("Контейнер"));
+
+    m_formPage = new QWidget();
+    auto *formLayout = new QVBoxLayout(m_formPage);
+    formLayout->setContentsMargins(0, 0, 0, 0);
+    m_formView = new FormView(m_formPage);
+    m_formView->setObjectName(QStringLiteral("formView"));
+    formLayout->addWidget(m_formView, 1);
+    m_tabs->addTab(m_formPage, QStringLiteral("Форма"));
 
     m_mxlPage = new QWidget();
     auto *mxlLayout = new QVBoxLayout(m_mxlPage);
@@ -1761,6 +1771,15 @@ void MainWindow::clearObjectView()
         if (index >= 0)
             m_tabs->setTabText(index, QStringLiteral("Табличный документ"));
     }
+    if (m_formView)
+        m_formView->clear();
+    m_formDocument = FormDocument();
+    m_formDocumentValid = false;
+    if (m_formPage) {
+        const int index = m_tabs->indexOf(m_formPage);
+        if (index >= 0)
+            m_tabs->setTabText(index, QStringLiteral("Форма"));
+    }
 }
 
 void MainWindow::setProperties(const QVector<QPair<QString, QString>> &rows)
@@ -2077,6 +2096,8 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
 
     if (kind == MetadataSectionKind::Templates)
         loadTemplatePreview(*entry);
+    if (kind == MetadataSectionKind::Forms)
+        loadFormPreview(*entry);
 
     QVector<QPair<QString, QString>> rows;
     rows.append({QStringLiteral("Вид"), entry->typeTitle});
@@ -2105,6 +2126,24 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
         }
         if (m_mxlDocumentValid)
             rows.append({QStringLiteral("Печать"), mxlPrintSummary()});
+    }
+    if (kind == MetadataSectionKind::Forms) {
+        if (m_formDocumentValid) {
+            rows.append({QStringLiteral("Элементов формы"),
+                         QString::number(m_formDocument.itemCount())});
+            rows.append({QStringLiteral("Полей"),
+                         QString::number(m_formDocument.fieldCount())});
+            rows.append({QStringLiteral("Атрибутов формы"),
+                         QString::number(m_formDocument.attributes.size())});
+            rows.append({QStringLiteral("Команд формы"),
+                         QString::number(m_formDocument.commands.size())});
+            rows.append({QStringLiteral("Модуль формы"),
+                         QStringLiteral("%1 символов")
+                             .arg(m_formDocument.moduleText.size())});
+        } else {
+            rows.append({QStringLiteral("Форма"),
+                         QStringLiteral("не удалось разобрать")});
+        }
     }
     setProperties(rows);
 
@@ -2210,6 +2249,101 @@ void MainWindow::loadTemplatePreview(const MetadataEntry &entry)
         m_tabs->setCurrentIndex(index);
     }
 }
+void MainWindow::loadFormPreview(const MetadataEntry &entry)
+{
+    if (!m_reader || !m_formView)
+        return;
+
+    const V8Container &container = m_reader->container();
+    const V8Element *element = nullptr;
+    if (!entry.guid.isEmpty())
+        element = container.find(entry.guid + QStringLiteral(".0"));
+    if (!element)
+        element = container.find(entry.guid);
+    if (!element && !entry.name.isEmpty())
+        element = container.find(entry.name);
+    if (!element && !entry.guid.isEmpty()) {
+        const QString prefix = entry.guid + QLatin1Char('.');
+        for (const V8Element &candidate : container.elements()) {
+            if (candidate.name == entry.guid || candidate.name.startsWith(prefix)) {
+                element = &candidate;
+                break;
+            }
+        }
+    }
+    if (!element) {
+        m_formView->setMessage(
+            QStringLiteral("Форма «%1» не найдена в контейнере.").arg(entry.displayName()));
+        return;
+    }
+
+    QByteArray payload;
+    QString error;
+    if (!container.elementPayload(*element, &payload, nullptr, &error)) {
+        m_formView->setMessage(
+            QStringLiteral("Не удалось прочитать форму «%1»: %2")
+                .arg(entry.displayName(), error));
+        return;
+    }
+
+    FormDocument document;
+    if (!FormReader::parseBytes(payload, &document, &error)) {
+        m_formView->setMessage(
+            QStringLiteral("Не удалось разобрать форму «%1»: %2")
+                .arg(entry.displayName(), error));
+        return;
+    }
+
+    document.name = entry.name;
+    document.synonym = entry.synonym;
+    {
+        bool hasTable = false;
+        std::function<bool(const QVector<FormItem> &)> findTable =
+            [&](const QVector<FormItem> &items) -> bool {
+                for (const FormItem &item : items) {
+                    if (item.type == FormItem::Type::Table
+                        && (item.name == QStringLiteral("Список")
+                            || item.synonym == QStringLiteral("Список"))) {
+                        return true;
+                    }
+                    if (findTable(item.children))
+                        return true;
+                }
+                return false;
+            };
+        hasTable = findTable(document.items);
+        const bool isDocument = m_currentObject
+            && m_currentObject->typeTitle.contains(QStringLiteral("Документ"),
+                                                   Qt::CaseInsensitive);
+        document.runtimeListCommands = isDocument && hasTable;
+    }
+    if (m_currentObject) {
+        QHash<QString, QString> objectTitles;
+        for (const MetadataSection &section : m_currentObject->sections) {
+            for (const MetadataEntry &sectionEntry : section.entries) {
+                if (!sectionEntry.name.isEmpty() && !sectionEntry.synonym.isEmpty())
+                    objectTitles.insert(sectionEntry.name, sectionEntry.synonym);
+                for (const MetadataEntry &child : sectionEntry.children) {
+                    if (!child.name.isEmpty() && !child.synonym.isEmpty())
+                        objectTitles.insert(child.name, child.synonym);
+                }
+            }
+        }
+        for (auto it = objectTitles.constBegin(); it != objectTitles.constEnd(); ++it)
+            document.titles.insert(it.key(), it.value());
+    }
+    m_formDocument = document;
+    m_formDocumentValid = true;
+    m_formView->setDocument(document);
+
+    const int index = m_tabs->indexOf(m_formPage);
+    if (index >= 0) {
+        m_tabs->setTabText(index,
+                           QStringLiteral("Форма (%1)").arg(document.itemCount()));
+        m_tabs->setCurrentIndex(index);
+    }
+}
+
 void MainWindow::updateMxlActions()
 {
     if (m_printMxlAction)
@@ -2359,6 +2493,80 @@ bool MainWindow::selectTemplateForObject(const QString &query)
         }
     }
     return false;
+}
+
+bool MainWindow::selectFormForObject(const QString &objectQuery,
+                                     const QString &formQuery)
+{
+    if (!m_reader)
+        return false;
+
+    Configuration &configuration = m_reader->configuration();
+    for (MetadataCategory &category : configuration.categories) {
+        for (MetadataObject &object : category.objects) {
+            if (!objectQuery.isEmpty()) {
+                const bool matches = object.guid.compare(objectQuery, Qt::CaseInsensitive) == 0
+                    || object.name.compare(objectQuery, Qt::CaseInsensitive) == 0
+                    || object.synonym.compare(objectQuery, Qt::CaseInsensitive) == 0
+                    || object.displayName().compare(objectQuery, Qt::CaseInsensitive) == 0;
+                if (!matches)
+                    continue;
+            }
+
+            m_reader->loadSections(object);
+            const MetadataSection *section =
+                object.section(MetadataSectionKind::Forms);
+            if (!section || section->entries.isEmpty())
+                continue;
+
+            int entryIndex = -1;
+            for (int i = 0; i < section->entries.size(); ++i) {
+                const MetadataEntry &entry = section->entries.at(i);
+                if (formQuery.isEmpty()
+                    || entry.name.compare(formQuery, Qt::CaseInsensitive) == 0
+                    || entry.synonym.compare(formQuery, Qt::CaseInsensitive) == 0
+                    || entry.displayName().compare(formQuery, Qt::CaseInsensitive) == 0) {
+                    entryIndex = i;
+                    break;
+                }
+            }
+            if (entryIndex < 0)
+                continue;
+
+            ensureObjectItemChildren(object.guid);
+            QTreeWidgetItem *objectItem = findObjectItem(object.guid);
+            if (!objectItem)
+                continue;
+            QTreeWidgetItem *sectionItem = nullptr;
+            for (int i = 0; i < objectItem->childCount(); ++i) {
+                QTreeWidgetItem *child = objectItem->child(i);
+                if (child->data(0, KindRole).toInt() == SectionItem
+                    && child->data(0, SectionKindRole).toInt()
+                        == static_cast<int>(MetadataSectionKind::Forms)) {
+                    sectionItem = child;
+                    break;
+                }
+            }
+            if (!sectionItem)
+                continue;
+            sectionItem->setExpanded(true);
+            if (entryIndex >= sectionItem->childCount())
+                continue;
+            QTreeWidgetItem *entryItem = sectionItem->child(entryIndex);
+            m_tree->setCurrentItem(entryItem);
+            m_tree->scrollToItem(entryItem);
+            QCoreApplication::processEvents();
+            return m_formDocumentValid;
+        }
+    }
+    return false;
+}
+
+void MainWindow::setFormScale(int percent)
+{
+    if (!m_formView)
+        return;
+    m_formView->setScalePercent(percent);
 }
 
 void MainWindow::setShowNamedAreas(bool show)

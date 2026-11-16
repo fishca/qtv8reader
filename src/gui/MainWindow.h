@@ -3,6 +3,7 @@
 
 #include "core/Configuration.h"
 #include "core/ModuleExtractor.h"
+#include "core/FormDocument.h"
 #include "core/MxlDocument.h"
 
 #include <QByteArray>
@@ -29,6 +30,7 @@ class QTreeWidgetItem;
 namespace v8reader {
 
 class ConfigurationReader;
+class FormView;
 class MxlView;
 
 class MainWindow : public QMainWindow
@@ -58,6 +60,12 @@ public:
     bool selectTemplateForObject(const QString &query);
     void setShowNamedAreas(bool show);
     bool exportMxlFileToPdf(const QString &mxlPath, const QString &pdfPath);
+
+    // Формы: открыть форму объекта по имени/синониму (для --select-form).
+    bool selectFormForObject(const QString &objectQuery,
+                             const QString &formQuery = QString());
+    bool hasFormDocument() const { return m_formDocumentValid; }
+    void setFormScale(int percent);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -156,6 +164,7 @@ private:
     void previewElement(int index);
     void saveElement(int index);
     void loadTemplatePreview(const MetadataEntry &entry);
+    void loadFormPreview(const MetadataEntry &entry);
     QString mxlPrintSummary() const;
     void updateMxlActions();
 
@@ -179,6 +188,10 @@ private:
     QCheckBox *m_showAreasCheck = nullptr;
     mxl::Document m_mxlDocument;
     bool m_mxlDocumentValid = false;
+    FormView *m_formView = nullptr;
+    QWidget *m_formPage = nullptr;
+    FormDocument m_formDocument;
+    bool m_formDocumentValid = false;
     QComboBox *m_moduleCombo = nullptr;
     QPlainTextEdit *m_moduleEdit = nullptr;
     QPlainTextEdit *m_metadataEdit = nullptr;

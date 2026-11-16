@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     QApplication application(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("qtv8reader"));
     QCoreApplication::setApplicationName(QStringLiteral("qtv8reader"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.4.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.5.0"));
 
     QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
 
@@ -25,6 +25,8 @@ int main(int argc, char *argv[])
     QString mxlPdfPath;
     QString mxlObject;
     QString selectMxl;
+    QString selectForm;
+    int formScale = 0;
     bool showAreas = false;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
@@ -66,6 +68,16 @@ int main(int argc, char *argv[])
             selectMxl = arguments.at(++i);
             continue;
         }
+        if (argument == QStringLiteral("--select-form")
+            && i + 1 < arguments.size()) {
+            selectForm = arguments.at(++i);
+            continue;
+        }
+        if (argument == QStringLiteral("--form-scale")
+            && i + 1 < arguments.size()) {
+            formScale = arguments.at(++i).toInt();
+            continue;
+        }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
     }
@@ -77,6 +89,19 @@ int main(int argc, char *argv[])
 
     if (!selectMxl.isEmpty() && window.isFileOpen())
         window.selectTemplateForObject(selectMxl);
+
+    if (!selectForm.isEmpty() && window.isFileOpen()) {
+        QString objectQuery = selectForm;
+        QString formQuery;
+        const int separator = selectForm.indexOf(QLatin1Char(':'));
+        if (separator > 0) {
+            objectQuery = selectForm.left(separator);
+            formQuery = selectForm.mid(separator + 1);
+        }
+        window.selectFormForObject(objectQuery, formQuery);
+        if (formScale > 0)
+            window.setFormScale(formScale);
+    }
 
     if (expandCommon)
         window.expandCommonBranch();
