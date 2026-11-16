@@ -49,6 +49,7 @@ struct PreviewControl
     QStringList columns;
     QVector<double> columnWidths;
     double labelWidth = 0.0;
+    double inputWidth = -1.0;
     bool selectedTab = false;
     bool checkBox = false;
     bool dropDown = false;
@@ -228,8 +229,11 @@ private:
     {
         using Type = v8reader::FormItem::Type;
         switch (item.type) {
-        case Type::Field:
+        case Type::Field: {
+            if (item.widthUnits > 0 && item.horizontalStretch != 1)
+                return labelWidth(item) + item.widthUnits * 10.0 + 8.0;
             return std::max(170.0, labelWidth(item) + 160.0);
+        }
         case Type::Button: {
             const ButtonIcon icon = iconForButton(item);
             const bool iconOnly = icon != ButtonIcon::None
@@ -250,6 +254,8 @@ private:
         case Type::Group: {
             if (item.groupKind == 1)
                 return 110.0;
+            if (item.widthUnits > 0)
+                return item.widthUnits * 10.0;
             if (isHorizontal(item)) {
                 double width = 0.0;
                 int count = 0;
@@ -315,7 +321,9 @@ private:
         case Type::Search:
             return 27.0;
         case Type::Decoration:
-            return item.synonym.isEmpty() ? 0.0 : 19.0;
+            if (item.synonym.isEmpty())
+                return 0.0;
+            return item.heightUnits > 0 ? item.heightUnits * 10.0 : 19.0;
         case Type::Table:
             return 360.0;
         case Type::Group: {
@@ -467,6 +475,8 @@ private:
     bool stretchable(const v8reader::FormItem &item) const
     {
         using Type = v8reader::FormItem::Type;
+        if (item.widthUnits > 0 && item.horizontalStretch != 1)
+            return false;
         if (item.type == Type::Field || item.type == Type::Search)
             return true;
         if (item.type != Type::Group)
@@ -605,7 +615,8 @@ private:
             if (!item.synonym.isEmpty()) {
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::Decoration;
-                control.rect = QRectF(rect.left(), rect.top(), rect.width(), 19.0);
+                const double height = item.heightUnits > 0 ? item.heightUnits * 10.0 : 19.0;
+                control.rect = QRectF(rect.left(), rect.top(), rect.width(), height);
                 control.title = item.synonym;
                 m_controls->append(control);
             }
@@ -654,6 +665,8 @@ private:
         control.labelWidth = labelW;
         control.checkBox = checkBox;
         control.dropDown = dropDown;
+        if (item.widthUnits > 0 && item.horizontalStretch != 1)
+            control.inputWidth = item.widthUnits * 10.0;
         m_controls->append(control);
     }
 
@@ -672,7 +685,7 @@ private:
     }
 
     void tableColumns(const v8reader::FormItem &item, const QString &tableName,
-                      QStringList *columns) const
+                      QStringList *columns, QVector<int> *widths) const
     {
         for (const v8reader::FormItem &child : item.children) {
             if (isServiceItem(child) || isServiceDecoration(child))
@@ -691,8 +704,9 @@ private:
                 if (title.isEmpty())
                     title = humanizeIdentifier(base);
                 columns->append(title);
+                widths->append(child.widthUnits);
             } else if (child.type == v8reader::FormItem::Type::Group) {
-                tableColumns(child, tableName, columns);
+                tableColumns(child, tableName, columns, widths);
             }
         }
     }
@@ -703,16 +717,21 @@ private:
         control.kind = PreviewControl::Kind::Table;
         control.rect = QRectF(rect.left(), rect.top(), rect.width(),
                               std::min(rect.height(), 360.0));
-        tableColumns(item, item.name, &control.columns);
+        QVector<int> widthUnits;
+        tableColumns(item, item.name, &control.columns, &widthUnits);
 
         if (!control.columns.isEmpty()) {
             QFont headerFont = m_font;
             headerFont.setBold(true);
             QFontMetricsF headerMetrics(headerFont);
             double total = 0.0;
-            for (const QString &column : control.columns) {
-                const double width = std::min(240.0, std::max(80.0,
-                    headerMetrics.horizontalAdvance(column) + 24.0));
+            for (int i = 0; i < control.columns.size(); ++i) {
+                const QString &column = control.columns.at(i);
+                const int units = i < widthUnits.size() ? widthUnits.at(i) : -1;
+                const double width = units > 0
+                    ? units * 10.0
+                    : std::min(240.0, std::max(80.0,
+                        headerMetrics.horizontalAdvance(column) + 24.0));
                 control.columnWidths.append(width);
                 total += width;
             }
@@ -998,9 +1017,10 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             painter.setBrush(Qt::NoBrush);
             x += 19.0;
         }
-        const QRectF edit(x, rect.top() + 3.0,
-                          std::max(24.0, rect.right() - x - 4.0),
-                          rect.height() - 6.0);
+        double editWidth = std::max(24.0, rect.right() - x - 4.0);
+        if (control.inputWidth > 0.0)
+            editWidth = std::min(editWidth, control.inputWidth);
+        const QRectF edit(x, rect.top() + 3.0, editWidth, rect.height() - 6.0);
         painter.setPen(QColor(165, 165, 165));
         painter.setBrush(Qt::white);
         painter.drawRoundedRect(edit, 2.0, 2.0);
@@ -1405,12 +1425,25 @@ void FormView::fillTree()
             node->setText(1, item.typeTitle());
             node->setText(2, item.name);
             node->setText(3, item.synonym);
+            QStringList hints;
             if (item.type == FormItem::Type::Group && item.groupKind >= 0) {
-                node->setToolTip(1, QStringLiteral("код вида группы: %1, ориентация: %2")
+                hints << QStringLiteral("вид группы: %1, ориентация: %2")
                     .arg(item.groupKind)
                     .arg(item.orientation == 1 ? QStringLiteral("горизонтальная")
-                                               : QStringLiteral("вертикальная")));
+                                               : QStringLiteral("вертикальная"));
             }
+            if (item.widthUnits > 0)
+                hints << QStringLiteral("ширина: %1 ед. (%2 px)").arg(item.widthUnits)
+                    .arg(item.widthUnits * 10);
+            if (item.heightUnits > 0)
+                hints << QStringLiteral("высота: %1 ед. (%2 px)").arg(item.heightUnits)
+                    .arg(item.heightUnits * 10);
+            if (item.horizontalStretch >= 0)
+                hints << QStringLiteral("растяжение: %1").arg(item.horizontalStretch == 1
+                    ? QStringLiteral("да") : item.horizontalStretch == 2
+                        ? QStringLiteral("авто") : QStringLiteral("нет"));
+            if (!hints.isEmpty())
+                node->setToolTip(0, hints.join(QStringLiteral("; ")));
             for (const FormItem &child : item.children)
                 addItem(node, child);
         };

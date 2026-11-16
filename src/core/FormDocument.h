@@ -27,6 +27,10 @@ struct FormItem
     int groupKind = -1;    // вид группы (9 — командная панель, 6 — группа кнопок, ...)
     int orientation = -1;  // 1 — горизонтально, 0 — вертикально (для групп)
     int id = 0;
+    int widthUnits = -1;       // ширина поля в единицах формы (×10 px); -1 — авто
+    int heightUnits = -1;      // высота в единицах формы
+    int horizontalStretch = -1; // 0 — нет, 1 — да, 2 — авто
+    int verticalStretch = -1;
     QString guid;
     QString name;
     QString synonym;

@@ -60,6 +60,7 @@ private slots:
     void parseSynthetic();
     void notAForm();
     void realBpForm();
+    void realBpListFormGeometry();
 };
 
 void TestForm::parseSynthetic()
@@ -167,6 +168,72 @@ void TestForm::realBpForm()
     QVERIFY(findItemByName(document.items, QStringLiteral("ГруппаШапка")) != nullptr);
     QVERIFY(findItemByName(document.items, QStringLiteral("Номер")) != nullptr);
     QCOMPARE(findItemByName(document.items, QStringLiteral("ГруппаШапка"))->orientation, 1);
+}
+
+void TestForm::realBpListFormGeometry()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("АвансовыйОтчет"),
+                                       Qt::CaseInsensitive) == 0) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаСписка")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error), qPrintable(error));
+
+    const FormItem *date = findItemByName(document.items, QStringLiteral("Дата"));
+    QVERIFY(date);
+    QCOMPARE(date->widthUnits, 7);
+    QCOMPARE(date->horizontalStretch, 0);
+
+    const FormItem *sum = findItemByName(document.items, QStringLiteral("СуммаДокумента"));
+    QVERIFY(sum);
+    QCOMPARE(sum->widthUnits, 10);
+
+    const FormItem *bannerText = findItemByName(document.items, QStringLiteral("ТекстБаннера"));
+    QVERIFY(bannerText);
+    QCOMPARE(bannerText->heightUnits, 3);
+    QCOMPARE(bannerText->horizontalStretch, 1);
+
+    const FormItem *bannerGroup = findItemByName(document.items,
+        QStringLiteral("ГруппаБаннерОжидание"));
+    QVERIFY(bannerGroup);
+    QCOMPARE(bannerGroup->widthUnits, 24);
 }
 
 } // namespace

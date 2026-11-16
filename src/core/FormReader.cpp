@@ -129,6 +129,64 @@ QString typeHintFromAttributes(const V8TextNode &node)
     return QString();
 }
 
+void readGeometry(const V8TextNode &node, FormItem *item)
+{
+    // Поля (InputField/LabelField/PictureField/CheckBoxField): вложенная
+    // layout-структура с кодом 10/11/32:
+    //   10/11: [1] Width, [2] Height, [3] HorizontalStretch, [4] VerticalStretch
+    //   32:    [2] Width, [3] Height, [4] HorizontalStretch, [5] VerticalStretch
+    if (item->typeCode == 37) {
+        for (const V8TextNode &child : node.children) {
+            if (!child.isList() || child.children.size() < 8)
+                continue;
+            const V8TextNode *first = child.child(0);
+            if (!first || !first->isInteger())
+                continue;
+            const int kind = static_cast<int>(first->toInteger());
+            if (kind == 10 || kind == 11) {
+                if (child.child(1) && child.child(1)->isInteger())
+                    item->widthUnits = static_cast<int>(child.child(1)->toInteger());
+                if (child.child(2) && child.child(2)->isInteger())
+                    item->heightUnits = static_cast<int>(child.child(2)->toInteger());
+                if (child.child(3) && child.child(3)->isInteger())
+                    item->horizontalStretch = static_cast<int>(child.child(3)->toInteger());
+                if (child.child(4) && child.child(4)->isInteger())
+                    item->verticalStretch = static_cast<int>(child.child(4)->toInteger());
+                return;
+            }
+            if (kind == 32) {
+                if (child.child(2) && child.child(2)->isInteger())
+                    item->widthUnits = static_cast<int>(child.child(2)->toInteger());
+                if (child.child(3) && child.child(3)->isInteger())
+                    item->heightUnits = static_cast<int>(child.child(3)->toInteger());
+                if (child.child(4) && child.child(4)->isInteger())
+                    item->horizontalStretch = static_cast<int>(child.child(4)->toInteger());
+                if (child.child(5) && child.child(5)->isInteger())
+                    item->verticalStretch = static_cast<int>(child.child(5)->toInteger());
+                return;
+            }
+        }
+        return;
+    }
+
+    // Группа: ширина в поле 12, высота — в поле 13.
+    if (item->typeCode == 22) {
+        if (node.child(12) && node.child(12)->isInteger())
+            item->widthUnits = static_cast<int>(node.child(12)->toInteger());
+        if (node.child(13) && node.child(13)->isInteger())
+            item->heightUnits = static_cast<int>(node.child(13)->toInteger());
+        return;
+    }
+
+    // Декорация: ширина в поле 10, высота — в поле 11.
+    if (item->typeCode == 12) {
+        if (node.child(10) && node.child(10)->isInteger())
+            item->widthUnits = static_cast<int>(node.child(10)->toInteger());
+        if (node.child(11) && node.child(11)->isInteger())
+            item->heightUnits = static_cast<int>(node.child(11)->toInteger());
+    }
+}
+
 FormItem parseItem(const V8TextNode &node)
 {
     FormItem item;
@@ -185,6 +243,8 @@ FormItem parseItem(const V8TextNode &node)
         item.type = FormItem::Type::Other;
         break;
     }
+
+    readGeometry(node, &item);
 
     for (const V8TextNode &child : node.children) {
         if (isItemNode(child))
