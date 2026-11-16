@@ -52,6 +52,17 @@ const FormItem *findItemByName(const QVector<FormItem> &items, const QString &na
     return nullptr;
 }
 
+const FormItem *findItemById(const QVector<FormItem> &items, int id)
+{
+    for (const FormItem &item : items) {
+        if (item.id == id)
+            return &item;
+        if (const FormItem *nested = findItemById(item.children, id))
+            return nested;
+    }
+    return nullptr;
+}
+
 class TestForm : public QObject
 {
     Q_OBJECT
@@ -168,6 +179,14 @@ void TestForm::realBpForm()
     QVERIFY(findItemByName(document.items, QStringLiteral("ГруппаШапка")) != nullptr);
     QVERIFY(findItemByName(document.items, QStringLiteral("Номер")) != nullptr);
     QCOMPARE(findItemByName(document.items, QStringLiteral("ГруппаШапка"))->orientation, 1);
+
+    // id 214 в Form.xml имеет Visible=false, id 321 — TitleLocation=None.
+    const FormItem *hidden = findItemById(document.items, 214);
+    QVERIFY(hidden);
+    QVERIFY(!hidden->visible);
+    const FormItem *noTitle = findItemById(document.items, 321);
+    QVERIFY(noTitle);
+    QVERIFY(!noTitle->showTitle);
 }
 
 void TestForm::realBpListFormGeometry()
@@ -229,6 +248,7 @@ void TestForm::realBpListFormGeometry()
     QVERIFY(bannerText);
     QCOMPARE(bannerText->heightUnits, 3);
     QCOMPARE(bannerText->horizontalStretch, 1);
+    QVERIFY(!bannerText->showTitle);
 
     const FormItem *bannerGroup = findItemByName(document.items,
         QStringLiteral("ГруппаБаннерОжидание"));

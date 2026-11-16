@@ -69,6 +69,8 @@ bool isServiceItem(const v8reader::FormItem &item)
         return true;
     if (item.type == Type::Group && item.groupKind == 8)
         return true;
+    if (!item.visible)
+        return true;
     if (item.name == QStringLiteral("Баннер"))
         return true;
     if (item.name.contains(QStringLiteral("КонтекстноеМеню"))
@@ -219,6 +221,8 @@ private:
 
     double labelWidth(const v8reader::FormItem &item) const
     {
+        if (!item.showTitle)
+            return 0.0;
         const QString label = fieldLabel(item);
         if (label.isEmpty())
             return 0.0;
@@ -651,7 +655,9 @@ private:
                      double forcedLabelWidth, const QString &labelOverride = QString(),
                      bool checkBox = false, bool dropDown = false)
     {
-        const QString label = labelOverride.isEmpty() ? fieldLabel(item) : labelOverride;
+        const QString label = !labelOverride.isEmpty()
+            ? labelOverride
+            : (item.showTitle ? fieldLabel(item) : QString());
         double labelW = forcedLabelWidth;
         if (labelW <= 0.0)
             labelW = std::min(210.0,

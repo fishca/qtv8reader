@@ -206,6 +206,17 @@ FormItem parseItem(const V8TextNode &node)
         item.groupKind = integerChild(node, nameIndex - 1);
     item.synonym = localizedText(node);
 
+    // Поля: сразу после имени — TitleLocation (1 — показывать, 0 — None),
+    // через 37 полей — Visible (1/0). Сверено с Form.xml по id.
+    if (item.typeCode == 37 && nameIndex >= 0) {
+        const V8TextNode *title = node.child(nameIndex + 1);
+        if (title && title->isInteger())
+            item.showTitle = title->toInteger() != 0;
+        const V8TextNode *visible = node.child(nameIndex + 37);
+        if (visible && visible->isInteger())
+            item.visible = visible->toInteger() != 0;
+    }
+
     for (const V8TextNode &child : node.children) {
         if (!child.isList() || child.children.size() < 2)
             continue;
