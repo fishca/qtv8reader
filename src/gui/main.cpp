@@ -26,6 +26,7 @@ int main(int argc, char *argv[])
     QString mxlObject;
     QString selectMxl;
     QString selectForm;
+    int formScale = 0;
     bool showAreas = false;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
@@ -72,6 +73,11 @@ int main(int argc, char *argv[])
             selectForm = arguments.at(++i);
             continue;
         }
+        if (argument == QStringLiteral("--form-scale")
+            && i + 1 < arguments.size()) {
+            formScale = arguments.at(++i).toInt();
+            continue;
+        }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
     }
@@ -93,6 +99,8 @@ int main(int argc, char *argv[])
             formQuery = selectForm.mid(separator + 1);
         }
         window.selectFormForObject(objectQuery, formQuery);
+        if (formScale > 0)
+            window.setFormScale(formScale);
     }
 
     if (expandCommon)

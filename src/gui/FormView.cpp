@@ -1,11 +1,15 @@
 #include "gui/FormView.h"
 
+#include <QComboBox>
 #include <QFontMetricsF>
-#include <QHeaderView>
 #include <QHBoxLayout>
+#include <QHash>
+#include <QHeaderView>
 #include <QLabel>
 #include <QPainter>
 #include <QPalette>
+#include <QResizeEvent>
+#include <QSizePolicy>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QTreeWidget>
@@ -24,18 +28,21 @@ struct PreviewControl
     QString title;
     QString text;
     QStringList columns;
+    double labelWidth = 0.0;
+    bool selectedTab = false;
 };
 
 bool isServiceItem(const v8reader::FormItem &item)
 {
-    if (item.type == v8reader::FormItem::Type::AutoCommandBar)
+    using Type = v8reader::FormItem::Type;
+    if (item.type == Type::AutoCommandBar)
         return true;
-    if (item.type == v8reader::FormItem::Type::Group
+    if (item.type == Type::Group
         && (item.groupKind == 8 || item.groupKind == 1))
         return true;
     if (item.name.contains(QStringLiteral("КонтекстноеМеню"))
         || item.name.endsWith(QStringLiteral("РасширеннаяПодсказка"))
-        || item.name.contains(QStringLiteral("АвтоКоманднаяПанель")))
+        || item.name.endsWith(QStringLiteral("ExtendedTooltip")))
         return true;
     return false;
 }
@@ -43,78 +50,149 @@ bool isServiceItem(const v8reader::FormItem &item)
 bool isServiceDecoration(const v8reader::FormItem &item)
 {
     return item.type == v8reader::FormItem::Type::Decoration
-        && item.synonym.isEmpty() && item.name.isEmpty();
+        && item.synonym.isEmpty();
 }
 
-void collectTableFields(const v8reader::FormItem &item, QStringList *columns)
+QString splitCamelCase(const QString &text)
 {
-    for (const v8reader::FormItem &child : item.children) {
-        if (isServiceItem(child) || isServiceDecoration(child))
-            continue;
-        if (child.type == v8reader::FormItem::Type::Field) {
-            columns->append(child.title());
-        } else {
-            collectTableFields(child, columns);
+    QString result;
+    QString word;
+    auto flush = [&]() {
+        if (word.isEmpty())
+            return;
+        if (!result.isEmpty())
+            result += QLatin1Char(' ');
+        result += word;
+        word.clear();
+    };
+    for (int i = 0; i < text.size(); ++i) {
+        const QChar ch = text.at(i);
+        const bool upper = ch.isUpper();
+        const bool nextLower = i + 1 < text.size() && text.at(i + 1).isLower();
+        if (upper && !word.isEmpty() && (word.at(word.size() - 1).isLower() || nextLower))
+            flush();
+        word += ch;
+    }
+    flush();
+    if (!result.isEmpty())
+        result[0] = result.at(0).toUpper();
+    return result;
+}
+
+QString humanizeCommand(const QString &name)
+{
+    QString text = name;
+    static const QStringList prefixes = {
+        QStringLiteral("ФормаОбщаяКоманда"),
+        QStringLiteral("ОбщаяКоманда"),
+        QStringLiteral("Форма"),
+        QStringLiteral("Команда")
+    };
+    for (const QString &prefix : prefixes) {
+        if (text.startsWith(prefix) && text.size() > prefix.size()) {
+            text = text.mid(prefix.size());
+            break;
         }
     }
+    return splitCamelCase(text);
 }
 
-class LayoutContext
+class LayoutEngine
 {
 public:
-    QFont font;
-    QFontMetricsF metrics;
-
-    LayoutContext()
-        : font(QFont(QStringLiteral("Arial"), 9)), metrics(font)
+    LayoutEngine(const v8reader::FormDocument &document, double width)
+        : m_document(document), m_width(width),
+          m_font(QStringLiteral("Arial"), 9), m_metrics(m_font)
     {
+        for (const v8reader::FormAttribute &attribute : document.attributes) {
+            if (!attribute.name.isEmpty())
+                m_attributeTitles.insert(attribute.name, attribute.synonym);
+        }
     }
 
-    void add(PreviewControl control) { controls.append(control); }
+    void build(QVector<PreviewControl> *controls, double *contentHeight)
+    {
+        m_controls = controls;
+        const double top = 0.0;
+        QVector<const v8reader::FormItem *> items;
+        for (const v8reader::FormItem &item : m_document.items) {
+            if (!isServiceItem(item))
+                items.append(&item);
+        }
+        const double height = layoutVertical(items, QRectF(0.0, top, m_width, 100000.0), 0);
+        *contentHeight = height;
+    }
 
-    double preferredWidth(const v8reader::FormItem &item, int depth) const
+private:
+    QString fieldLabel(const v8reader::FormItem &item) const
+    {
+        QString title = item.synonym;
+        if (title.isEmpty())
+            title = m_attributeTitles.value(item.name);
+        if (title.isEmpty())
+            title = humanizeCommand(item.name);
+        return title;
+    }
+
+    double labelWidth(const v8reader::FormItem &item) const
+    {
+        const QString label = fieldLabel(item);
+        if (label.isEmpty())
+            return 0.0;
+        return std::min(210.0, m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0);
+    }
+
+    double preferredWidth(const v8reader::FormItem &item) const
     {
         using Type = v8reader::FormItem::Type;
         switch (item.type) {
         case Type::Field: {
-            const QString label = item.title();
-            const double labelWidth = std::min(220.0,
-                metrics.horizontalAdvance(label) + 10.0);
-            return std::max(160.0, labelWidth + 150.0);
+            const double label = labelWidth(item);
+            return std::max(170.0, label + 160.0);
         }
-        case Type::Button:
-            return std::min(240.0,
-                metrics.horizontalAdvance(item.title()) + 30.0);
+        case Type::Button: {
+            const QString title = item.synonym.isEmpty()
+                ? humanizeCommand(item.name) : item.synonym;
+            return std::min(220.0, m_metrics.horizontalAdvance(title) + 34.0);
+        }
         case Type::Table:
-            return 420.0;
+            return 340.0;
         case Type::Decoration:
-            return metrics.horizontalAdvance(item.title()) + 8.0;
+            return std::max(40.0, m_metrics.horizontalAdvance(item.synonym) + 10.0);
         case Type::Group: {
-            if (item.groupKind == 9 || item.groupKind == 6 || item.orientation == 1) {
+            if (isHorizontal(item)) {
                 double width = 0.0;
                 int count = 0;
                 for (const v8reader::FormItem &child : item.children) {
                     if (isServiceItem(child) || isServiceDecoration(child))
                         continue;
-                    width += preferredWidth(child, depth + 1) + 8.0;
+                    width += preferredWidth(child) + 8.0;
                     ++count;
                 }
-                return count > 0 ? std::max(160.0, width) : 0.0;
+                return count > 0 ? width : 100.0;
             }
-            double width = 180.0;
+            double width = 160.0;
             for (const v8reader::FormItem &child : item.children) {
                 if (isServiceItem(child) || isServiceDecoration(child))
                     continue;
-                width = std::max(width, preferredWidth(child, depth + 1));
+                width = std::max(width, preferredWidth(child));
             }
             return width;
         }
-        case Type::AutoCommandBar:
-        case Type::Column:
-        case Type::Other:
-            return 0.0;
+        default:
+            return 80.0;
         }
-        return 0.0;
+    }
+
+    bool isHorizontal(const v8reader::FormItem &item) const
+    {
+        return item.type == v8reader::FormItem::Type::Group
+            && (item.groupKind == 9 || item.groupKind == 6 || item.orientation == 1);
+    }
+
+    bool isPages(const v8reader::FormItem &item) const
+    {
+        return item.type == v8reader::FormItem::Type::Group && item.groupKind == 3;
     }
 
     double naturalHeight(const v8reader::FormItem &item, double width) const
@@ -123,25 +201,20 @@ public:
         switch (item.type) {
         case Type::Field:
         case Type::Button:
-            return 26.0;
-        case Type::Table:
-            return 150.0;
+            return 27.0;
         case Type::Decoration:
-            return item.synonym.isEmpty() ? 0.0 : 18.0;
+            return item.synonym.isEmpty() ? 0.0 : 19.0;
+        case Type::Table:
+            return 230.0;
         case Type::Group: {
-            QVector<const v8reader::FormItem *> children;
-            for (const v8reader::FormItem &child : item.children) {
-                if (!isServiceItem(child) && !isServiceDecoration(child))
-                    children.append(&child);
+            if (isPages(item)) {
+                return 26.0 + pageContentHeight(item, width);
             }
+            QVector<const v8reader::FormItem *> children;
+            visibleChildren(item, &children);
             if (children.isEmpty())
                 return 0.0;
-            if (item.groupKind == 3) {
-                return 26.0 + naturalHeight(*children.first(), width);
-            }
-            const bool horizontal = item.groupKind == 9 || item.groupKind == 6
-                || item.orientation == 1;
-            if (horizontal) {
+            if (isHorizontal(item)) {
                 double height = 0.0;
                 for (const v8reader::FormItem *child : children)
                     height = std::max(height, naturalHeight(*child, width));
@@ -149,7 +222,7 @@ public:
             }
             double height = 0.0;
             for (const v8reader::FormItem *child : children)
-                height += naturalHeight(*child, width) + 4.0;
+                height += naturalHeight(*child, width) + 5.0;
             return height;
         }
         default:
@@ -157,136 +230,256 @@ public:
         }
     }
 
-    double layoutNode(const v8reader::FormItem &item, const QRectF &rect)
+    double pageContentHeight(const v8reader::FormItem &pages, double width) const
     {
-        using Type = v8reader::FormItem::Type;
-        if (rect.width() <= 1.0)
-            return 0.0;
-
-        switch (item.type) {
-        case Type::Field: {
-            PreviewControl control;
-            control.kind = PreviewControl::Kind::Field;
-            control.rect = rect;
-            control.title = item.title();
-            control.text = item.name == item.synonym ? QString() : item.name;
-            add(control);
-            return rect.height();
+        for (const v8reader::FormItem &child : pages.children) {
+            if (child.type != v8reader::FormItem::Type::Group)
+                continue;
+            QVector<const v8reader::FormItem *> pageChildren;
+            visibleChildren(child, &pageChildren);
+            if (pageChildren.isEmpty())
+                continue;
+            double height = 0.0;
+            for (const v8reader::FormItem *pageChild : pageChildren)
+                height += naturalHeight(*pageChild, width) + 5.0;
+            return height;
         }
-        case Type::Button: {
-            PreviewControl control;
-            control.kind = PreviewControl::Kind::Button;
-            control.rect = QRectF(rect.left(), rect.top(), rect.width(), 26.0);
-            control.title = item.title();
-            add(control);
-            return 26.0;
-        }
-        case Type::Table: {
-            PreviewControl control;
-            control.kind = PreviewControl::Kind::Table;
-            control.rect = rect;
-            control.title = item.title();
-            collectTableFields(item, &control.columns);
-            add(control);
-            return rect.height();
-        }
-        case Type::Decoration: {
-            if (!item.synonym.isEmpty()) {
-                PreviewControl control;
-                control.kind = PreviewControl::Kind::Decoration;
-                control.rect = QRectF(rect.left(), rect.top(), rect.width(), 18.0);
-                control.title = item.synonym;
-                add(control);
-                return 18.0;
-            }
-            return 0.0;
-        }
-        case Type::Group:
-            return layoutGroup(item, rect);
-        default:
-            return 0.0;
-        }
+        return 40.0;
     }
 
-    double layoutGroup(const v8reader::FormItem &item, const QRectF &rect)
+    void visibleChildren(const v8reader::FormItem &item,
+                         QVector<const v8reader::FormItem *> *children) const
     {
-        QVector<const v8reader::FormItem *> children;
         for (const v8reader::FormItem &child : item.children) {
             if (!isServiceItem(child) && !isServiceDecoration(child))
-                children.append(&child);
+                children->append(&child);
         }
-        if (children.isEmpty())
-            return 0.0;
+    }
 
-        if (item.groupKind == 3) {
-            double x = rect.left();
-            double y = rect.top();
-            for (const v8reader::FormItem *child : children) {
-                if (child->type != v8reader::FormItem::Type::Group)
-                    continue;
-                PreviewControl tab;
-                tab.kind = PreviewControl::Kind::PageTab;
-                tab.rect = QRectF(x, y, 120.0, 22.0);
-                tab.title = child->title();
-                add(tab);
-                x += 122.0;
-            }
-            const v8reader::FormItem *firstPage = nullptr;
-            for (const v8reader::FormItem *child : children) {
-                if (child->type == v8reader::FormItem::Type::Group) {
-                    firstPage = child;
-                    break;
-                }
-            }
-            if (!firstPage)
-                return 22.0;
-            const QRectF pageRect(rect.left(), rect.top() + 26.0,
-                                  rect.width(), rect.height() - 26.0);
-            return 26.0 + layoutGroup(*firstPage, pageRect);
-        }
-
-        const bool horizontal = item.groupKind == 9 || item.groupKind == 6
-            || item.orientation == 1;
-
-        if (horizontal) {
-            QVector<double> widths;
-            double total = 0.0;
-            for (const v8reader::FormItem *child : children) {
-                const double width = preferredWidth(*child, 0);
-                widths.append(width);
-                total += width + 6.0;
-            }
-            const double available = std::max(1.0, rect.width() - 6.0 * children.size());
-            const double scale = total > 0.0 && total > rect.width()
-                ? std::max(0.25, available / total) : 1.0;
-
-            double height = 0.0;
-            double x = rect.left();
-            for (int i = 0; i < children.size(); ++i) {
-                const double width = std::max(40.0, widths.at(i) * scale);
-                height = std::max(height, naturalHeight(*children.at(i), width));
-            }
-            for (int i = 0; i < children.size(); ++i) {
-                const double width = std::max(40.0, widths.at(i) * scale);
-                layoutNode(*children.at(i),
-                           QRectF(x, rect.top(), width, height));
-                x += width + 6.0;
-            }
-            return height;
+    double layoutVertical(const QVector<const v8reader::FormItem *> &items,
+                          const QRectF &rect, int depth)
+    {
+        // Подписи полей в колонке выравниваются по самой длинной (как в 1С).
+        double commonLabel = 0.0;
+        for (const v8reader::FormItem *item : items) {
+            if (item->type == v8reader::FormItem::Type::Field)
+                commonLabel = std::max(commonLabel, labelWidth(*item));
         }
 
         double y = rect.top();
-        for (const v8reader::FormItem *child : children) {
-            const double height = naturalHeight(*child, rect.width());
+        for (const v8reader::FormItem *item : items) {
+            const double height = naturalHeight(*item, rect.width());
             if (height <= 0.0)
                 continue;
-            layoutNode(*child, QRectF(rect.left(), y, rect.width(), height));
-            y += height + 4.0;
+            if (item->type == v8reader::FormItem::Type::Field) {
+                layoutField(*item, QRectF(rect.left(), y, rect.width(), 27.0),
+                            commonLabel);
+                y += 27.0 + 5.0;
+            } else {
+                layoutNode(*item, QRectF(rect.left(), y, rect.width(), height), depth + 1);
+                y += height + 5.0;
+            }
         }
         return y - rect.top();
     }
 
-    QVector<PreviewControl> controls;
+    double layoutHorizontal(const QVector<const v8reader::FormItem *> &items,
+                            const QRectF &rect, int depth)
+    {
+        if (items.isEmpty())
+            return 0.0;
+
+        QVector<double> widths;
+        widths.reserve(items.size());
+        double total = 0.0;
+        for (const v8reader::FormItem *item : items) {
+            const double width = preferredWidth(*item);
+            widths.append(width);
+            total += width;
+        }
+        total += 8.0 * (items.size() - 1);
+
+        double scale = 1.0;
+        if (total > rect.width() && total > 0.0)
+            scale = rect.width() / total;
+
+        double height = 0.0;
+        for (int i = 0; i < items.size(); ++i)
+            height = std::max(height, naturalHeight(*items.at(i), widths.at(i) * scale));
+
+        double x = rect.left();
+        for (int i = 0; i < items.size(); ++i) {
+            const double width = std::max(34.0, widths.at(i) * scale);
+            layoutNode(*items.at(i), QRectF(x, rect.top(), width, height), depth + 1);
+            x += width + 8.0;
+        }
+        return height;
+    }
+
+    void layoutNode(const v8reader::FormItem &item, const QRectF &rect, int depth)
+    {
+        using Type = v8reader::FormItem::Type;
+        if (depth > 40)
+            return;
+
+        switch (item.type) {
+        case Type::Field:
+            layoutField(item, rect, 0.0, false);
+            return;
+        case Type::Button:
+            layoutButton(item, QRectF(rect.left(), rect.top(),
+                                      std::min(rect.width(), preferredWidth(item)),
+                                      27.0));
+            return;
+        case Type::Table:
+            layoutTable(item, rect);
+            return;
+        case Type::Decoration:
+            if (!item.synonym.isEmpty()) {
+                PreviewControl control;
+                control.kind = PreviewControl::Kind::Decoration;
+                control.rect = QRectF(rect.left(), rect.top(), rect.width(), 19.0);
+                control.title = item.synonym;
+                m_controls->append(control);
+            }
+            return;
+        case Type::Group: {
+            QVector<const v8reader::FormItem *> children;
+            visibleChildren(item, &children);
+            if (children.isEmpty())
+                return;
+
+            if (isPages(item)) {
+                layoutPages(item, rect);
+                return;
+            }
+            if (isHorizontal(item)) {
+                layoutHorizontal(children, rect, depth);
+                return;
+            }
+            layoutVertical(children, rect, depth);
+            return;
+        }
+        default:
+            return;
+        }
+    }
+
+    void layoutField(const v8reader::FormItem &item, const QRectF &rect,
+                     double forcedLabelWidth, bool align = true)
+    {
+        const QString label = fieldLabel(item);
+        double labelW = forcedLabelWidth;
+        if (labelW <= 0.0)
+            labelW = labelWidth(item);
+        if (!align)
+            labelW = std::min(labelW, rect.width() * 0.45);
+        labelW = std::min(labelW, rect.width() * 0.6);
+
+        PreviewControl control;
+        control.kind = PreviewControl::Kind::Field;
+        control.rect = rect;
+        control.title = label;
+        control.labelWidth = labelW;
+        m_controls->append(control);
+    }
+
+    void layoutButton(const v8reader::FormItem &item, const QRectF &rect)
+    {
+        PreviewControl control;
+        control.kind = PreviewControl::Kind::Button;
+        control.rect = rect.adjusted(0.0, 0.0, 0.0, 0.0);
+        control.title = item.synonym.isEmpty()
+            ? humanizeCommand(item.name) : item.synonym;
+        m_controls->append(control);
+    }
+
+    int collectTableFields(const v8reader::FormItem &item, int *count) const
+    {
+        int result = 0;
+        for (const v8reader::FormItem &child : item.children) {
+            if (isServiceItem(child) || isServiceDecoration(child))
+                continue;
+            if (child.type == v8reader::FormItem::Type::Field) {
+                ++result;
+                ++(*count);
+            } else {
+                result += collectTableFields(child, count);
+            }
+        }
+        return result;
+    }
+
+    void tableColumns(const v8reader::FormItem &item, QStringList *columns) const
+    {
+        for (const v8reader::FormItem &child : item.children) {
+            if (isServiceItem(child) || isServiceDecoration(child))
+                continue;
+            if (child.type == v8reader::FormItem::Type::Field) {
+                columns->append(fieldLabel(child));
+            } else if (child.type == v8reader::FormItem::Type::Group) {
+                tableColumns(child, columns);
+            }
+        }
+    }
+
+    void layoutTable(const v8reader::FormItem &item, const QRectF &rect)
+    {
+        PreviewControl control;
+        control.kind = PreviewControl::Kind::Table;
+        control.rect = QRectF(rect.left(), rect.top(), rect.width(),
+                              std::min(rect.height(), 230.0));
+        control.title = item.synonym;
+        tableColumns(item, &control.columns);
+        m_controls->append(control);
+    }
+
+    void layoutPages(const v8reader::FormItem &pages, const QRectF &rect)
+    {
+        QVector<const v8reader::FormItem *> pageItems;
+        visibleChildren(pages, &pageItems);
+
+        double x = rect.left();
+        for (int i = 0; i < pageItems.size(); ++i) {
+            const v8reader::FormItem *page = pageItems.at(i);
+            if (page->type != v8reader::FormItem::Type::Group)
+                continue;
+            PreviewControl tab;
+            tab.kind = PreviewControl::Kind::PageTab;
+            const QString title = page->synonym.isEmpty()
+                ? humanizeCommand(page->name) : page->synonym;
+            tab.title = title;
+            tab.selectedTab = (i == 0);
+            const double width = std::min(200.0,
+                m_metrics.horizontalAdvance(title) + 28.0);
+            tab.rect = QRectF(x, rect.top(), width, 24.0);
+            m_controls->append(tab);
+            x += width + 2.0;
+        }
+
+        const v8reader::FormItem *firstPage = nullptr;
+        for (const v8reader::FormItem *page : pageItems) {
+            if (page->type == v8reader::FormItem::Type::Group) {
+                firstPage = page;
+                break;
+            }
+        }
+        if (!firstPage)
+            return;
+        QVector<const v8reader::FormItem *> children;
+        visibleChildren(*firstPage, &children);
+        layoutVertical(children,
+                       QRectF(rect.left(), rect.top() + 28.0,
+                              rect.width(), naturalHeight(*firstPage, rect.width())),
+                       0);
+    }
+
+    const v8reader::FormDocument &m_document;
+    double m_width;
+    QFont m_font;
+    QFontMetricsF m_metrics;
+    QHash<QString, QString> m_attributeTitles;
+    QVector<PreviewControl> *m_controls = nullptr;
 };
 
 void paintControl(QPainter &painter, const PreviewControl &control,
@@ -294,67 +487,78 @@ void paintControl(QPainter &painter, const PreviewControl &control,
 {
     painter.setFont(font);
     const QRectF rect = control.rect;
+
     switch (control.kind) {
     case PreviewControl::Kind::Field: {
-        const double labelWidth = std::min(rect.width() * 0.55,
-            std::max(80.0, metrics.horizontalAdvance(control.title) + 10.0));
-        const QRectF labelRect(rect.left(), rect.top(), labelWidth, rect.height());
-        painter.setPen(QColor(60, 60, 60));
-        painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter, control.title);
-
-        const QRectF editRect(labelRect.right() + 4.0, rect.top() + 3.0,
-                              std::max(30.0, rect.width() - labelWidth - 8.0),
+        const QString label = control.title;
+        if (!label.isEmpty()) {
+            double labelWidth = control.labelWidth;
+            if (labelWidth <= 0.0) {
+                labelWidth = std::min(rect.width() * 0.6,
+                    std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":")) + 6.0));
+            }
+            const QRectF labelRect(rect.left(), rect.top(), labelWidth, rect.height());
+            painter.setPen(QColor(50, 50, 50));
+            painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter,
+                             label + QStringLiteral(":"));
+            const QRectF edit(labelRect.right() + 4.0, rect.top() + 3.0,
+                              std::max(24.0, rect.width() - labelWidth - 8.0),
                               rect.height() - 6.0);
-        painter.setPen(QColor(170, 170, 170));
-        painter.setBrush(QColor(255, 255, 255));
-        painter.drawRoundedRect(editRect, 2.0, 2.0);
-        painter.setBrush(Qt::NoBrush);
-        if (!control.text.isEmpty()) {
-            painter.setPen(QColor(150, 150, 150));
-            painter.drawText(editRect.adjusted(4, 0, -4, 0),
-                             Qt::AlignLeft | Qt::AlignVCenter, control.text);
+            painter.setPen(QColor(165, 165, 165));
+            painter.setBrush(Qt::white);
+            painter.drawRoundedRect(edit, 2.0, 2.0);
+            painter.setBrush(Qt::NoBrush);
+        } else {
+            const QRectF edit(rect.left(), rect.top() + 3.0,
+                              rect.width(), rect.height() - 6.0);
+            painter.setPen(QColor(165, 165, 165));
+            painter.setBrush(Qt::white);
+            painter.drawRoundedRect(edit, 2.0, 2.0);
+            painter.setBrush(Qt::NoBrush);
         }
         break;
     }
     case PreviewControl::Kind::Button: {
-        painter.setPen(QColor(120, 120, 120));
+        painter.setPen(QColor(125, 125, 125));
         painter.setBrush(QColor(240, 240, 240));
         painter.drawRoundedRect(rect, 3.0, 3.0);
         painter.setBrush(Qt::NoBrush);
-        painter.setPen(QColor(40, 40, 40));
-        painter.drawText(rect.adjusted(4, 0, -4, 0),
-                         Qt::AlignCenter, control.title);
+        painter.setPen(QColor(35, 35, 35));
+        const QString text = metrics.elidedText(control.title, Qt::ElideRight,
+                                                int(rect.width()) - 8);
+        painter.drawText(rect.adjusted(4, 0, -4, 0), Qt::AlignCenter, text);
         break;
     }
     case PreviewControl::Kind::Table: {
-        painter.setPen(QColor(150, 150, 150));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRect(rect);
-        QStringList columns = control.columns;
+        const QStringList columns = control.columns;
         if (columns.isEmpty())
-            columns << QStringLiteral("Колонка");
+            return;
         const int visible = std::min(10, int(columns.size()));
         const double columnWidth = rect.width() / visible;
         const double headerHeight = 28.0;
-        const QRectF headerRect(rect.left(), rect.top(), rect.width(), headerHeight);
-        painter.fillRect(headerRect, QColor(242, 242, 242));
-        painter.drawLine(headerRect.bottomLeft(), headerRect.bottomRight());
-        painter.setPen(QColor(40, 40, 40));
+        const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
+        painter.setPen(QColor(150, 150, 150));
+        painter.setBrush(QColor(242, 242, 242));
+        painter.drawRect(header);
+        painter.setBrush(Qt::NoBrush);
         QFont headerFont = font;
         headerFont.setBold(true);
         painter.setFont(headerFont);
+        painter.setPen(QColor(40, 40, 40));
         for (int i = 0; i < visible; ++i) {
             const QRectF cell(rect.left() + i * columnWidth, rect.top(),
                               columnWidth, headerHeight);
             painter.drawRect(cell);
-            painter.drawText(cell.adjusted(4, 1, -4, -1),
-                             Qt::AlignLeft | Qt::AlignVCenter, columns.at(i));
+            const QString text = metrics.elidedText(columns.at(i), Qt::ElideRight,
+                                                    int(columnWidth) - 8);
+            painter.drawText(cell.adjusted(4, 0, -4, 0),
+                             Qt::AlignLeft | Qt::AlignVCenter, text);
         }
         painter.setFont(font);
         painter.setPen(QColor(150, 150, 150));
-        const double rowHeight = 18.0;
+        const double rowHeight = 20.0;
         const int rows = std::max(1, int((rect.height() - headerHeight) / rowHeight));
-        for (int row = 0; row < rows && row < 6; ++row) {
+        for (int row = 0; row < rows; ++row) {
             for (int i = 0; i < visible; ++i) {
                 const QRectF cell(rect.left() + i * columnWidth,
                                   rect.top() + headerHeight + row * rowHeight,
@@ -365,17 +569,22 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         break;
     }
     case PreviewControl::Kind::PageTab: {
-        painter.setPen(QColor(120, 120, 120));
-        painter.setBrush(QColor(245, 245, 245));
+        painter.setPen(QColor(140, 140, 140));
+        painter.setBrush(control.selectedTab ? QColor(255, 255, 255)
+                                             : QColor(238, 238, 238));
         painter.drawRect(rect);
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QColor(40, 40, 40));
-        painter.drawText(rect.adjusted(4, 0, -4, 0), Qt::AlignCenter, control.title);
+        const QString text = metrics.elidedText(control.title, Qt::ElideRight,
+                                                int(rect.width()) - 8);
+        painter.drawText(rect.adjusted(4, 0, -4, 0), Qt::AlignCenter, text);
         break;
     }
     case PreviewControl::Kind::Decoration: {
         painter.setPen(QColor(80, 80, 80));
-        painter.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter, control.title);
+        painter.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter,
+                         metrics.elidedText(control.title, Qt::ElideRight,
+                                            int(rect.width())));
         break;
     }
     }
@@ -383,15 +592,17 @@ void paintControl(QPainter &painter, const PreviewControl &control,
 
 } // namespace
 
-// Схематичное представление формы: поля/кнопки/таблицы/группы.
+// Схематичное представление формы, повторяющее базовую раскладку 1С:
+// вертикальные/горизонтальные группы, выравнивание подписей, страницы,
+// таблицы и командные панели.
 class FormPreviewWidget : public QWidget
 {
 public:
     explicit FormPreviewWidget(QWidget *parent = nullptr)
         : QWidget(parent)
     {
-        setFixedWidth(760);
-        setMinimumHeight(240);
+        setMinimumHeight(260);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setAutoFillBackground(true);
         QPalette palette = this->palette();
         palette.setColor(QPalette::Window, Qt::white);
@@ -401,13 +612,22 @@ public:
     void setDocument(const v8reader::FormDocument *document)
     {
         m_document = document;
-        updateSize();
+        rebuild();
+    }
+
+    void setScale(double scale)
+    {
+        m_scale = std::max(0.25, std::min(3.0, scale));
+        rebuild();
     }
 
     void clear()
     {
         m_document = nullptr;
-        updateSize();
+        m_controls.clear();
+        m_contentHeight = 0.0;
+        setFixedSize(int(kFormWidth * m_scale), 260);
+        update();
     }
 
 protected:
@@ -416,6 +636,7 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), Qt::white);
+        painter.scale(m_scale, m_scale);
 
         const QFont titleFont(QStringLiteral("Arial"), 14, QFont::Bold);
         const QFont font(QStringLiteral("Arial"), 9);
@@ -437,66 +658,55 @@ protected:
             title = m_document->name;
         if (title.isEmpty())
             title = QStringLiteral("Форма");
-        painter.drawText(QRectF(20, 16, width() - 40, 28),
+        painter.drawText(QRectF(20, 14, width() - 40, 28),
                          Qt::AlignHCenter | Qt::AlignVCenter, title);
 
         QFont subtitleFont(QStringLiteral("Arial"), 8);
         painter.setFont(subtitleFont);
         painter.setPen(QColor(130, 130, 130));
-        painter.drawText(QRectF(20, 40, width() - 40, 18),
+        painter.drawText(QRectF(20, 40, width() - 40, 16),
                          Qt::AlignHCenter | Qt::AlignVCenter,
                          QStringLiteral("управляемая форма · %1 элементов · %2 полей · %3 команд")
                              .arg(m_document->itemCount())
                              .arg(m_document->fieldCount())
                              .arg(m_document->commands.size()));
 
-        LayoutContext context;
-        const QRectF area(20.0, 70.0, width() - 40.0, height() - 90.0);
-        double y = area.top();
-        for (const v8reader::FormItem &item : m_document->items) {
-            if (isServiceItem(item) || isServiceDecoration(item))
-                continue;
-            const double height = context.naturalHeight(item, area.width());
-            if (height <= 0.0)
-                continue;
-            context.layoutNode(item, QRectF(area.left(), y, area.width(), height));
-            y += height + 6.0;
-        }
-
-        for (const PreviewControl &control : context.controls)
+        painter.setFont(font);
+        for (const PreviewControl &control : m_controls)
             paintControl(painter, control, font, metrics);
-
-        if (context.controls.isEmpty()) {
-            painter.setFont(subtitleFont);
-            painter.setPen(QColor(140, 140, 140));
-            painter.drawText(area, Qt::AlignHCenter | Qt::AlignTop,
-                             QStringLiteral("Элементы формы не найдены"));
-        }
     }
 
 private:
-    void updateSize()
+    void rebuild()
     {
+        m_controls.clear();
         if (!m_document || m_document->items.isEmpty()) {
-            setFixedHeight(240);
+            m_contentHeight = 0.0;
+            setFixedSize(int(kFormWidth * m_scale), 260);
             update();
             return;
         }
-        LayoutContext context;
-        const double width = 720.0;
-        double y = 0.0;
-        for (const v8reader::FormItem &item : m_document->items) {
-            if (isServiceItem(item) || isServiceDecoration(item))
-                continue;
-            const double height = context.naturalHeight(item, width);
-            if (height > 0.0)
-                y += height + 6.0;
-        }
-        setFixedHeight(qBound(240, int(y) + 100, 6000));
+
+        const double contentWidth = kFormWidth - 40.0;
+        LayoutEngine engine(*m_document, contentWidth);
+        double contentHeight = 0.0;
+        QVector<PreviewControl> controls;
+        engine.build(&controls, &contentHeight);
+        for (PreviewControl &control : controls)
+            control.rect.translate(20.0, 72.0);
+        m_controls = controls;
+        m_contentHeight = contentHeight;
+        const double logicalHeight = qBound(280.0, 72.0 + contentHeight + 24.0, 8000.0);
+        setFixedSize(int(kFormWidth * m_scale), int(logicalHeight * m_scale));
         update();
     }
 
+    static constexpr double kFormWidth = 900.0;
+
     const v8reader::FormDocument *m_document = nullptr;
+    QVector<PreviewControl> m_controls;
+    double m_contentHeight = 0.0;
+    double m_scale = 0.75;
 };
 
 namespace v8reader {
@@ -510,6 +720,18 @@ FormView::FormView(QWidget *parent)
     m_hint = new QLabel(QStringLiteral("Выберите форму в дереве метаданных."), this);
     m_hint->setWordWrap(true);
     layout->addWidget(m_hint);
+
+    auto *toolbar = new QHBoxLayout();
+    toolbar->addWidget(new QLabel(QStringLiteral("Масштаб:"), this));
+    m_scaleCombo = new QComboBox(this);
+    m_scaleCombo->setObjectName(QStringLiteral("formScale"));
+    const QVector<int> scales = {50, 75, 100, 125, 150};
+    for (int percent : scales)
+        m_scaleCombo->addItem(QStringLiteral("%1%").arg(percent), percent);
+    m_scaleCombo->setCurrentIndex(1);
+    toolbar->addWidget(m_scaleCombo);
+    toolbar->addStretch();
+    layout->addLayout(toolbar);
 
     auto *splitter = new QSplitter(Qt::Horizontal, this);
 
@@ -529,7 +751,7 @@ FormView::FormView(QWidget *parent)
 
     auto *scroll = new QScrollArea(splitter);
     scroll->setWidgetResizable(false);
-    scroll->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+    scroll->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_preview = new FormPreviewWidget(scroll);
     scroll->setWidget(m_preview);
 
@@ -537,8 +759,16 @@ FormView::FormView(QWidget *parent)
     splitter->addWidget(scroll);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
-    splitter->setSizes({380, 620});
+    splitter->setSizes({300, 900});
     layout->addWidget(splitter, 1);
+
+    connect(m_scaleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+                if (!m_preview)
+                    return;
+                const int percent = m_scaleCombo->itemData(index).toInt();
+                m_preview->setScale(percent / 100.0);
+            });
 
     clear();
 }
@@ -562,6 +792,21 @@ void FormView::setDocument(const FormDocument &document)
 
     fillTree();
     m_preview->setDocument(&m_document);
+}
+
+void FormView::setScalePercent(int percent)
+{
+    if (percent <= 0)
+        return;
+    if (m_scaleCombo) {
+        const int index = m_scaleCombo->findData(percent);
+        if (index >= 0) {
+            m_scaleCombo->setCurrentIndex(index);
+            return;
+        }
+    }
+    if (m_preview)
+        m_preview->setScale(percent / 100.0);
 }
 
 void FormView::setMessage(const QString &message)

@@ -2526,6 +2526,13 @@ bool MainWindow::selectFormForObject(const QString &objectQuery,
     return false;
 }
 
+void MainWindow::setFormScale(int percent)
+{
+    if (!m_formView)
+        return;
+    m_formView->setScalePercent(percent);
+}
+
 void MainWindow::setShowNamedAreas(bool show)
 {
     if (m_showAreasCheck)

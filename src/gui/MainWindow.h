@@ -65,6 +65,7 @@ public:
     bool selectFormForObject(const QString &objectQuery,
                              const QString &formQuery = QString());
     bool hasFormDocument() const { return m_formDocumentValid; }
+    void setFormScale(int percent);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

@@ -5,6 +5,7 @@
 
 #include <QWidget>
 
+class QComboBox;
 class QLabel;
 class QTreeWidget;
 class FormPreviewWidget;
@@ -23,6 +24,7 @@ public:
     void setMessage(const QString &message);
     void clear();
     bool hasDocument() const { return m_hasDocument; }
+    void setScalePercent(int percent);
     const FormDocument &document() const { return m_document; }
 
 private:
@@ -30,6 +32,7 @@ private:
 
     QLabel *m_hint = nullptr;
     QTreeWidget *m_tree = nullptr;
+    QComboBox *m_scaleCombo = nullptr;
     FormPreviewWidget *m_preview = nullptr;
     FormDocument m_document;
     bool m_hasDocument = false;
