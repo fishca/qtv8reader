@@ -20,6 +20,7 @@ int main(int argc, char *argv[])
 
     bool smokeTest = false;
     bool expandCommon = false;
+    bool expandDocuments = false;
     QString screenshotPath;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
@@ -31,6 +32,10 @@ int main(int argc, char *argv[])
         }
         if (argument == QStringLiteral("--expand-common")) {
             expandCommon = true;
+            continue;
+        }
+        if (argument == QStringLiteral("--expand-documents")) {
+            expandDocuments = true;
             continue;
         }
         if (argument == QStringLiteral("--screenshot")
@@ -47,6 +52,8 @@ int main(int argc, char *argv[])
 
     if (expandCommon)
         window.expandCommonBranch();
+    if (expandDocuments)
+        window.expandDocumentsBranch();
 
     if (smokeTest || !screenshotPath.isEmpty()) {
         QCoreApplication::processEvents();

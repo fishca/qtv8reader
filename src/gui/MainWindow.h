@@ -41,6 +41,7 @@ public:
 
     bool isFileOpen() const;
     void expandCommonBranch();
+    void expandDocumentsBranch();
     int objectCount() const;
     QString fileKindTitle() const;
     // Проверка работоспособности без показа окна: открывает первый объект

@@ -900,13 +900,18 @@ QString MainWindow::smokeReport()
                 continue;
 
             QStringList subBranches;
+            QStringList firstChildren;
             for (int k = 0; k < categoryItem->childCount(); ++k) {
                 QTreeWidgetItem *child = categoryItem->child(k);
                 if (child->data(0, KindRole).toInt() == CategoryItem)
                     subBranches << child->text(0);
+                if (k < 3)
+                    firstChildren << child->text(0);
             }
             lines << QStringLiteral("подветки документов: %1")
                          .arg(subBranches.join(QStringLiteral(", ")));
+            lines << QStringLiteral("документы: первые узлы — %1")
+                         .arg(firstChildren.join(QStringLiteral(", ")));
             break;
         }
     }
@@ -927,6 +932,27 @@ void MainWindow::expandCommonBranch()
             groupItem->setExpanded(true);
             m_tree->setCurrentItem(rootItem);
             m_tree->scrollToItem(rootItem);
+            QCoreApplication::processEvents();
+            return;
+        }
+    }
+}
+void MainWindow::expandDocumentsBranch()
+{
+    if (m_tree->topLevelItemCount() == 0)
+        return;
+
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *rootItem = m_tree->topLevelItem(i);
+        for (int j = 0; j < rootItem->childCount(); ++j) {
+            QTreeWidgetItem *categoryItem = rootItem->child(j);
+            if (categoryItem->data(0, KindRole).toInt() != CategoryItem)
+                continue;
+            if (categoryItem->text(0) != QStringLiteral("Документы"))
+                continue;
+            categoryItem->setExpanded(true);
+            m_tree->setCurrentItem(categoryItem);
+            m_tree->scrollToItem(categoryItem);
             QCoreApplication::processEvents();
             return;
         }
@@ -1167,12 +1193,15 @@ void MainWindow::buildTree()
         }
     }
 
-    // Нумераторы и последовательности — подветки «Документов», как в 1C.
+    // Нумераторы и последовательности — первые подветки «Документов», как в 1C.
     QSet<QString> movedCategories;
     if (documentsItem) {
+        int insertIndex = 0;
         for (const QString &guid : {numeratorsCategoryGuid(), sequencesCategoryGuid()}) {
             if (const MetadataCategory *category = byGuid.value(guid.toLower())) {
-                addCategoryItem(documentsItem, *category);
+                QTreeWidgetItem *subItem = addCategoryItem(documentsItem, *category);
+                subItem = documentsItem->takeChild(documentsItem->indexOfChild(subItem));
+                documentsItem->insertChild(insertIndex++, subItem);
                 movedCategories.insert(guid.toLower());
             }
         }
