@@ -166,4 +166,11 @@
     <file alias="wsLink_24.png">icons/metadata/wsLink_24.png</file>
     <file alias="wsLink_32.png">icons/metadata/wsLink_32.png</file>
   </qresource>
+  <qresource prefix="/icons/app">
+    <file alias="qtv8reader_16.png">icons/app/qtv8reader_16.png</file>
+    <file alias="qtv8reader_24.png">icons/app/qtv8reader_24.png</file>
+    <file alias="qtv8reader_32.png">icons/app/qtv8reader_32.png</file>
+    <file alias="qtv8reader_48.png">icons/app/qtv8reader_48.png</file>
+    <file alias="qtv8reader_64.png">icons/app/qtv8reader_64.png</file>
+  </qresource>
 </RCC>

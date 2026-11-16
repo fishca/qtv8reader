@@ -42,12 +42,21 @@ int main(int argc, char *argv[])
 
     if (smokeTest || !screenshotPath.isEmpty()) {
         QCoreApplication::processEvents();
-        const QString report = window.smokeReport();
         QTextStream out(stdout);
         out.setEncoding(QStringConverter::Utf8);
-        out << report << Qt::endl;
+
+        if (smokeTest) {
+            out << window.smokeReport() << Qt::endl;
+            if (!window.isFileOpen())
+                return 2;
+            out << QStringLiteral("SMOKE OK: %1, объектов: %2")
+                       .arg(window.fileKindTitle())
+                       .arg(window.objectCount())
+                << Qt::endl;
+        }
 
         if (!screenshotPath.isEmpty()) {
+            QCoreApplication::processEvents();
             const QPixmap shot = window.grab();
             const bool saved = !shot.isNull() && shot.save(screenshotPath);
             out << QStringLiteral("SCREENSHOT %1: %2 (%3x%4)")
@@ -58,12 +67,6 @@ int main(int argc, char *argv[])
                 << Qt::endl;
         }
 
-        if (!window.isFileOpen())
-            return 2;
-        out << QStringLiteral("SMOKE OK: %1, объектов: %2")
-                   .arg(window.fileKindTitle())
-                   .arg(window.objectCount())
-            << Qt::endl;
         return 0;
     }
 

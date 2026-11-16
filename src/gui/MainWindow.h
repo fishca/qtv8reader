@@ -101,6 +101,8 @@ private:
     void buildTree();
     QTreeWidgetItem *addCategoryItem(QTreeWidgetItem *parent,
                                      const MetadataCategory &category);
+    QTreeWidgetItem *addPlaceholderCategoryItem(QTreeWidgetItem *parent,
+                                                const QString &guid);
     QTreeWidgetItem *addObjectItem(QTreeWidgetItem *parent,
                                    const MetadataObject &object);
     void applyTreeFilter(const QString &text);
@@ -118,6 +120,7 @@ private:
     void showConfiguration();
     void showGroup(const QString &title, const QVector<const MetadataCategory *> &categories);
     void showCategory(const MetadataCategory &category);
+    void showPlaceholderCategory(const QString &guid);
     void showObject(MetadataObject &object);
     void showSection(MetadataObject &object, MetadataSectionKind kind);
     void showEntry(MetadataObject &object, MetadataSectionKind kind, int entryIndex,
