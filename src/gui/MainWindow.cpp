@@ -656,6 +656,11 @@ void MainWindow::setupTabs()
     areasCheck->setObjectName(QStringLiteral("showNamedAreas"));
     areasCheck->setToolTip(QStringLiteral("Показывать границы именованных областей макета"));
     mxlHeader->addWidget(areasCheck);
+
+    auto *gridCheck = new QCheckBox(QStringLiteral("Сетка"), m_mxlPage);
+    gridCheck->setChecked(true);
+    gridCheck->setToolTip(QStringLiteral("Показывать сетку ячеек (как в конфигураторе)"));
+    mxlHeader->addWidget(gridCheck);
     mxlHeader->addStretch();
     mxlLayout->addLayout(mxlHeader);
 
@@ -665,6 +670,10 @@ void MainWindow::setupTabs()
     connect(areasCheck, &QCheckBox::toggled, this, [this](bool checked) {
         if (m_mxlView)
             m_mxlView->setShowNamedAreas(checked);
+    });
+    connect(gridCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_mxlView)
+            m_mxlView->setShowGrid(checked);
     });
     m_tabs->addTab(m_mxlPage, QStringLiteral("Табличный документ"));
 }

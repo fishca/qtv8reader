@@ -32,6 +32,9 @@ public:
 
     bool showNamedAreas() const { return m_showAreas; }
     void setShowNamedAreas(bool show);
+
+    bool showGrid() const { return m_showGrid; }
+    void setShowGrid(bool show);
     void setActiveNamedArea(const QString &name);
 
     double zoom() const { return m_zoom; }
@@ -54,6 +57,7 @@ private:
     bool m_hasDocument = false;
     QString m_message;
     bool m_showAreas = false;
+    bool m_showGrid = true;
     QString m_activeArea;
     double m_zoom = 1.0;
 };

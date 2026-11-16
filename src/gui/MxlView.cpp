@@ -65,6 +65,14 @@ void MxlView::setShowNamedAreas(bool show)
     viewport()->update();
 }
 
+void MxlView::setShowGrid(bool show)
+{
+    if (m_showGrid == show)
+        return;
+    m_showGrid = show;
+    viewport()->update();
+}
+
 void MxlView::setActiveNamedArea(const QString &name)
 {
     if (m_activeArea == name)
@@ -166,6 +174,8 @@ void MxlView::paintEvent(QPaintEvent *event)
     painter.scale(zoom, zoom);
     painter.translate(-offset);
     painter.setClipRect(visible);
+    if (m_showGrid)
+        m_renderer.drawGrid(painter, visible);
     m_renderer.draw(painter, visible, m_showAreas, m_activeArea);
     painter.restore();
 }

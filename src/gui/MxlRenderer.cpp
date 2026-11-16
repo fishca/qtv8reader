@@ -184,7 +184,11 @@ void MxlRenderer::rebuildLayout()
     m_rowTop.clear();
     m_rowHeight.clear();
 
-    QFontMetricsF metrics(baseFont());
+    // Ширина колонки в 1С — в 1/8 ширины «стандартного символа»
+    // (Arial 10), а не шрифта конкретного макета.
+    QFont standardFont(QStringLiteral("Arial"));
+    standardFont.setPixelSize(pixelSizeForTenthPt(100));
+    QFontMetricsF metrics(standardFont);
     double characterWidth = metrics.horizontalAdvance(QLatin1Char('0'));
     if (characterWidth <= 0.0)
         characterWidth = metrics.averageCharWidth();
@@ -207,17 +211,38 @@ void MxlRenderer::rebuildLayout()
         const double units = rowUnitsFor(m_document, row.index);
         double height = units > 0.0 ? units / kInchUnits * kDpi : 0.0;
         if (height <= 0.0) {
-            double maxFontPx = fontPixelSize(baseFont());
+            double maxHeight = QFontMetricsF(baseFont()).height();
             const mxl::CellFormat *rowFormat = m_document.formatAt(row.format);
-            if (rowFormat)
-                maxFontPx = std::max(maxFontPx, fontPixelSize(fontForFormat(rowFormat)));
+            if (rowFormat) {
+                maxHeight = std::max(
+                    maxHeight, QFontMetricsF(fontForFormat(rowFormat)).height());
+            }
             for (const auto &cell : row.cells) {
                 const mxl::CellFormat *format = m_document.formatAt(cell.second.format);
                 if (!format)
                     continue;
-                maxFontPx = std::max(maxFontPx, fontPixelSize(fontForFormat(format)));
+                const QFont font = fontForFormat(format);
+                QFontMetricsF metrics(font);
+                maxHeight = std::max(maxHeight, metrics.height());
+
+                // Автовысота учитывает перенос текста (как в 1С).
+                if (format->textControl != 3 || cell.second.text.isEmpty())
+                    continue;
+                const mxl::Merge *merge = m_document.mergeAt(row.index, cell.first);
+                double width = 0.0;
+                if (merge) {
+                    width = columnLeft(merge->right + 1) - columnLeft(merge->left) - 4.0;
+                } else {
+                    width = columnLeft(cell.first + 1) - columnLeft(cell.first) - 4.0;
+                }
+                if (width <= 1.0)
+                    continue;
+                const QRectF bounds = metrics.boundingRect(
+                    QRectF(0.0, 0.0, width, 100000.0),
+                    Qt::TextWordWrap, cell.second.text);
+                maxHeight = std::max(maxHeight, bounds.height() + 2.0);
             }
-            height = std::max(20.0, std::ceil(maxFontPx * 1.2 + 8.0));
+            height = std::max(14.0, std::ceil(maxHeight + 1.0));
         }
         m_rowHeight.insert(row.index, height);
         y += height;
@@ -312,6 +337,22 @@ void MxlRenderer::drawCell(QPainter &painter, int rowIndex, int column,
             flags |= Qt::AlignTop;
         }
 
+        QRectF textRect = rect.adjusted(1, 1, -1, -1);
+        const int textControl = format ? format->textControl : -1;
+        if (textControl <= 0) {
+            // «Авто»: текст выходит за границу ячейки, пока справа пустые
+            // ячейки (как в 1С). Прекращаем на первой непустой.
+            double rightLimit = textRect.right();
+            for (int c = right + 1; c <= m_maxColumn; ++c) {
+                const mxl::Cell *neighbor = m_document.cellAt(rowIndex, c);
+                if (neighbor && !neighbor->text.isEmpty())
+                    break;
+                rightLimit = columnLeft(c + 1);
+            }
+            if (rightLimit > textRect.right())
+                textRect.setRight(rightLimit - 1.0);
+        }
+
         const bool rotated = format && format->orientation > 0
             && (format->orientation % 450 == 0 || format->orientation == 900);
         if (rotated) {
@@ -324,8 +365,7 @@ void MxlRenderer::drawCell(QPainter &painter, int rowIndex, int column,
                              static_cast<int>(flags), text);
             painter.restore();
         } else {
-            painter.drawText(rect.adjusted(1, 1, -1, -1),
-                             static_cast<int>(flags), text);
+            painter.drawText(textRect, static_cast<int>(flags), text);
         }
     }
 
@@ -362,6 +402,42 @@ void MxlRenderer::drawCell(QPainter &painter, int rowIndex, int column,
     drawSide(format->borderTop, QLineF(rect.left(), rect.top(), rect.right(), rect.top()));
     drawSide(format->borderRight, QLineF(rect.right(), rect.top(), rect.right(), rect.bottom()));
     drawSide(format->borderBottom, QLineF(rect.left(), rect.bottom(), rect.right(), rect.bottom()));
+}
+
+void MxlRenderer::drawGrid(QPainter &painter, const QRectF &visible) const
+{
+    if (!m_document.valid)
+        return;
+
+    painter.save();
+    QPen pen(QColor(200, 200, 200));
+    pen.setWidthF(0.6);
+    painter.setPen(pen);
+
+    const double top = kMargin;
+    const double bottom = m_contentHeight - kMargin;
+    for (int column = 0; column <= m_maxColumn; ++column) {
+        const double x = columnLeft(column);
+        if (x < visible.left() - 1.0 || x > visible.right() + 1.0)
+            continue;
+        painter.drawLine(QPointF(x, top), QPointF(x, bottom));
+    }
+
+    const double left = kMargin;
+    const double right = m_contentWidth - kMargin;
+    for (const mxl::Row &row : m_document.rows) {
+        const double y = rowTop(row.index);
+        if (y < visible.top() - 1.0 || y > visible.bottom() + 1.0)
+            continue;
+        painter.drawLine(QPointF(left, y), QPointF(right, y));
+    }
+    if (!m_document.rows.isEmpty()) {
+        const mxl::Row &last = m_document.rows.last();
+        const double y = rowTop(last.index) + rowHeight(last.index);
+        if (y >= visible.top() - 1.0 && y <= visible.bottom() + 1.0)
+            painter.drawLine(QPointF(left, y), QPointF(right, y));
+    }
+    painter.restore();
 }
 
 void MxlRenderer::draw(QPainter &painter, const QRectF &visible, bool showNamedAreas,

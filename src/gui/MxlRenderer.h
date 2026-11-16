@@ -45,6 +45,9 @@ public:
               bool showNamedAreas = false,
               const QString &activeArea = QString()) const;
 
+    // Светлая сетка ячеек (как в редакторе 1С); в печать не выводится.
+    void drawGrid(QPainter &painter, const QRectF &visible) const;
+
     // Прямоугольник именованной области в координатах документа.
     QRectF namedAreaRect(const mxl::NamedArea &area) const;
 

@@ -95,6 +95,8 @@ mxl::Cell cellFromValue(const V8TextNode &fields)
     }
     if ((marker & 4) != 0)
         ++next; // ссылка-расшифровка; сам текст обычно уже есть в кэше
+    if ((marker & 8) != 0)
+        ++next; // дополнительное строковое поле (например, имя типа) перед текстом
     if ((marker & 16) != 0) {
         const V8TextNode *localized = childAt(fields, next);
         int hasText = 0;
