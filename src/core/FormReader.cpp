@@ -129,7 +129,7 @@ QString typeHintFromAttributes(const V8TextNode &node)
     return QString();
 }
 
-void readGeometry(const V8TextNode &node, FormItem *item)
+void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
 {
     // Поля (InputField/LabelField/PictureField/CheckBoxField): вложенная
     // layout-структура с кодом 10/11/32:
@@ -169,12 +169,21 @@ void readGeometry(const V8TextNode &node, FormItem *item)
         return;
     }
 
-    // Группа: ширина в поле 12, высота — в поле 13.
+    // Группа: ширина в поле 12, высота — в поле 13; растяжение —
+    // со смещениями +8/+9 от имени (сверено по 11 формам БП).
     if (item->typeCode == 22) {
         if (node.child(12) && node.child(12)->isInteger())
             item->widthUnits = static_cast<int>(node.child(12)->toInteger());
         if (node.child(13) && node.child(13)->isInteger())
             item->heightUnits = static_cast<int>(node.child(13)->toInteger());
+        if (nameIndex >= 0) {
+            const V8TextNode *h = node.child(nameIndex + 8);
+            if (h && h->isInteger())
+                item->horizontalStretch = static_cast<int>(h->toInteger());
+            const V8TextNode *v = node.child(nameIndex + 9);
+            if (v && v->isInteger())
+                item->verticalStretch = static_cast<int>(v->toInteger());
+        }
         return;
     }
 
@@ -255,7 +264,7 @@ FormItem parseItem(const V8TextNode &node)
         break;
     }
 
-    readGeometry(node, &item);
+    readGeometry(node, nameIndex, &item);
 
     for (const V8TextNode &child : node.children) {
         if (isItemNode(child))

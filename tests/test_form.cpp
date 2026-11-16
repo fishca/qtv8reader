@@ -254,6 +254,19 @@ void TestForm::realBpListFormGeometry()
         QStringLiteral("ГруппаБаннерОжидание"));
     QVERIFY(bannerGroup);
     QCOMPARE(bannerGroup->widthUnits, 24);
+
+    // Растяжение групп (по Form.xml): 146 — H=false, 160 — V=true,
+    // 110 — H=true/V=false.
+    const FormItem *group146 = findItemById(document.items, 146);
+    QVERIFY(group146);
+    QCOMPARE(group146->horizontalStretch, 0);
+    const FormItem *group160 = findItemById(document.items, 160);
+    QVERIFY(group160);
+    QCOMPARE(group160->verticalStretch, 1);
+    const FormItem *group110 = findItemById(document.items, 110);
+    QVERIFY(group110);
+    QCOMPARE(group110->horizontalStretch, 1);
+    QCOMPARE(group110->verticalStretch, 0);
 }
 
 } // namespace

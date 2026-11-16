@@ -479,6 +479,8 @@ private:
     bool stretchable(const v8reader::FormItem &item) const
     {
         using Type = v8reader::FormItem::Type;
+        if (item.horizontalStretch == 0)
+            return false;
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
             return false;
         if (item.type == Type::Field || item.type == Type::Search)
