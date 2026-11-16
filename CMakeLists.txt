@@ -37,6 +37,10 @@ add_library(qtv8reader_core STATIC
     src/core/MxlDocument.cpp
     src/core/MxlReader.h
     src/core/MxlReader.cpp
+    src/core/FormDocument.h
+    src/core/FormDocument.cpp
+    src/core/FormReader.h
+    src/core/FormReader.cpp
 )
 
 target_include_directories(qtv8reader_core PUBLIC src)
@@ -55,6 +59,8 @@ qt_add_executable(qtv8reader WIN32
     src/gui/MxlRenderer.cpp
     src/gui/MxlPrinter.h
     src/gui/MxlPrinter.cpp
+    src/gui/FormView.h
+    src/gui/FormView.cpp
 )
 
 target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
@@ -72,6 +78,7 @@ qt_add_executable(qtv8reader_tests
     tests/test_v8container.cpp
     tests/test_metadata.cpp
     tests/test_mxl.cpp
+    tests/test_form.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
 )

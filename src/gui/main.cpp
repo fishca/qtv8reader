@@ -25,6 +25,7 @@ int main(int argc, char *argv[])
     QString mxlPdfPath;
     QString mxlObject;
     QString selectMxl;
+    QString selectForm;
     bool showAreas = false;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
@@ -66,6 +67,11 @@ int main(int argc, char *argv[])
             selectMxl = arguments.at(++i);
             continue;
         }
+        if (argument == QStringLiteral("--select-form")
+            && i + 1 < arguments.size()) {
+            selectForm = arguments.at(++i);
+            continue;
+        }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
     }
@@ -77,6 +83,17 @@ int main(int argc, char *argv[])
 
     if (!selectMxl.isEmpty() && window.isFileOpen())
         window.selectTemplateForObject(selectMxl);
+
+    if (!selectForm.isEmpty() && window.isFileOpen()) {
+        QString objectQuery = selectForm;
+        QString formQuery;
+        const int separator = selectForm.indexOf(QLatin1Char(':'));
+        if (separator > 0) {
+            objectQuery = selectForm.left(separator);
+            formQuery = selectForm.mid(separator + 1);
+        }
+        window.selectFormForObject(objectQuery, formQuery);
+    }
 
     if (expandCommon)
         window.expandCommonBranch();
