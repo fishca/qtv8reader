@@ -67,6 +67,9 @@ struct FormDocument
     QVector<FormCommand> commands;
     // Синонимы реквизитов объекта/формы: имя -> заголовок.
     QHash<QString, QString> titles;
+    // Форма списка документа: платформа добавляет команды
+    // «Создать на основании», «Еще», «?».
+    bool runtimeListCommands = false;
 
     int itemCount() const;
     int fieldCount() const;

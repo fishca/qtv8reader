@@ -256,8 +256,12 @@ private:
         case Type::Decoration:
             return std::max(40.0, m_metrics.horizontalAdvance(item.synonym) + 10.0);
         case Type::Group: {
-            if (item.groupKind == 1)
-                return 110.0;
+            if (item.groupKind == 1) {
+                const QString title = item.synonym.isEmpty()
+                    ? humanizeCommand(item.name) : item.synonym;
+                return std::max(110.0,
+                    m_metrics.horizontalAdvance(title) + 44.0);
+            }
             if (item.widthUnits > 0)
                 return item.widthUnits * 10.0;
             if (isHorizontal(item)) {
@@ -284,6 +288,14 @@ private:
         default:
             return 80.0;
         }
+    }
+
+    bool isTopCommandBar(const v8reader::FormItem &item) const
+    {
+        return item.type == v8reader::FormItem::Type::Group
+            && item.groupKind == 0
+            && (item.name.contains(QStringLiteral("КоманднаяПанель"))
+                || item.synonym == QStringLiteral("Командная панель"));
     }
 
     bool isCommandBar(const v8reader::FormItem &item) const
@@ -491,7 +503,8 @@ private:
     }
 
     double layoutHorizontal(const QVector<const v8reader::FormItem *> &items,
-                            const QRectF &rect, int depth, bool allowWrap)
+                            const QRectF &rect, int depth, bool allowWrap,
+                            bool runtimeCommands = false)
     {
         QVector<const v8reader::FormItem *> visible;
         for (const v8reader::FormItem *item : items) {
@@ -502,6 +515,36 @@ private:
             return 0.0;
 
         const QHash<QString, QString> usage = usageLabels(items);
+
+        // 1С добавляет в форму списка документа команды, которых нет в модели.
+        v8reader::FormItem createBasedOn;
+        v8reader::FormItem more;
+        v8reader::FormItem help;
+        if (runtimeCommands && m_document.runtimeListCommands) {
+            createBasedOn.type = v8reader::FormItem::Type::Group;
+            createBasedOn.groupKind = 1;
+            createBasedOn.name = QStringLiteral("СоздатьНаОсновании");
+            createBasedOn.synonym = QStringLiteral("Создать на основании");
+            more.type = v8reader::FormItem::Type::Group;
+            more.groupKind = 1;
+            more.name = QStringLiteral("Еще");
+            more.synonym = QStringLiteral("Еще");
+            help.type = v8reader::FormItem::Type::Button;
+            help.typeCode = 31;
+            help.name = QStringLiteral("Справка");
+            help.synonym = QStringLiteral("?");
+
+            int insertAt = 0;
+            for (int i = 0; i < visible.size(); ++i) {
+                if (visible.at(i)->name == QStringLiteral("Создать")) {
+                    insertAt = i + 1;
+                    break;
+                }
+            }
+            visible.insert(insertAt, &createBasedOn);
+            visible.append(&more);
+            visible.append(&help);
+        }
 
         QVector<double> widths;
         for (int i = 0; i < visible.size(); ++i)
@@ -643,7 +686,8 @@ private:
             if (children.isEmpty())
                 return;
             if (isHorizontal(item))
-                layoutHorizontal(children, rect, depth, isCommandBar(item));
+                layoutHorizontal(children, rect, depth, isCommandBar(item),
+                                 isTopCommandBar(item));
             else
                 layoutVertical(children, rect, depth);
             return;

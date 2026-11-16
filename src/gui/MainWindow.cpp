@@ -2296,6 +2296,27 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
 
     document.name = entry.name;
     document.synonym = entry.synonym;
+    {
+        bool hasTable = false;
+        std::function<bool(const QVector<FormItem> &)> findTable =
+            [&](const QVector<FormItem> &items) -> bool {
+                for (const FormItem &item : items) {
+                    if (item.type == FormItem::Type::Table
+                        && (item.name == QStringLiteral("Список")
+                            || item.synonym == QStringLiteral("Список"))) {
+                        return true;
+                    }
+                    if (findTable(item.children))
+                        return true;
+                }
+                return false;
+            };
+        hasTable = findTable(document.items);
+        const bool isDocument = m_currentObject
+            && m_currentObject->typeTitle.contains(QStringLiteral("Документ"),
+                                                   Qt::CaseInsensitive);
+        document.runtimeListCommands = isDocument && hasTable;
+    }
     if (m_currentObject) {
         QHash<QString, QString> objectTitles;
         for (const MetadataSection &section : m_currentObject->sections) {
