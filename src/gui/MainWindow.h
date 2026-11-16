@@ -103,6 +103,13 @@ private:
                                      const MetadataCategory &category);
     QTreeWidgetItem *addPlaceholderCategoryItem(QTreeWidgetItem *parent,
                                                 const QString &guid);
+    void buildSubsystemTree(QTreeWidgetItem *parent, MetadataCategory &category);
+    QTreeWidgetItem *addSubsystemItem(QTreeWidgetItem *parent,
+                                      const MetadataObject &object,
+                                      int depth = 0);
+    void addSubsystemCompositionItems(QTreeWidgetItem *parent,
+                                      const QStringList &guids,
+                                      int depth = 0);
     QTreeWidgetItem *addObjectItem(QTreeWidgetItem *parent,
                                    const MetadataObject &object);
     void applyTreeFilter(const QString &text);
@@ -110,7 +117,7 @@ private:
     void updateTreeHint();
     void buildContainerTree();
 
-    MetadataObject *objectForItem(const QTreeWidgetItem *item) const;
+    MetadataObject *objectForItem(const QTreeWidgetItem *item);
     QTreeWidgetItem *findObjectItem(const QString &guid) const;
     void populateObjectItem(QTreeWidgetItem *item, MetadataObject &object);
     void ensureObjectItemChildren(const QString &guid);

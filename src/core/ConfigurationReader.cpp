@@ -10,6 +10,12 @@ namespace v8reader {
 namespace {
 
 constexpr int kMaxSearchDepth = 64;
+
+const QString &subsystemCategoryGuid()
+{
+    static const QString guid = QStringLiteral("37f2fa9a-b276-11d4-9435-004095e12fc7");
+    return guid;
+}
 constexpr int kMaxTableScanDepth = 10;
 
 QString scalarAt(const V8TextNode &node, int index)
@@ -311,6 +317,8 @@ void ConfigurationReader::clear()
     m_container.clear();
     m_configuration = Configuration();
     m_referenceNames.clear();
+    m_subsystemObjects.clear();
+    m_subsystemIndex.clear();
 }
 
 bool ConfigurationReader::open(const QString &filePath, QString *error)
@@ -935,6 +943,85 @@ ConfigurationReader::ReferenceName ConfigurationReader::referenceName(
     return result;
 }
 
+bool ConfigurationReader::loadSubsystemChildren(MetadataObject &subsystem)
+{
+    if (subsystem.childrenLoaded)
+        return true;
+
+    subsystem.childrenLoaded = true;
+    subsystem.childGuids.clear();
+
+    const QString elementName = subsystem.elementName.isEmpty() ? subsystem.guid
+                                                                : subsystem.elementName;
+    V8TextNode root;
+    if (!parseElementTree(elementName, &root))
+        return false;
+
+    // В элементе подсистемы четвёртый элемент корневого списка — таблица
+    // вложенных подсистем: {<GUID таблицы>, <количество>, <GUID>...}.
+    const V8TextNode *table = root.child(3);
+    if (!table || !table->isList() || table->children.size() < 2)
+        return true;
+
+    const QString tableGuid = scalarAt(*table, 0);
+    if (!tableGuid.isEmpty() && !V8Text::isGuid(tableGuid))
+        return true;
+
+    qint64 count = 0;
+    const qint64 available = static_cast<qint64>(table->children.size()) - 2;
+    if (!integerAt(*table, 1, &count) || count < 0 || count > available)
+        count = available;
+
+    for (qint64 i = 0; i < count; ++i) {
+        const V8TextNode &item = table->children.at(static_cast<int>(i) + 2);
+        const QString guid = isGuidNode(item) ? item.normalizedGuid()
+                                              : findFirstGuidDeep(item);
+        if (guid.isEmpty() || guid == MetadataCatalog::zeroGuid())
+            continue;
+        if (!subsystem.childGuids.contains(guid))
+            subsystem.childGuids.append(guid);
+    }
+
+    return true;
+}
+
+MetadataObject *ConfigurationReader::cachedSubsystem(const QString &guid) const
+{
+    if (guid.isEmpty())
+        return nullptr;
+    const auto it = m_subsystemIndex.constFind(guid.toLower());
+    return it != m_subsystemIndex.constEnd() ? it.value() : nullptr;
+}
+
+MetadataObject *ConfigurationReader::subsystemObject(const QString &guid)
+{
+    const QString normalized = V8Text::normalizeGuid(guid);
+    if (normalized.isEmpty())
+        return nullptr;
+
+    // Если подсистема есть в основном списке категории — возвращаем её.
+    if (MetadataObject *object = m_configuration.object(normalized))
+        return object;
+    if (MetadataObject *cached = cachedSubsystem(normalized))
+        return cached;
+
+    const MetadataCategoryInfo *info = MetadataCatalog::category(subsystemCategoryGuid());
+    if (!info)
+        return nullptr;
+
+    V8TextNode root;
+    if (!parseElementTree(normalized, &root))
+        return nullptr;
+
+    auto object = std::make_unique<MetadataObject>(
+        objectFromRoot(normalized, *info, root));
+    object->elementName = normalized;
+
+    MetadataObject *pointer = object.get();
+    m_subsystemObjects.push_back(std::move(object));
+    m_subsystemIndex.insert(normalized, pointer);
+    return pointer;
+}
 bool ConfigurationReader::readReferenceName(const QString &guid, QString *name,
                                             QString *synonym, QString *error) const
 {

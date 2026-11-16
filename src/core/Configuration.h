@@ -54,6 +54,9 @@ struct MetadataObject
     bool descriptorFound = false;
     bool rootObject = false;
     bool sectionsLoaded = false;
+    // Вложенные подсистемы (заполняется по требованию для объектов-подсистем).
+    bool childrenLoaded = false;
+    QStringList childGuids;
     QVector<MetadataSection> sections;
 
     QString displayName() const;

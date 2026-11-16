@@ -320,6 +320,12 @@ bool isStandardVisibleBranch(const QString &guid)
     return standardVisibleBranches().contains(guid.toLower());
 }
 
+bool isSubsystemCategory(const QString &guid)
+{
+    return guid.compare(QStringLiteral("37f2fa9a-b276-11d4-9435-004095e12fc7"),
+                        Qt::CaseInsensitive) == 0;
+}
+
 bool isCanonicalTopLevel(const QString &guid)
 {
     return canonicalTopLevelOrder().contains(guid.toLower());
@@ -817,6 +823,50 @@ QString MainWindow::smokeReport()
     lines << QStringLiteral("элементов выбранного раздела: %1").arg(entryCount);
     lines << QStringLiteral("состав после выбора: %1")
                  .arg(m_composition->topLevelItemCount());
+
+    // Проверяем иерархию подсистем.
+    std::function<QTreeWidgetItem *(QTreeWidgetItem *)> findSubsystemsCategory =
+        [&](QTreeWidgetItem *item) -> QTreeWidgetItem * {
+        if (item->data(0, KindRole).toInt() == CategoryItem
+            && item->text(0) == QStringLiteral("Подсистемы")) {
+            return item;
+        }
+        for (int i = 0; i < item->childCount(); ++i) {
+            if (QTreeWidgetItem *found = findSubsystemsCategory(item->child(i)))
+                return found;
+        }
+        return nullptr;
+    };
+
+    QTreeWidgetItem *subsystemsItem = nullptr;
+    for (int i = 0; i < m_tree->topLevelItemCount() && !subsystemsItem; ++i)
+        subsystemsItem = findSubsystemsCategory(m_tree->topLevelItem(i));
+
+    if (subsystemsItem) {
+        subsystemsItem->setExpanded(true);
+        QCoreApplication::processEvents();
+        const int rootCount = subsystemsItem->childCount();
+        int nestedCount = 0;
+        QTreeWidgetItem *firstWithChildren = nullptr;
+        for (int k = 0; k < rootCount; ++k) {
+            QTreeWidgetItem *subsystemItem = subsystemsItem->child(k);
+            if (subsystemItem->childCount() > 0) {
+                firstWithChildren = subsystemItem;
+                nestedCount = subsystemItem->childCount();
+                break;
+            }
+        }
+        lines << QStringLiteral("подсистемы: верхних %1, вложенных у первой %2")
+                     .arg(rootCount)
+                     .arg(nestedCount);
+        if (firstWithChildren) {
+            firstWithChildren->setExpanded(true);
+            m_tree->setCurrentItem(firstWithChildren);
+            m_tree->scrollToItem(firstWithChildren);
+            QCoreApplication::processEvents();
+        }
+    }
+
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -1090,12 +1140,101 @@ QTreeWidgetItem *MainWindow::addCategoryItem(QTreeWidgetItem *parent,
     font.setBold(true);
     categoryItem->setFont(0, font);
 
-    for (const MetadataObject &object : category.objects)
-        addObjectItem(categoryItem, object);
+    if (isSubsystemCategory(category.guid) && m_reader) {
+        MetadataCategory *mutableCategory =
+            m_reader->configuration().category(category.guid);
+        if (mutableCategory)
+            buildSubsystemTree(categoryItem, *mutableCategory);
+    } else {
+        for (const MetadataObject &object : category.objects)
+            addObjectItem(categoryItem, object);
+    }
 
     return categoryItem;
 }
 
+void MainWindow::buildSubsystemTree(QTreeWidgetItem *parent, MetadataCategory &category)
+{
+    if (!m_reader)
+        return;
+
+    // Вложенные подсистемы могут не входить в общий список категории,
+    // поэтому сначала собираем все GUID, упомянутые как дочерние.
+    QSet<QString> childGuids;
+    for (MetadataObject &object : category.objects) {
+        m_reader->loadSubsystemChildren(object);
+        for (const QString &guid : object.childGuids)
+            childGuids.insert(guid.toLower());
+    }
+
+    for (MetadataObject &object : category.objects) {
+        if (childGuids.contains(object.guid.toLower()))
+            continue;
+        addSubsystemItem(parent, object);
+    }
+}
+
+QTreeWidgetItem *MainWindow::addSubsystemItem(QTreeWidgetItem *parent,
+                                              const MetadataObject &object,
+                                              int depth)
+{
+    if (depth > 64)
+        return nullptr;
+    auto *item = new QTreeWidgetItem(parent);
+    item->setText(0, object.displayName());
+    item->setIcon(0, metadataIcon(categoryIconName(object.categoryGuid)));
+    item->setData(0, KindRole, ObjectItem);
+    item->setData(0, GuidRole, object.guid);
+    item->setData(0, LoadedRole, true);
+
+    QString tooltip = QStringLiteral("Подсистема: %1\nGUID: %2")
+                          .arg(object.displayName(), object.guid);
+    if (!object.synonym.isEmpty())
+        tooltip += QStringLiteral("\nСиноним: %1").arg(object.synonym);
+    if (!object.comment.isEmpty())
+        tooltip += QStringLiteral("\nКомментарий: %1").arg(object.comment);
+    item->setToolTip(0, tooltip);
+
+    MetadataObject *mutableObject = m_reader->configuration().object(object.guid);
+    if (!mutableObject)
+        mutableObject = m_reader->cachedSubsystem(object.guid);
+    if (!mutableObject)
+        return item;
+
+    m_reader->loadSubsystemChildren(*mutableObject);
+    for (const QString &childGuid : mutableObject->childGuids) {
+        MetadataObject *child = m_reader->subsystemObject(childGuid);
+        if (!child)
+            continue;
+        addSubsystemItem(item, *child, depth + 1);
+    }
+    return item;
+}
+
+void MainWindow::addSubsystemCompositionItems(QTreeWidgetItem *parent,
+                                              const QStringList &guids,
+                                              int depth)
+{
+    if (depth > 64)
+        return;
+    for (const QString &guid : guids) {
+        MetadataObject *child = m_reader->subsystemObject(guid);
+        if (!child)
+            continue;
+
+        auto *item = new QTreeWidgetItem(parent);
+        item->setText(0, QStringLiteral("Подсистема"));
+        item->setText(1, child->displayName());
+        item->setText(2, child->synonym);
+        item->setText(3, child->guid);
+        item->setText(4, child->comment);
+        item->setIcon(0, metadataIcon(categoryIconName(child->categoryGuid)));
+
+        m_reader->loadSubsystemChildren(*child);
+        if (!child->childGuids.isEmpty())
+            addSubsystemCompositionItems(item, child->childGuids, depth + 1);
+    }
+}
 QTreeWidgetItem *MainWindow::addPlaceholderCategoryItem(QTreeWidgetItem *parent,
                                                         const QString &guid)
 {
@@ -1148,6 +1287,9 @@ QTreeWidgetItem *MainWindow::addObjectItem(QTreeWidgetItem *parent,
 void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &object)
 {
     if (!item || !m_reader)
+        return;
+
+    if (isSubsystemCategory(object.categoryGuid))
         return;
 
     item->setData(0, LoadedRole, true);
@@ -1275,7 +1417,7 @@ void MainWindow::ensureObjectItemChildren(const QString &guid)
     }
 }
 
-MetadataObject *MainWindow::objectForItem(const QTreeWidgetItem *item) const
+MetadataObject *MainWindow::objectForItem(const QTreeWidgetItem *item)
 {
     if (!item || !m_reader)
         return nullptr;
@@ -1285,7 +1427,9 @@ MetadataObject *MainWindow::objectForItem(const QTreeWidgetItem *item) const
         return nullptr;
     }
     const QString guid = item->data(0, GuidRole).toString();
-    return m_reader->configuration().object(guid);
+    if (MetadataObject *object = m_reader->configuration().object(guid))
+        return object;
+    return m_reader->cachedSubsystem(guid);
 }
 
 QTreeWidgetItem *MainWindow::findObjectItem(const QString &guid) const
@@ -1574,6 +1718,17 @@ void MainWindow::showObject(MetadataObject &object)
     rows.append({QStringLiteral("Описание найдено"),
                  object.descriptorFound ? QStringLiteral("да") : QStringLiteral("нет")});
     rows.append({QStringLiteral("Модулей"), QString::number(m_currentModules.size())});
+
+    if (isSubsystemCategory(object.categoryGuid)) {
+        MetadataObject *mutableObject = m_reader->configuration().object(object.guid);
+        if (!mutableObject)
+            mutableObject = m_reader->cachedSubsystem(object.guid);
+        if (mutableObject) {
+            m_reader->loadSubsystemChildren(*mutableObject);
+            rows.append({QStringLiteral("Вложенных подсистем"),
+                         QString::number(mutableObject->childGuids.size())});
+        }
+    }
 
     for (const MetadataSection &section : object.sections) {
         rows.append({QStringLiteral("Состав: %1").arg(section.title),
@@ -1875,7 +2030,22 @@ void MainWindow::fillComposition(const MetadataObject &object)
 {
     m_composition->clear();
 
-
+    if (isSubsystemCategory(object.categoryGuid) && m_reader) {
+        MetadataObject *mutableObject = m_reader->configuration().object(object.guid);
+        if (!mutableObject)
+            mutableObject = m_reader->cachedSubsystem(object.guid);
+        if (mutableObject) {
+            m_reader->loadSubsystemChildren(*mutableObject);
+            auto *root = new QTreeWidgetItem(m_composition);
+            root->setText(0, QStringLiteral("Подсистема"));
+            root->setText(1, object.displayName());
+            root->setText(3, object.guid);
+            root->setIcon(0, metadataIcon(categoryIconName(object.categoryGuid)));
+            addSubsystemCompositionItems(root, mutableObject->childGuids);
+            root->setExpanded(true);
+        }
+        return;
+    }
 
     for (const MetadataSection &section : object.sections) {
         auto *sectionItem = new QTreeWidgetItem(m_composition);

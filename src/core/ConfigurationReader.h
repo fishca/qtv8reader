@@ -7,6 +7,9 @@
 
 #include <QHash>
 
+#include <memory>
+#include <vector>
+
 namespace v8reader {
 
 // Читает контейнер 1C:V8 и строит модель метаданных конфигурации,
@@ -36,6 +39,15 @@ public:
     // Разбирает состав объекта (реквизиты, формы, макеты...) по требованию.
     // Результат кэшируется в самом объекте.
     bool loadSections(MetadataObject &object) const;
+
+    // Иерархия подсистем: заполняет список вложенных подсистем объекта.
+    bool loadSubsystemChildren(MetadataObject &subsystem);
+
+    // Объект вложенной подсистемы по GUID (создаётся по требованию).
+    MetadataObject *subsystemObject(const QString &guid);
+
+    // Уже разобранная вложенная подсистема по GUID (без чтения контейнера).
+    MetadataObject *cachedSubsystem(const QString &guid) const;
 
     // Имя и синоним объекта, на который ссылается элемент контейнера
     // (используется для форм, макетов и прочих ссылочных таблиц состава).
@@ -90,6 +102,10 @@ private:
     V8Container m_container;
     Configuration m_configuration;
     mutable QHash<QString, ReferenceName> m_referenceNames;
+
+    // Кэш вложенных подсистем (объекты живут до закрытия файла).
+    std::vector<std::unique_ptr<MetadataObject>> m_subsystemObjects;
+    QHash<QString, MetadataObject *> m_subsystemIndex;
 };
 
 } // namespace v8reader
