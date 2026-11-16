@@ -4,7 +4,11 @@
 #include "core/Extractor.h"
 #include "core/V8Container.h"
 #include "core/V8Text.h"
+#include "gui/MxlView.h"
 #include "gui/PreviewDialog.h"
+
+#include "core/MxlReader.h"
+#include "core/V8Container.h"
 
 #include <QAction>
 #include <QApplication>
@@ -623,6 +627,10 @@ void MainWindow::setupTabs()
     connect(m_containerTree, &QTreeWidget::customContextMenuRequested,
             this, &MainWindow::onContainerContextMenu);
     m_tabs->addTab(m_containerTree, QStringLiteral("Контейнер"));
+
+    m_mxlView = new MxlView();
+    m_mxlView->setObjectName(QStringLiteral("mxlView"));
+    m_tabs->addTab(m_mxlView, QStringLiteral("Табличный документ"));
 }
 
 bool MainWindow::openFile(const QString &path)
@@ -913,6 +921,34 @@ QString MainWindow::smokeReport()
             lines << QStringLiteral("документы: первые узлы — %1")
                          .arg(firstChildren.join(QStringLiteral(", ")));
             break;
+        }
+    }
+    // Предпросмотр табличного документа: первый макет выбранного объекта.
+    if (richObject) {
+        QTreeWidgetItem *templatesSection = nullptr;
+        for (int i = 0; i < richObject->childCount(); ++i) {
+            QTreeWidgetItem *child = richObject->child(i);
+            if (child->data(0, KindRole).toInt() != SectionItem)
+                continue;
+            if (child->data(0, SectionKindRole).toInt()
+                == static_cast<int>(MetadataSectionKind::Templates)) {
+                templatesSection = child;
+                break;
+            }
+        }
+        if (templatesSection && templatesSection->childCount() > 0) {
+            templatesSection->setExpanded(true);
+            QCoreApplication::processEvents();
+            QTreeWidgetItem *templateEntry = templatesSection->child(0);
+            m_tree->setCurrentItem(templateEntry);
+            m_tree->scrollToItem(templateEntry);
+            QCoreApplication::processEvents();
+            lines << QStringLiteral("макет: %1, строк %2, колонок %3")
+                         .arg(m_mxlView && m_mxlView->hasDocument()
+                                  ? QStringLiteral("MXL разобран")
+                                  : QStringLiteral("не MXL"))
+                         .arg(m_mxlView ? m_mxlView->rowCount() : 0)
+                         .arg(m_mxlView ? m_mxlView->columnCount() : 0);
         }
     }
     return lines.join(QLatin1Char('\n'));
@@ -1666,6 +1702,12 @@ void MainWindow::clearObjectView()
     m_moduleEdit->clear();
     m_metadataEdit->clear();
     m_composition->clear();
+    if (m_mxlView) {
+        m_mxlView->clear();
+        const int index = m_tabs->indexOf(m_mxlView);
+        if (index >= 0)
+            m_tabs->setTabText(index, QStringLiteral("Табличный документ"));
+    }
 }
 
 void MainWindow::setProperties(const QVector<QPair<QString, QString>> &rows)
@@ -2030,10 +2072,76 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
     }
 
     m_extractAction->setEnabled(true);
+
+    if (kind == MetadataSectionKind::Templates)
+        loadTemplatePreview(*entry);
+
     statusBar()->showMessage(QStringLiteral("%1: %2")
                                  .arg(entry->typeTitle, entry->displayName()));
 }
 
+void MainWindow::loadTemplatePreview(const MetadataEntry &entry)
+{
+    if (!m_reader || !m_mxlView)
+        return;
+
+    const V8Container &container = m_reader->container();
+    const V8Element *element = nullptr;
+    if (!entry.guid.isEmpty())
+        element = container.find(entry.guid + QStringLiteral(".0"));
+    if (!element)
+        element = container.find(entry.guid);
+    if (!element && !entry.name.isEmpty())
+        element = container.find(entry.name);
+    if (!element && !entry.guid.isEmpty()) {
+        const QString prefix = entry.guid + QLatin1Char('.');
+        for (const V8Element &candidate : container.elements()) {
+            if (candidate.name == entry.guid || candidate.name.startsWith(prefix)) {
+                element = &candidate;
+                break;
+            }
+        }
+    }
+    if (!element) {
+        m_mxlView->setMessage(
+            QStringLiteral("Макет «%1» не найден в контейнере.").arg(entry.displayName()));
+        return;
+    }
+
+    QByteArray payload;
+    QString error;
+    if (!container.elementPayload(*element, &payload, nullptr, &error)) {
+        m_mxlView->setMessage(
+            QStringLiteral("Не удалось прочитать макет «%1»: %2")
+                .arg(entry.displayName(), error));
+        return;
+    }
+
+    if (!MxlReader::looksLikeMxl(payload)) {
+        m_mxlView->setMessage(
+            QStringLiteral("Макет «%1» не является табличным документом MXL.")
+                .arg(entry.displayName()));
+        return;
+    }
+
+    mxl::Document document;
+    if (!MxlReader::parseBytes(payload, &document, &error)) {
+        m_mxlView->setMessage(
+            QStringLiteral("Не удалось разобрать макет «%1»: %2")
+                .arg(entry.displayName(), error));
+        return;
+    }
+
+    m_mxlView->setDocument(document);
+    const int index = m_tabs->indexOf(m_mxlView);
+    if (index >= 0) {
+        m_tabs->setTabText(index,
+                           QStringLiteral("Табличный документ (%1×%2)")
+                               .arg(document.rowCount())
+                               .arg(document.maxColumn() + 1));
+        m_tabs->setCurrentIndex(index);
+    }
+}
 void MainWindow::showModuleNode(MetadataObject &object, int moduleIndex)
 {
     if (!m_reader)

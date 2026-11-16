@@ -27,6 +27,7 @@ class QTreeWidgetItem;
 namespace v8reader {
 
 class ConfigurationReader;
+class MxlView;
 
 class MainWindow : public QMainWindow
 {
@@ -142,6 +143,7 @@ private:
     void fillMetadata(const MetadataObject &object);
     void previewElement(int index);
     void saveElement(int index);
+    void loadTemplatePreview(const MetadataEntry &entry);
 
     MetadataObject *selectedObject();
     MetadataCategory *selectedCategory();
@@ -158,6 +160,7 @@ private:
     QTabWidget *m_tabs = nullptr;
     QTableWidget *m_properties = nullptr;
     QTreeWidget *m_composition = nullptr;
+    MxlView *m_mxlView = nullptr;
     QComboBox *m_moduleCombo = nullptr;
     QPlainTextEdit *m_moduleEdit = nullptr;
     QPlainTextEdit *m_metadataEdit = nullptr;

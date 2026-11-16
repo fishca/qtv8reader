@@ -33,6 +33,10 @@ add_library(qtv8reader_core STATIC
     src/core/ModuleExtractor.cpp
     src/core/Extractor.h
     src/core/Extractor.cpp
+    src/core/MxlDocument.h
+    src/core/MxlDocument.cpp
+    src/core/MxlReader.h
+    src/core/MxlReader.cpp
 )
 
 target_include_directories(qtv8reader_core PUBLIC src)
@@ -45,6 +49,8 @@ qt_add_executable(qtv8reader WIN32
     src/gui/MainWindow.cpp
     src/gui/PreviewDialog.h
     src/gui/PreviewDialog.cpp
+    src/gui/MxlView.h
+    src/gui/MxlView.cpp
 )
 
 target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets)
@@ -61,6 +67,7 @@ qt_add_executable(qtv8reader_tests
     tests/test_v8text.cpp
     tests/test_v8container.cpp
     tests/test_metadata.cpp
+    tests/test_mxl.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
 )
