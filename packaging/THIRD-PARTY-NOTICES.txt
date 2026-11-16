@@ -1,0 +1,29 @@
+qtv8reader использует компоненты третьих сторон.
+
+Qt 6 (Qt Core, Gui, Widgets, Concurrent, Network, Svg)
+  Copyright (C) The Qt Company Ltd.
+  Лицензия: GNU Lesser General Public License v3 (LGPL-3.0).
+  Динамическая компоновка: библиотеки Qt поставляются отдельными файлами,
+  пользователь может заменить их собственными сборками совместимой версии.
+  Исходный код Qt: https://download.qt.io/ и https://code.qt.io/
+  Условия лицензирования: https://www.qt.io/licensing/
+
+zlib
+  Copyright (C) Jean-loup Gailly and Mark Adler
+  Лицензия: zlib License.
+
+ICU (International Components for Unicode)
+  Copyright (C) Unicode, Inc.
+  Лицензия: Unicode License.
+
+MinGW-w64 runtime (libgcc, libstdc++, libwinpthread)
+  Copyright (C) Free Software Foundation, Inc.
+  Распространяется под GNU GPL с исключением для runtime-библиотек.
+
+libpng, FreeType, HarfBuzz, GLib, PCRE2, Brotli, zstd, bzip2, xz, libgcrypt,
+libxcb, libxkbcommon и другие библиотеки
+  Распространяются под соответствующими открытыми лицензиями; полные тексты
+  лицензий находятся в пакетах соответствующих библиотек и в их исходных
+  репозиториях.
+
+Проект qtv8reader: https://github.com/fishca/qtv8reader

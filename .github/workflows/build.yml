@@ -123,6 +123,7 @@ jobs:
                    ldd dist/Qt6*.dll; ldd dist/platforms/*.dll) 2>/dev/null \
                   | awk '{print $3}' | grep -iE '^/(ucrt64|mingw64)/bin/' | sort -u )
           for d in $deps; do cp -n "$d" dist/ 2>/dev/null || true; done
+          cp packaging/THIRD-PARTY-NOTICES.txt dist/THIRD-PARTY-NOTICES.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5

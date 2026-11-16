@@ -89,6 +89,7 @@ jobs:
           for d in $deps; do cp -n "$d" dist/ 2>/dev/null || true; done
 
           cp README.md dist/README.md
+          cp packaging/THIRD-PARTY-NOTICES.txt dist/THIRD-PARTY-NOTICES.txt
           mkdir -p "$PKG"
           cp -r dist/. "$PKG/"
           zip -9 -r "$PKG.zip" "$PKG"
@@ -163,12 +164,15 @@ jobs:
           TARBALL="qtv8reader-${RELEASE_TAG}-linux-x86_64.tar.gz"
           rm -rf AppDir
           mkdir -p AppDir/usr/bin AppDir/usr/share/applications \
-                   AppDir/usr/share/icons/hicolor/512x512/apps
+                   AppDir/usr/share/icons/hicolor/512x512/apps \
+                   AppDir/usr/share/doc/qtv8reader
           cp build/qtv8reader build/v8reader_cli AppDir/usr/bin/
           cp packaging/qtv8reader.desktop AppDir/usr/share/applications/
           cp packaging/qtv8reader.png \
              AppDir/usr/share/icons/hicolor/512x512/apps/qtv8reader.png
           cp packaging/qtv8reader.png AppDir/qtv8reader.png
+          cp packaging/THIRD-PARTY-NOTICES.txt AppDir/usr/share/doc/qtv8reader/
+          cp README.md AppDir/usr/share/doc/qtv8reader/README.md
 
           export QMAKE="$QT_ROOT_DIR/bin/qmake"
           export OUTPUT="$APPIMAGE_NAME"
@@ -254,6 +258,13 @@ jobs:
           * **Linux x64 tar.gz** — `qtv8reader-*-linux-x86_64.tar.gz` — те же бинарники
             с библиотеками, включая консольную утилиту `bin/v8reader_cli`.
           * `SHA256SUMS` — контрольные суммы.
+
+          ### Лицензии
+
+          Сборки включают Qt 6 (LGPL-3.0), zlib, ICU и другие библиотеки
+          с открытыми лицензиями — полный перечень в `THIRD-PARTY-NOTICES.txt`
+          в составе пакета. Библиотеки Qt поставляются отдельными файлами
+          и могут быть заменены совместимыми сборками.
 
           ### Возможности
 
