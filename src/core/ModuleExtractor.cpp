@@ -13,6 +13,15 @@ bool isMetadataTree(const QString &text)
     return trimmed.startsWith(QLatin1Char('{'));
 }
 
+// "Общие команды": у объекта-команды модуль лежит в элементах <GUID>.0…5
+// и называется «Модуль команды» (а не «Модуль объекта»).
+bool isCommonCommandCategory(const QString &categoryGuid)
+{
+    return categoryGuid.compare(QStringLiteral("2f1a5187-fb0e-4b05-9489-dc5dd6412348"),
+                                Qt::CaseInsensitive)
+        == 0;
+}
+
 int numericSuffix(const QString &elementName, const QString &guid)
 {
     if (!elementName.startsWith(guid + QLatin1Char('.'), Qt::CaseInsensitive))
@@ -58,13 +67,34 @@ QVector<ModuleInfo> ModuleExtractor::extractForObject(const MetadataObject &obje
 
     // Порядок проверки элементов повторяет логику эталонного v8_reader:
     // модуль объекта — <GUID>.0 .. .5, модуль менеджера — .3, .1, .2, .4, .5, .0.
-    for (const QString &guid : guids) {
-        appendUnique(extractPrimary(guid, {0, 1, 2, 3, 4, 5},
-                                    QStringLiteral("Модуль объекта")),
-                     QStringLiteral("Модуль объекта"));
-        appendUnique(extractPrimary(guid, {3, 1, 2, 4, 5, 0},
-                                    QStringLiteral("Модуль менеджера")),
-                     QStringLiteral("Модуль менеджера"));
+    if (isCommonCommandCategory(object.categoryGuid)) {
+        for (const QString &guid : guids) {
+            appendUnique(extractPrimary(guid, {0, 1, 2, 3, 4, 5},
+                                        QStringLiteral("Модуль команды")),
+                         QStringLiteral("Модуль команды"));
+        }
+    } else {
+        for (const QString &guid : guids) {
+            appendUnique(extractPrimary(guid, {0, 1, 2, 3, 4, 5},
+                                        QStringLiteral("Модуль объекта")),
+                         QStringLiteral("Модуль объекта"));
+            appendUnique(extractPrimary(guid, {3, 1, 2, 4, 5, 0},
+                                        QStringLiteral("Модуль менеджера")),
+                         QStringLiteral("Модуль менеджера"));
+        }
+    }
+
+    // Модули команд объекта: <GUID команды>.0 .. .5.
+    for (const MetadataSection &section : object.sections) {
+        if (section.kind != MetadataSectionKind::Commands)
+            continue;
+        for (const MetadataEntry &entry : section.entries) {
+            if (entry.guid.isEmpty())
+                continue;
+            appendUnique(extractPrimary(entry.guid, {0, 1, 2, 3, 4, 5},
+                                        QStringLiteral("Модуль команды")),
+                         QStringLiteral("Модуль команды «%1»").arg(entry.displayName()));
+        }
     }
 
     // Модули форм объекта: у формы модуль хранится в её собственных элементах

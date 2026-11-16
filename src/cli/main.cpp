@@ -23,6 +23,10 @@
 
 using namespace v8reader;
 
+#ifndef QTV8READER_VERSION
+#define QTV8READER_VERSION "0.0.0"
+#endif
+
 namespace {
 
 QTextStream &out()
@@ -47,6 +51,20 @@ QTextStream &err()
     return stream;
 }
 
+// «BeforeWrite_ПередЗаписью» → «ПередЗаписью».
+QString eventDisplayName(const QString &eventName)
+{
+    const int separator = eventName.indexOf(QLatin1Char('_'));
+    if (separator <= 0)
+        return eventName;
+    const QString prefix = eventName.left(separator);
+    for (const QChar ch : prefix) {
+        if (!ch.isLetter() || ch.unicode() > 127)
+            return eventName;
+    }
+    return eventName.mid(separator + 1);
+}
+
 void printHelp()
 {
     out() << QStringLiteral(
@@ -61,7 +79,8 @@ void printHelp()
         "  tree <файл>                 список элементов контейнера\n"
         "  dump <файл> <элемент>       данные элемента контейнера\n"
         "  metadata <файл> <объект>    текст метаданных объекта (-o — в файл)\n"
-        "  modules <файл> <объект>     тексты модулей объекта (-o — в файл)\n"
+        "  modules <файл> [объект]     тексты модулей объекта (-o — в файл);\n"
+        "                              без объекта — корневые модули конфигурации\n"
         "  composition <файл> <объект> состав объекта (реквизиты, формы, макеты)\n"
         "  mxl <файл> [объект]         табличный документ MXL: сводка (или файл .mxl)\n"
         "  extract <файл> <объект>     сохранить объект в каталог\n"
@@ -406,6 +425,39 @@ int commandModules(const QString &path, const QString &objectQuery,
     if (!loadConfiguration(path, &reader))
         return 1;
 
+    // Без объекта — корневые модули конфигурации.
+    if (objectQuery.trimmed().isEmpty()) {
+        const QVector<ModuleInfo> rootModules = reader.configurationModules();
+        if (rootModules.isEmpty()) {
+            out() << QStringLiteral("Корневые модули конфигурации не найдены\n");
+            return 0;
+        }
+        QString text;
+        for (int i = 0; i < rootModules.size(); ++i) {
+            const ModuleInfo &module = rootModules.at(i);
+            text += QStringLiteral("// === %1 (%2) ===\n")
+                        .arg(module.name, module.elementName);
+            text += module.text;
+            if (!module.text.endsWith(QLatin1Char('\n')))
+                text += QLatin1Char('\n');
+            if (i + 1 < rootModules.size())
+                text += QLatin1Char('\n');
+        }
+        if (!output.isEmpty()) {
+            if (!writeOutputFile(output, text.toUtf8(), nullptr)) {
+                err() << QStringLiteral("Ошибка записи файла %1\n").arg(output);
+                return 1;
+            }
+            out() << QStringLiteral("Сохранено: %1 (%2 байт, модулей: %3)\n")
+                         .arg(output)
+                         .arg(text.toUtf8().size())
+                         .arg(rootModules.size());
+            return 0;
+        }
+        out() << text;
+        return 0;
+    }
+
     QString error;
     MetadataObject *object = findObject(reader.configuration(), objectQuery, &error);
     if (!object) {
@@ -460,6 +512,8 @@ void printCompositionEntries(const QVector<MetadataEntry> &entries, int depth)
             out() << QStringLiteral(" / %1").arg(entry.synonym);
         if (!entry.guid.isEmpty())
             out() << QStringLiteral(" [%1]").arg(entry.guid);
+        if (!entry.typeText.isEmpty())
+            out() << QStringLiteral(" · %1").arg(entry.typeText);
         if (!entry.comment.isEmpty())
             out() << QStringLiteral(" — %1").arg(entry.comment);
         out() << QLatin1Char('\n');
@@ -486,7 +540,33 @@ int commandComposition(const QString &path, const QString &objectQuery)
     out() << QStringLiteral("%1 — %2\n").arg(object->displayName(), object->typeTitle);
     if (!object->synonym.isEmpty())
         out() << QStringLiteral("Синоним: %1\n").arg(object->synonym);
+    if (!object->typeText.isEmpty())
+        out() << QStringLiteral("Тип: %1\n").arg(object->typeText);
     out() << QStringLiteral("GUID: %1\n").arg(object->guid);
+
+    if (!object->eventName.isEmpty() || !object->sourceTypeGuids.isEmpty()) {
+        QStringList sources;
+        for (const QString &typeGuid : object->sourceTypeGuids) {
+            const QString name = reader.typeNameForGuid(typeGuid);
+            sources << (name.isEmpty() ? typeGuid : name);
+        }
+        if (!sources.isEmpty())
+            out() << QStringLiteral("Источник: %1\n")
+                         .arg(sources.join(QStringLiteral(", ")));
+        if (!object->eventName.isEmpty())
+            out() << QStringLiteral("Событие: %1\n")
+                         .arg(eventDisplayName(object->eventName));
+        if (!object->handlerProcedure.isEmpty()) {
+            QString moduleName;
+            reader.readReferenceName(object->handlerModuleGuid, &moduleName,
+                                     nullptr, nullptr);
+            out() << QStringLiteral("Обработчик: %1\n")
+                         .arg(moduleName.isEmpty()
+                                  ? object->handlerProcedure
+                                  : QStringLiteral("%1.%2")
+                                        .arg(moduleName, object->handlerProcedure));
+        }
+    }
 
     int total = 0;
     for (const MetadataSection &section : object->sections) {
@@ -723,7 +803,7 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("v8reader_cli"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.5.1"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(QTV8READER_VERSION));
 
 #ifdef Q_OS_WIN
     SetConsoleOutputCP(CP_UTF8);

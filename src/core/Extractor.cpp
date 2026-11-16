@@ -469,6 +469,8 @@ bool Extractor::writeComposition(const MetadataObject &object, const QString &di
                         .arg(entry.typeTitle, entry.displayName());
             if (!entry.guid.isEmpty())
                 text += QStringLiteral(" [%1]").arg(entry.guid);
+            if (!entry.typeText.isEmpty())
+                text += QStringLiteral(" · %1").arg(entry.typeText);
             if (!entry.synonym.isEmpty())
                 text += QStringLiteral(" / %1").arg(entry.synonym);
             if (!entry.comment.isEmpty())
@@ -480,6 +482,8 @@ bool Extractor::writeComposition(const MetadataObject &object, const QString &di
                             .arg(child.typeTitle, child.displayName());
                 if (!child.guid.isEmpty())
                     text += QStringLiteral(" [%1]").arg(child.guid);
+                if (!child.typeText.isEmpty())
+                    text += QStringLiteral(" · %1").arg(child.typeText);
                 if (!child.synonym.isEmpty())
                     text += QStringLiteral(" / %1").arg(child.synonym);
                 text += QLatin1Char('\n');

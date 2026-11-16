@@ -184,6 +184,25 @@ const V8TextNode *findFirstDescriptor(const V8TextNode &node, int depth)
     return nullptr;
 }
 
+// Ищет список, непосредственно содержащий узел target, и его индекс.
+bool findParentNode(const V8TextNode &node, const V8TextNode *target,
+                    const V8TextNode **parent, int *index)
+{
+    for (int i = 0; i < node.children.size(); ++i) {
+        const V8TextNode &child = node.children.at(i);
+        if (&child == target) {
+            if (parent)
+                *parent = &node;
+            if (index)
+                *index = i;
+            return true;
+        }
+        if (findParentNode(child, target, parent, index))
+            return true;
+    }
+    return false;
+}
+
 // Порядок разделов состава как в конфигураторе 1С: сначала данные объекта
 // (измерения, ресурсы, реквизиты, признаки учёта, значения, графы, табличные
 // части), затем формы, команды и макеты.
@@ -320,6 +339,8 @@ void ConfigurationReader::clear()
     m_container.clear();
     m_configuration = Configuration();
     m_referenceNames.clear();
+    m_typeIndex.clear();
+    m_rootDescriptorGuid.clear();
     m_subsystemObjects.clear();
     m_subsystemIndex.clear();
 }
@@ -390,6 +411,9 @@ bool ConfigurationReader::open(const QString &filePath, QString *error)
         m_configuration.name = scalarAt(*descriptor, 2);
         m_configuration.synonym = synonymOf(*descriptor);
         m_configuration.comment = scalarAt(*descriptor, 4);
+        QString descriptorGuidText;
+        if (descriptorGuid(*descriptor, &descriptorGuidText))
+            m_rootDescriptorGuid = descriptorGuidText;
     }
 
     const V8Element *versionElement = m_container.find(QStringLiteral("version"));
@@ -579,6 +603,9 @@ void ConfigurationReader::buildConfigurationMetadata(const V8TextNode &configRoo
     for (int i = 0; i < tasks.size() && i < built.size(); ++i)
         categories[tasks.at(i).categoryIndex].objects.append(built.at(i));
 
+    for (const MetadataObject &object : built)
+        registerTypeIds(object);
+
     for (const MetadataCategory &category : categories) {
         if (!category.objects.isEmpty())
             m_configuration.categories.append(category);
@@ -621,6 +648,14 @@ void ConfigurationReader::buildExternalObject(const V8TextNode &objectRoot,
         object.guid = rootGuid;
     }
 
+    const V8TextNode *ownDescriptor = findDescriptorByGuid(objectRoot, object.guid, 0);
+    if (!ownDescriptor)
+        ownDescriptor = findFirstDescriptor(objectRoot, 0);
+    if (ownDescriptor) {
+        object.typeIds = collectTypeIds(objectRoot, ownDescriptor);
+        object.typeText = typeTextForDescriptor(objectRoot, ownDescriptor);
+    }
+
     object.sections = buildSectionsByTableGuids(objectRoot, kMaxTableScanDepth);
     if (object.sections.isEmpty())
         object.sections = buildSectionsByTableGuids(objectRoot, kMaxSearchDepth);
@@ -635,6 +670,7 @@ void ConfigurationReader::buildExternalObject(const V8TextNode &objectRoot,
         m_configuration.configGuid = object.guid;
 
     category.objects.append(object);
+    registerTypeIds(object);
     m_configuration.categories.append(category);
 }
 
@@ -685,9 +721,281 @@ MetadataObject ConfigurationReader::objectFromRoot(const QString &guid,
             object.name = name;
         object.synonym = synonymOf(*descriptor);
         object.comment = scalarAt(*descriptor, 4);
+        object.typeIds = collectTypeIds(objectRoot, descriptor);
+        // Собственный тип значения: общие реквизиты, константы, параметры сеанса.
+        object.typeText = typeTextForDescriptor(objectRoot, descriptor);
+        if (category.guid.compare(QStringLiteral("4e828da6-0f44-4b5b-b1c0-a2b3cfe7bdcc"),
+                                  Qt::CaseInsensitive)
+            == 0) {
+            parseSubscription(objectRoot, descriptor, &object);
+            // У подписки «Pattern» — это тип источника, а не собственный тип.
+            object.typeText.clear();
+        }
     }
 
     return object;
+}
+
+// Подписка на событие: {…, <описатель>, {"Pattern", {"#", тип}…},
+//   "<Событие>", <GUID модуля>, "<ИмяОбработчика>"}.
+void ConfigurationReader::parseSubscription(const V8TextNode &objectRoot,
+                                            const V8TextNode *descriptor,
+                                            MetadataObject *object) const
+{
+    if (!descriptor || !object)
+        return;
+
+    const V8TextNode *holder = nullptr;
+    int descriptorIndex = -1;
+    if (!findParentNode(objectRoot, descriptor, &holder, &descriptorIndex))
+        return;
+
+    for (int i = descriptorIndex + 1; i < holder->children.size(); ++i) {
+        const V8TextNode &node = holder->children.at(i);
+        if (node.isList()) {
+            if (node.children.size() < 2 || !node.children.at(0).isScalar()
+                || node.children.at(0).value.trimmed() != QStringLiteral("Pattern")) {
+                continue;
+            }
+            for (int k = 1; k < node.children.size(); ++k) {
+                const V8TextNode &typeNode = node.children.at(k);
+                if (!typeNode.isList() || typeNode.children.size() < 2
+                    || !typeNode.children.at(0).isScalar()
+                    || typeNode.children.at(0).value.trimmed() != QStringLiteral("#")) {
+                    continue;
+                }
+                const QString typeGuid = guidOfNode(typeNode.children.at(1));
+                if (!typeGuid.isEmpty() && !object->sourceTypeGuids.contains(typeGuid))
+                    object->sourceTypeGuids.append(typeGuid);
+            }
+            continue;
+        }
+
+        if (isGuidNode(node)) {
+            if (object->handlerModuleGuid.isEmpty())
+                object->handlerModuleGuid = node.normalizedGuid();
+            continue;
+        }
+
+        const QString value = node.value.trimmed();
+        if (value.isEmpty())
+            continue;
+        if (object->eventName.isEmpty())
+            object->eventName = value;
+        else if (object->handlerProcedure.isEmpty())
+            object->handlerProcedure = value;
+    }
+}
+
+QString ConfigurationReader::typeNameForGuid(const QString &typeGuid) const
+{
+    return referenceTypeName(typeGuid);
+}
+
+QVector<ModuleInfo> ConfigurationReader::configurationModules() const
+{
+    QVector<ModuleInfo> modules;
+    if (!m_container.isOpen() || m_rootDescriptorGuid.isEmpty())
+        return modules;
+
+    // В формате 8.3 корневые модули лежат в элементах <GUID описателя>.<номер>:
+    // .6 — модуль приложения, .7 — модуль сеанса, .5 — модуль внешнего
+    // соединения, .0 — модуль обычного приложения (проверено на БП 3.0).
+    struct Spec
+    {
+        int suffix;
+        const char *title;
+    };
+    static const Spec specs[] = {
+        {6, "Модуль приложения"},
+        {7, "Модуль сеанса"},
+        {5, "Модуль внешнего соединения"},
+        {0, "Модуль обычного приложения"},
+    };
+
+    for (const Spec &spec : specs) {
+        const QString elementName =
+            QStringLiteral("%1.%2").arg(m_rootDescriptorGuid).arg(spec.suffix);
+        const V8Element *element = m_container.find(elementName);
+        if (!element)
+            continue;
+
+        V8Container nested;
+        if (!m_container.openNested(*element, &nested, nullptr))
+            continue;
+
+        ModuleInfo info;
+        info.name = QString::fromUtf8(spec.title);
+        info.elementName = elementName;
+        info.fromNestedContainer = true;
+        for (const V8Element &child : nested.elements()) {
+            if (child.name != QStringLiteral("text")
+                && child.name != QStringLiteral("module")) {
+                continue;
+            }
+            QByteArray payload;
+            if (!nested.elementPayload(child, &payload, nullptr, nullptr))
+                continue;
+            QString text;
+            if (readPayloadText(payload, &text, nullptr))
+                info.text = text;
+        }
+        modules.append(info);
+    }
+    return modules;
+}
+
+// Внутренние идентификаторы типов объекта стоят в его главном списке перед
+// описателем: {<вид>, <typeId…>, {0, <описатель>}, …}. У некоторых видов
+// (определяемые типы, перечисления) описатель лежит прямо в этом списке,
+// поэтому GUID-ы собираются по всем предкам описателя — те, что стоят перед
+// ним на пути от корня.
+QStringList ConfigurationReader::collectTypeIds(const V8TextNode &objectRoot,
+                                                const V8TextNode *descriptor) const
+{
+    QStringList ids;
+    if (!descriptor)
+        return ids;
+
+    const V8TextNode *current = descriptor;
+    const V8TextNode *parent = nullptr;
+    int index = -1;
+    while (findParentNode(objectRoot, current, &parent, &index)) {
+        for (int i = 0; i < index; ++i) {
+            const V8TextNode &child = parent->children.at(i);
+            if (!isGuidNode(child))
+                continue;
+            const QString guid = child.normalizedGuid();
+            if (!guid.isEmpty() && !ids.contains(guid))
+                ids.append(guid);
+        }
+        current = parent;
+    }
+    return ids;
+}
+
+void ConfigurationReader::registerTypeIds(const MetadataObject &object)
+{
+    const QString name = object.displayName();
+    if (name.isEmpty())
+        return;
+
+    for (const QString &typeId : object.typeIds) {
+        if (typeId.isEmpty() || m_typeIndex.contains(typeId))
+            continue;
+        TypeObject entry;
+        entry.typeTitle = object.typeTitle;
+        entry.name = name;
+        m_typeIndex.insert(typeId, entry);
+    }
+}
+
+QString ConfigurationReader::referenceTypeName(const QString &typeGuid) const
+{
+    const auto it = m_typeIndex.constFind(typeGuid);
+    if (it == m_typeIndex.constEnd())
+        return QString();
+
+    static const QHash<QString, QString> prefixes = {
+        {QStringLiteral("Справочник"), QStringLiteral("СправочникСсылка")},
+        {QStringLiteral("Документ"), QStringLiteral("ДокументСсылка")},
+        {QStringLiteral("Перечисление"), QStringLiteral("ПеречислениеСсылка")},
+        {QStringLiteral("План обмена"), QStringLiteral("ПланОбменаСсылка")},
+        {QStringLiteral("План счетов"), QStringLiteral("ПланСчетовСсылка")},
+        {QStringLiteral("План видов характеристик"),
+         QStringLiteral("ПланВидовХарактеристикСсылка")},
+        {QStringLiteral("План видов расчета"), QStringLiteral("ПланВидовРасчетаСсылка")},
+        {QStringLiteral("Бизнес-процесс"), QStringLiteral("БизнесПроцессСсылка")},
+        {QStringLiteral("Задача"), QStringLiteral("ЗадачаСсылка")},
+        {QStringLiteral("Внешний источник данных"),
+         QStringLiteral("ВнешнийИсточникДанныхСсылка")},
+        {QStringLiteral("Определяемый тип"), QStringLiteral("ОпределяемыйТип")},
+    };
+
+    const QString prefix = prefixes.value(it->typeTitle);
+    if (prefix.isEmpty())
+        return QStringLiteral("%1.%2").arg(it->typeTitle, it->name);
+    return QStringLiteral("%1.%2").arg(prefix, it->name);
+}
+
+// Разбор одного типа из списка «Pattern»:
+//   {"S",<длина>,<перем.>} — строка, {"N",<точность>,<масштаб>,…} — число,
+//   {"B"} — булево, {"D",…} — дата, {"#",<GUID>} — ссылочный тип.
+QString ConfigurationReader::typeTextFromNode(const V8TextNode &typeNode) const
+{
+    if (!typeNode.isList() || typeNode.children.isEmpty())
+        return QString();
+
+    const QString code = typeNode.children.at(0).isScalar()
+                             ? typeNode.children.at(0).value.trimmed()
+                             : QString();
+
+    if (code == QStringLiteral("S")) {
+        qint64 length = 0;
+        if (integerAt(typeNode, 1, &length) && length > 0)
+            return QStringLiteral("Строка(%1)").arg(length);
+        return QStringLiteral("Строка");
+    }
+    if (code == QStringLiteral("N")) {
+        qint64 precision = 0;
+        qint64 scale = 0;
+        integerAt(typeNode, 1, &precision);
+        integerAt(typeNode, 2, &scale);
+        if (precision > 0 && scale > 0)
+            return QStringLiteral("Число(%1,%2)").arg(precision).arg(scale);
+        if (precision > 0)
+            return QStringLiteral("Число(%1)").arg(precision);
+        return QStringLiteral("Число");
+    }
+    if (code == QStringLiteral("B"))
+        return QStringLiteral("Булево");
+    if (code == QStringLiteral("D"))
+        return QStringLiteral("Дата");
+    if (code == QStringLiteral("#")) {
+        const QString typeGuid = typeNode.children.size() > 1
+                                     ? guidOfNode(typeNode.children.at(1))
+                                     : QString();
+        const QString name = referenceTypeName(typeGuid);
+        return name.isEmpty() ? QStringLiteral("Ссылка") : name;
+    }
+    return QString();
+}
+
+// Тип значения лежит в списке «Pattern» рядом с описателем:
+//   {2, <описатель>, {"Pattern", <тип>, …}}
+QString ConfigurationReader::typeTextForDescriptor(const V8TextNode &root,
+                                                   const V8TextNode *descriptor) const
+{
+    if (!descriptor)
+        return QString();
+
+    const V8TextNode *holder = nullptr;
+    int descriptorIndex = -1;
+    if (!findParentNode(root, descriptor, &holder, &descriptorIndex))
+        return QString();
+
+    for (int i = descriptorIndex + 1; i < holder->children.size(); ++i) {
+        const V8TextNode &candidate = holder->children.at(i);
+        if (!candidate.isList() || candidate.children.size() < 2)
+            continue;
+        if (!candidate.children.at(0).isScalar()
+            || candidate.children.at(0).value.trimmed() != QStringLiteral("Pattern"))
+            continue;
+
+        QStringList parts;
+        for (int k = 1; k < candidate.children.size(); ++k) {
+            const QString text = typeTextFromNode(candidate.children.at(k));
+            if (!text.isEmpty() && !parts.contains(text))
+                parts.append(text);
+        }
+        return parts.join(QStringLiteral(", "));
+    }
+    return QString();
+}
+
+QString ConfigurationReader::typeTextForItem(const V8TextNode &item) const
+{
+    return typeTextForDescriptor(item, findFirstDescriptor(item, 0));
 }
 
 QVector<MetadataSection> ConfigurationReader::buildSections(const V8TextNode &objectRoot,
@@ -840,6 +1148,7 @@ MetadataEntry ConfigurationReader::buildEntryFromItem(const V8TextNode &item,
         entry.name = descriptor.name;
         entry.synonym = descriptor.synonym;
         entry.comment = descriptor.comment;
+        entry.typeText = typeTextForItem(item);
         return entry;
     }
 

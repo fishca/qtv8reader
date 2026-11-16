@@ -6,12 +6,16 @@
 #include <QStringList>
 #include <QTextStream>
 
+#ifndef QTV8READER_VERSION
+#define QTV8READER_VERSION "0.0.0"
+#endif
+
 int main(int argc, char *argv[])
 {
     QApplication application(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("qtv8reader"));
     QCoreApplication::setApplicationName(QStringLiteral("qtv8reader"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.5.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(QTV8READER_VERSION));
 
     QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
 

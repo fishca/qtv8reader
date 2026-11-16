@@ -25,6 +25,9 @@ struct MetadataEntry
     QString synonym;
     QString comment;
     QString typeTitle;
+    // Тип значения (для реквизитов, измерений, ресурсов): «Строка(50)»,
+    // «Число(15,2)», «СправочникСсылка.Валюты», «Дата» и т. п.
+    QString typeText;
     QVector<MetadataEntry> children;
 
     QString displayName() const;
@@ -49,14 +52,25 @@ struct MetadataObject
     QString categoryGuid;
     QString categoryTitle;
     QString typeTitle;
+    // Тип собственного значения объекта (общий реквизит, константа,
+    // параметр сеанса): «Строка(100)», «Булево», «СправочникСсылка.…».
+    QString typeText;
     QString elementName;
     bool elementFound = false;
     bool descriptorFound = false;
     bool rootObject = false;
     bool sectionsLoaded = false;
+    // Подписка на событие: источник (типы), событие и обработчик.
+    QStringList sourceTypeGuids;
+    QString eventName;
+    QString handlerModuleGuid;
+    QString handlerProcedure;
     // Вложенные подсистемы (заполняется по требованию для объектов-подсистем).
     bool childrenLoaded = false;
     QStringList childGuids;
+    // Внутренние идентификаторы типов объекта (СправочникСсылка, Объект, …).
+    // Используются для расшифровки типов реквизитов.
+    QStringList typeIds;
     QVector<MetadataSection> sections;
 
     QString displayName() const;

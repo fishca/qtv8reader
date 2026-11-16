@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.5.1
+    VERSION 0.6.0
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -61,15 +61,19 @@ qt_add_executable(qtv8reader WIN32
     src/gui/MxlPrinter.cpp
     src/gui/FormView.h
     src/gui/FormView.cpp
+    src/gui/BslHighlighter.h
+    src/gui/BslHighlighter.cpp
 )
 
 target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
+target_compile_definitions(qtv8reader PRIVATE QTV8READER_VERSION="${PROJECT_VERSION}")
 
 add_executable(v8reader_cli
     src/cli/main.cpp
 )
 
 target_link_libraries(v8reader_cli PRIVATE qtv8reader_core)
+target_compile_definitions(v8reader_cli PRIVATE QTV8READER_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
 

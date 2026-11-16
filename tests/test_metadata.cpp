@@ -26,6 +26,23 @@ const QString kTabularAttributeGuid =
 const QString kFormGuid = QStringLiteral("dddddddd-dddd-dddd-dddd-dddddddddddd");
 const QString kTemplateGuid = QStringLiteral("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
 
+// Справочник с типами реквизитов (строки, числа, ссылки и т. д.).
+const QString kTypedConfigGuid = QStringLiteral("77777777-7777-7777-7777-777777777777");
+const QString kTypedCatalogGuid = QStringLiteral("88888888-8888-8888-8888-888888888888");
+const QString kTypedTypeId1 = QStringLiteral("10101010-1010-1010-1010-101010101010");
+const QString kTypedTypeId2 = QStringLiteral("20202020-2020-2020-2020-202020202020");
+const QString kTypedAttrString = QStringLiteral("a1010101-0101-0101-0101-010101010101");
+const QString kTypedAttrNumber = QStringLiteral("a2020202-0202-0202-0202-020202020202");
+const QString kTypedAttrBool = QStringLiteral("a3030303-0303-0303-0303-030303030303");
+const QString kTypedAttrDate = QStringLiteral("a4040404-0404-0404-0404-040404040404");
+const QString kTypedAttrRef = QStringLiteral("a5050505-0505-0505-0505-050505050505");
+const QString kTypedAttrComposite = QStringLiteral("a6060606-0606-0606-0606-060606060606");
+const QString kTypedCommonGuid = QStringLiteral("30303030-3030-3030-3030-303030303030");
+const QString kCommandConfigGuid = QStringLiteral("60606060-6060-6060-6060-606060606060");
+const QString kCommandGuid = QStringLiteral("70707070-7070-7070-7070-707070707070");
+const QString kSubscriptionGuid = QStringLiteral("80808080-8080-8080-8080-808080808080");
+const QString kHandlerModuleGuid = QStringLiteral("90909090-9090-9090-9090-909090909090");
+
 const QString kModuleText = QStringLiteral(
     "// Модуль объекта\n"
     "Процедура ПриСозданииОбъекта()\n"
@@ -121,6 +138,70 @@ QByteArray buildContainer(int version, QString *error)
     return TestContainerBuilder::build(version, elements, error);
 }
 
+// Синтетическая конфигурация с одним справочником, у которого реквизиты
+// всех основных типов (строка, число, булево, дата, ссылка, составной тип).
+QString typedConfigText()
+{
+    return QStringLiteral(
+               "{3,{1,0,%1},\"ТестТипы\",{0,\"ru\",\"Тест типов\"},\"\",\n"
+               "{cf4abea6-37b2-11d4-940f-008048da11f9,1,%2},\n"
+               "{15794563-ccec-41f6-a83c-ec5f7b9a5bc1,1,%3}}")
+        .arg(kTypedConfigGuid, kTypedCatalogGuid, kTypedCommonGuid);
+}
+
+// Общий реквизит: у объекта есть собственный тип значения (Pattern).
+QString typedCommonAttributeText()
+{
+    QString text = QStringLiteral(
+        "{1,\n"
+        "{5,\n"
+        "{27,\n"
+        "{2,\n"
+        "{2,{1,0,$CA$},\"ОбщийРеквизит1\",{0,\"ru\",\"Общий реквизит 1\"},\"\"},\n"
+        "{\"Pattern\",{\"S\",100,1}}}\n"
+        ",0,\n"
+        "{0}\n"
+        "},0}\n"
+        "}");
+    text.replace(QStringLiteral("$CA$"), kTypedCommonGuid);
+    return text;
+}
+
+QString typedCatalogText()
+{
+    QString text = QStringLiteral(
+        "{1,\n"
+        "{56,$TYPE1$,$TYPE2$,\n"
+        "{0,\n"
+        "{3,{1,0,$CAT$},\"СправочникТипы\",{0,\"ru\",\"Справочник типов\"},\"\"}},\n"
+        "2,\n"
+        "{cf4abea7-37b2-11d4-940f-008048da11f9,6,\n"
+        "{{2,{3,{1,0,$A1$},\"Строка1\",{0,\"ru\",\"Строка 1\"},\"\"},"
+        "{\"Pattern\",{\"S\",50,1}}},0},\n"
+        "{{2,{3,{1,0,$A2$},\"Число1\",{0,\"ru\",\"Число 1\"},\"\"},"
+        "{\"Pattern\",{\"N\",15,2,1}}},0},\n"
+        "{{2,{3,{1,0,$A3$},\"Булево1\",{0,\"ru\",\"Булево 1\"},\"\"},"
+        "{\"Pattern\",{\"B\"}}},0},\n"
+        "{{2,{3,{1,0,$A4$},\"Дата1\",{0,\"ru\",\"Дата 1\"},\"\"},"
+        "{\"Pattern\",{\"D\",\"D\"}}},0},\n"
+        "{{2,{3,{1,0,$A5$},\"Ссылка1\",{0,\"ru\",\"Ссылка 1\"},\"\"},"
+        "{\"Pattern\",{\"#\",$TYPE1$}}},0},\n"
+        "{{2,{3,{1,0,$A6$},\"Составной1\",{0,\"ru\",\"Составной 1\"},\"\"},"
+        "{\"Pattern\",{\"#\",$TYPE1$},{\"S\",20,1}}},0}}\n"
+        "}\n"
+        "}");
+    text.replace(QStringLiteral("$TYPE1$"), kTypedTypeId1);
+    text.replace(QStringLiteral("$TYPE2$"), kTypedTypeId2);
+    text.replace(QStringLiteral("$CAT$"), kTypedCatalogGuid);
+    text.replace(QStringLiteral("$A1$"), kTypedAttrString);
+    text.replace(QStringLiteral("$A2$"), kTypedAttrNumber);
+    text.replace(QStringLiteral("$A3$"), kTypedAttrBool);
+    text.replace(QStringLiteral("$A4$"), kTypedAttrDate);
+    text.replace(QStringLiteral("$A5$"), kTypedAttrRef);
+    text.replace(QStringLiteral("$A6$"), kTypedAttrComposite);
+    return text;
+}
+
 // Синтетический контейнер расширения конфигурации (.cfe).
 QByteArray buildExtensionContainer(QString *error)
 {
@@ -212,6 +293,10 @@ class TestMetadata : public QObject
 private slots:
     void parseConfiguration();
     void objectComposition();
+    void attributeTypes();
+    void commandModule();
+    void eventSubscription();
+    void configurationModules();
     void findsModules();
     void extractsObject();
     void extractsAll();
@@ -347,6 +432,211 @@ void TestMetadata::objectComposition()
     QCOMPARE(forms->entries.size(), 1);
     QCOMPARE(forms->entries.at(0).name, QStringLiteral("Форма1"));
     QCOMPARE(forms->entries.at(0).guid, kFormGuid);
+}
+
+void TestMetadata::attributeTypes()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    QString error;
+    const QVector<TestElement> elements = {
+        {QStringLiteral("root"), QStringLiteral("{2,%1,{1,0,0,0}}")
+                                     .arg(kTypedConfigGuid).toUtf8(), true},
+        {QStringLiteral("version"), QStringLiteral("{216,0,{80327,0}}").toUtf8(),
+         false},
+        {kTypedConfigGuid, typedConfigText().toUtf8(), true},
+        {kTypedCatalogGuid, typedCatalogText().toUtf8(), true},
+        {kTypedCommonGuid, typedCommonAttributeText().toUtf8(), true},
+    };
+    const QByteArray data = TestContainerBuilder::build16(elements, &error);
+    QVERIFY2(!data.isEmpty(), qPrintable(error));
+
+    const QString path = temp.filePath(QStringLiteral("types.cf"));
+    QVERIFY2(writeFile(path, data, &error), qPrintable(error));
+
+    ConfigurationReader reader;
+    QVERIFY2(reader.open(path, &error), qPrintable(error));
+
+    MetadataObject *catalog = reader.configuration().object(kTypedCatalogGuid);
+    QVERIFY(catalog);
+    QVERIFY(reader.loadSections(*catalog));
+
+    const MetadataSection *attributes = sectionByKind(
+        *catalog, MetadataSectionKind::Attributes);
+    QVERIFY(attributes);
+    QCOMPARE(attributes->entries.size(), 6);
+
+    const auto typeOf = [attributes](const QString &name) {
+        for (const MetadataEntry &entry : attributes->entries) {
+            if (entry.name == name)
+                return entry.typeText;
+        }
+        return QString();
+    };
+
+    QCOMPARE(typeOf(QStringLiteral("Строка1")), QStringLiteral("Строка(50)"));
+    QCOMPARE(typeOf(QStringLiteral("Число1")), QStringLiteral("Число(15,2)"));
+    QCOMPARE(typeOf(QStringLiteral("Булево1")), QStringLiteral("Булево"));
+    QCOMPARE(typeOf(QStringLiteral("Дата1")), QStringLiteral("Дата"));
+    QCOMPARE(typeOf(QStringLiteral("Ссылка1")),
+             QStringLiteral("СправочникСсылка.СправочникТипы"));
+    QCOMPARE(typeOf(QStringLiteral("Составной1")),
+             QStringLiteral("СправочникСсылка.СправочникТипы, Строка(20)"));
+
+    // У самого справочника собственного типа значения нет.
+    QVERIFY(catalog->typeText.isEmpty());
+
+    // У общего реквизита тип значения — свойство объекта.
+    const MetadataObject *common = reader.configuration().object(kTypedCommonGuid);
+    QVERIFY(common);
+    QCOMPARE(common->name, QStringLiteral("ОбщийРеквизит1"));
+    QCOMPARE(common->typeTitle, QStringLiteral("Общий реквизит"));
+    QCOMPARE(common->typeText, QStringLiteral("Строка(100)"));
+}
+
+void TestMetadata::commandModule()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    QString error;
+    const QString cmdConfigText = QStringLiteral(
+        "{3,{1,0,%1},\"ТестКоманды\",{0,\"ru\",\"Тест команд\"},\"\",\n"
+        "{2f1a5187-fb0e-4b05-9489-dc5dd6412348,1,%2}}")
+        .arg(kCommandConfigGuid, kCommandGuid);
+    const QVector<TestElement> elements = {
+        {QStringLiteral("root"), QStringLiteral("{2,%1,{1,0,0,0}}")
+                                     .arg(kCommandConfigGuid).toUtf8(), true},
+        {QStringLiteral("version"), QStringLiteral("{216,0,{80327,0}}").toUtf8(),
+         false},
+        {kCommandConfigGuid, cmdConfigText.toUtf8(), true},
+        {kCommandGuid,
+         QStringLiteral("{3,{1,0,%1},\"Команда1\",{0,\"ru\",\"Команда 1\"},\"\"}")
+             .arg(kCommandGuid)
+             .toUtf8(),
+         true},
+        {kCommandGuid + QStringLiteral(".0"), kModuleText.toUtf8(), true},
+    };
+    const QByteArray data = TestContainerBuilder::build16(elements, &error);
+    QVERIFY2(!data.isEmpty(), qPrintable(error));
+
+    const QString path = temp.filePath(QStringLiteral("commands.cf"));
+    QVERIFY2(writeFile(path, data, &error), qPrintable(error));
+
+    ConfigurationReader reader;
+    QVERIFY2(reader.open(path, &error), qPrintable(error));
+
+    const MetadataObject *command = reader.configuration().object(kCommandGuid);
+    QVERIFY(command);
+    QCOMPARE(command->typeTitle, QStringLiteral("Общая команда"));
+
+    ModuleExtractor extractor(reader.container());
+    const QVector<ModuleInfo> modules = extractor.extractForObject(*command);
+    QCOMPARE(modules.size(), 1);
+    QCOMPARE(modules.at(0).name, QStringLiteral("Модуль команды"));
+    QCOMPARE(modules.at(0).elementName, kCommandGuid + QStringLiteral(".0"));
+    QVERIFY(modules.at(0).text.contains(QStringLiteral("ПриСозданииОбъекта")));
+}
+
+void TestMetadata::eventSubscription()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    QString error;
+    const QString configText = QStringLiteral(
+        "{3,{1,0,%1},\"ТестПодписки\",{0,\"ru\",\"Тест подписок\"},\"\",\n"
+        "{cf4abea6-37b2-11d4-940f-008048da11f9,1,%2},\n"
+        "{4e828da6-0f44-4b5b-b1c0-a2b3cfe7bdcc,1,%3}}")
+        .arg(kTypedConfigGuid, kTypedCatalogGuid, kSubscriptionGuid);
+    const QString subscriptionText = QStringLiteral(
+        "{1,{1,{3,{1,0,%1},\"Подписка1\",{0,\"ru\",\"Подписка 1\"},\"\"},"
+        "{\"Pattern\",{\"#\",%2}},\"BeforeWrite_ПередЗаписью\",%3,"
+        "\"Обработчик1\"}}")
+        .arg(kSubscriptionGuid, kTypedTypeId1, kHandlerModuleGuid);
+    const QString moduleText = QStringLiteral(
+        "{3,{1,0,%1},\"ОбщийМодуль1\",{0,\"ru\",\"Общий модуль 1\"},\"\"}")
+        .arg(kHandlerModuleGuid);
+
+    const QVector<TestElement> elements = {
+        {QStringLiteral("root"), QStringLiteral("{2,%1,{1,0,0,0}}")
+                                     .arg(kTypedConfigGuid).toUtf8(), true},
+        {QStringLiteral("version"), QStringLiteral("{216,0,{80327,0}}").toUtf8(),
+         false},
+        {kTypedConfigGuid, configText.toUtf8(), true},
+        {kTypedCatalogGuid, typedCatalogText().toUtf8(), true},
+        {kSubscriptionGuid, subscriptionText.toUtf8(), true},
+        {kHandlerModuleGuid, moduleText.toUtf8(), true},
+    };
+    const QByteArray data = TestContainerBuilder::build16(elements, &error);
+    QVERIFY2(!data.isEmpty(), qPrintable(error));
+
+    const QString path = temp.filePath(QStringLiteral("subscriptions.cf"));
+    QVERIFY2(writeFile(path, data, &error), qPrintable(error));
+
+    ConfigurationReader reader;
+    QVERIFY2(reader.open(path, &error), qPrintable(error));
+
+    const MetadataObject *subscription = reader.configuration().object(kSubscriptionGuid);
+    QVERIFY(subscription);
+    QCOMPARE(subscription->typeTitle, QStringLiteral("Подписка на событие"));
+    QCOMPARE(subscription->typeText, QString());
+    QCOMPARE(subscription->sourceTypeGuids.size(), 1);
+    QCOMPARE(subscription->sourceTypeGuids.at(0), kTypedTypeId1);
+    QCOMPARE(subscription->eventName, QStringLiteral("BeforeWrite_ПередЗаписью"));
+    QCOMPARE(subscription->handlerModuleGuid, kHandlerModuleGuid);
+    QCOMPARE(subscription->handlerProcedure, QStringLiteral("Обработчик1"));
+    QCOMPARE(reader.typeNameForGuid(kTypedTypeId1),
+             QStringLiteral("СправочникСсылка.СправочникТипы"));
+
+    QString moduleName;
+    QVERIFY(reader.readReferenceName(kHandlerModuleGuid, &moduleName, nullptr, nullptr));
+    QCOMPARE(moduleName, QStringLiteral("ОбщийМодуль1"));
+}
+
+void TestMetadata::configurationModules()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    QString error;
+    const QByteArray nested = TestContainerBuilder::build16(
+        {
+            {QStringLiteral("info"), QStringLiteral("{3,1,0,\"\",0}").toUtf8(), false},
+            {QStringLiteral("text"), kModuleText.toUtf8(), false},
+        },
+        &error);
+    QVERIFY2(!nested.isEmpty(), qPrintable(error));
+
+    const QString configText = QStringLiteral(
+        "{3,{1,0,%1},\"ТестМодули\",{0,\"ru\",\"Тест модулей\"},\"\",\n"
+        "{cf4abea6-37b2-11d4-940f-008048da11f9,1,%2}}")
+        .arg(kTypedConfigGuid, kTypedCatalogGuid);
+
+    const QVector<TestElement> elements = {
+        {QStringLiteral("root"), QStringLiteral("{2,%1,{1,0,0,0}}")
+                                     .arg(kTypedConfigGuid).toUtf8(), true},
+        {QStringLiteral("version"), QStringLiteral("{216,0,{80327,0}}").toUtf8(),
+         false},
+        {kTypedConfigGuid, configText.toUtf8(), true},
+        {kTypedCatalogGuid, typedCatalogText().toUtf8(), true},
+        {kTypedConfigGuid + QStringLiteral(".6"), nested, true},
+    };
+    const QByteArray data = TestContainerBuilder::build16(elements, &error);
+    QVERIFY2(!data.isEmpty(), qPrintable(error));
+
+    const QString path = temp.filePath(QStringLiteral("modules.cf"));
+    QVERIFY2(writeFile(path, data, &error), qPrintable(error));
+
+    ConfigurationReader reader;
+    QVERIFY2(reader.open(path, &error), qPrintable(error));
+
+    const QVector<ModuleInfo> modules = reader.configurationModules();
+    QCOMPARE(modules.size(), 1);
+    QCOMPARE(modules.at(0).name, QStringLiteral("Модуль приложения"));
+    QCOMPARE(modules.at(0).elementName, kTypedConfigGuid + QStringLiteral(".6"));
+    QVERIFY(modules.at(0).text.contains(QStringLiteral("ПриСозданииОбъекта")));
 }
 
 void TestMetadata::findsModules()

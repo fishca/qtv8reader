@@ -2,6 +2,7 @@
 #define QTV8READER_CONFIGURATIONREADER_H
 
 #include "core/Configuration.h"
+#include "core/ModuleExtractor.h"
 #include "core/V8Container.h"
 #include "core/V8Text.h"
 
@@ -55,6 +56,14 @@ public:
                            QString *synonym = nullptr,
                            QString *error = nullptr) const;
 
+    // Человекочитаемое имя ссылочного типа по его внутреннему идентификатору
+    // («СправочникСсылка.Валюты»); пусто, если тип неизвестен.
+    QString typeNameForGuid(const QString &typeGuid) const;
+
+    // Корневые модули конфигурации: приложение, сеанс, внешнее соединение
+    // (и модуль обычного приложения, если он есть).
+    QVector<ModuleInfo> configurationModules() const;
+
 private:
     struct ReferenceName
     {
@@ -71,6 +80,13 @@ private:
         QString comment;
     };
 
+    // Тип объекта, на который могут ссылаться реквизиты (СправочникСсылка и т. п.).
+    struct TypeObject
+    {
+        QString typeTitle;
+        QString name;
+    };
+
     bool readRootGuid(QString *rootGuid);
     bool parseElementTree(const QString &elementName, V8TextNode *root) const;
     void buildConfigurationMetadata(const V8TextNode &configRoot);
@@ -80,6 +96,17 @@ private:
     MetadataObject objectFromRoot(const QString &guid,
                                   const MetadataCategoryInfo &category,
                                   const V8TextNode &objectRoot) const;
+    QStringList collectTypeIds(const V8TextNode &objectRoot,
+                               const V8TextNode *descriptor) const;
+    void registerTypeIds(const MetadataObject &object);
+    QString referenceTypeName(const QString &typeGuid) const;
+    QString typeTextFromNode(const V8TextNode &typeNode) const;
+    QString typeTextForDescriptor(const V8TextNode &root,
+                                  const V8TextNode *descriptor) const;
+    QString typeTextForItem(const V8TextNode &item) const;
+    void parseSubscription(const V8TextNode &objectRoot,
+                           const V8TextNode *descriptor,
+                           MetadataObject *object) const;
     QVector<MetadataSection> buildSections(const V8TextNode &objectRoot,
                                            const QString &categoryGuid) const;
     QVector<MetadataSection> buildSectionsByLayout(const V8TextNode &objectRoot,
@@ -102,6 +129,10 @@ private:
     V8Container m_container;
     Configuration m_configuration;
     mutable QHash<QString, ReferenceName> m_referenceNames;
+    // Расшифровка внутренних идентификаторов типов: GUID типа → объект.
+    QHash<QString, TypeObject> m_typeIndex;
+    // GUID описателя корневого объекта (для поиска корневых модулей).
+    QString m_rootDescriptorGuid;
 
     // Кэш вложенных подсистем (объекты живут до закрытия файла).
     std::vector<std::unique_ptr<MetadataObject>> m_subsystemObjects;

@@ -1,5 +1,6 @@
 ﻿#include "gui/MainWindow.h"
 
+#include "gui/BslHighlighter.h"
 #include "core/ConfigurationReader.h"
 #include "core/Extractor.h"
 #include "core/V8Container.h"
@@ -19,6 +20,7 @@
 #include "core/V8Container.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QBrush>
 #include <QCloseEvent>
@@ -42,6 +44,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QShowEvent>
 #include <QPlainTextEdit>
 #include <QPoint>
 #include <QSet>
@@ -49,6 +52,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
+#include <QStyleFactory>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -237,6 +241,35 @@ QString sectionIconName(MetadataSectionKind kind)
     return QStringLiteral("common");
 }
 
+QString compositionTypeLabel(const MetadataEntry &entry)
+{
+    if (entry.typeText.isEmpty())
+        return entry.typeTitle;
+    return QStringLiteral("%1 · %2").arg(entry.typeTitle, entry.typeText);
+}
+
+bool isEventSubscriptionCategory(const QString &guid)
+{
+    return guid.compare(QStringLiteral("4e828da6-0f44-4b5b-b1c0-a2b3cfe7bdcc"),
+                        Qt::CaseInsensitive)
+        == 0;
+}
+
+// «Posting_ОбработкаПроведения» → «ОбработкаПроведения» (в 1С событие
+// показывается по-русски, а в метаданных хранится пара «англ._рус.»).
+QString subscriptionEventDisplay(const QString &eventName)
+{
+    const int separator = eventName.indexOf(QLatin1Char('_'));
+    if (separator <= 0)
+        return eventName;
+    const QString prefix = eventName.left(separator);
+    for (const QChar ch : prefix) {
+        if (!ch.isLetter() || ch.unicode() > 127)
+            return eventName;
+    }
+    return eventName.mid(separator + 1);
+}
+
 // Порядок стандартных веток конфигурации как в 1С:Предприятие 8.3.
 const QString &documentsCategoryGuid()
 {
@@ -365,9 +398,65 @@ bool isCommonCategoryGuid(const QString &guid)
 }
 } // namespace
 
+QPalette darkPalette()
+{    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(0x2b, 0x2b, 0x2b));
+    palette.setColor(QPalette::WindowText, QColor(0xdd, 0xdd, 0xdd));
+    palette.setColor(QPalette::Base, QColor(0x1e, 0x1e, 0x1e));
+    palette.setColor(QPalette::AlternateBase, QColor(0x2a, 0x2a, 0x2a));
+    palette.setColor(QPalette::ToolTipBase, QColor(0x2b, 0x2b, 0x2b));
+    palette.setColor(QPalette::ToolTipText, QColor(0xdd, 0xdd, 0xdd));
+    palette.setColor(QPalette::Text, QColor(0xdd, 0xdd, 0xdd));
+    palette.setColor(QPalette::Button, QColor(0x3c, 0x3f, 0x41));
+    palette.setColor(QPalette::ButtonText, QColor(0xdd, 0xdd, 0xdd));
+    palette.setColor(QPalette::BrightText, QColor(0xff, 0x55, 0x55));
+    palette.setColor(QPalette::Link, QColor(0x4d, 0xaa, 0xfc));
+    palette.setColor(QPalette::Highlight, QColor(0x2f, 0x65, 0xca));
+    palette.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
+    palette.setColor(QPalette::PlaceholderText, QColor(0x9a, 0x9a, 0x9a));
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x80, 0x80, 0x80));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x80, 0x80, 0x80));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x80, 0x80, 0x80));
+    return palette;
+}
+
+QString darkStyleSheet()
+{
+    return QStringLiteral(
+        "QMainWindow, QDialog { background-color: #2b2b2b; }"
+        "QWidget { color: #dddddd; }"
+        "QMenuBar, QMenu, QToolBar, QStatusBar { background-color: #2b2b2b; "
+        "color: #dddddd; }"
+        "QTreeWidget, QTableWidget, QPlainTextEdit, QTextEdit, QListView, "
+        "QListWidget, QComboBox, QLineEdit { background-color: #1e1e1e; "
+        "color: #dddddd; selection-background-color: #2f65ca; "
+        "selection-color: #ffffff; }"
+        "QHeaderView::section { background-color: #3c3f41; color: #dddddd; "
+        "border: 1px solid #555555; padding: 2px; }"
+        "QTabWidget::pane { border: 1px solid #555555; background: #1e1e1e; }"
+        "QTabBar::tab { background: #3c3f41; color: #dddddd; padding: 4px 10px; "
+        "border: 1px solid #555555; }"
+        "QTabBar::tab:selected { background: #1e1e1e; }"
+        "QPushButton { background-color: #3c3f41; color: #dddddd; "
+        "border: 1px solid #555555; padding: 3px 8px; }"
+        "QPushButton:hover { background-color: #4a4d4f; }"
+        "QToolTip { background-color: #2b2b2b; color: #dddddd; "
+        "border: 1px solid #555555; }"
+        "QScrollBar:vertical { background: #2b2b2b; width: 12px; }"
+        "QScrollBar::handle:vertical { background: #555555; min-height: 20px; "
+        "border-radius: 4px; }"
+        "QScrollBar:horizontal { background: #2b2b2b; height: 12px; }"
+        "QScrollBar::handle:horizontal { background: #555555; min-width: 20px; "
+        "border-radius: 4px; }"
+        "QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; }");
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    m_defaultPalette = QApplication::palette();
+    m_defaultStyleName = QApplication::style()->objectName();
+
     m_rootIcon = QIcon();
     for (int size : {16, 24, 32, 48}) {
         const QString path = QStringLiteral(":/icons/app/qtv8reader_%1.png").arg(size);
@@ -383,6 +472,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_entryIcon = metadataIcon(QStringLiteral("column"));
     m_moduleIcon = metadataIcon(QStringLiteral("editObject"));
 
+    QSettings settings;
+    m_highlightEnabled =
+        settings.value(settingsKey(QStringLiteral("moduleHighlight")), true).toBool();
+    m_theme = settings.value(settingsKey(QStringLiteral("theme")),
+                             QStringLiteral("light")).toString();
+
     setupUi();
     setupMenus();
     setupToolBar();
@@ -390,8 +485,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupTabs();
     loadRecentFiles();
     updateRecentMenu();
+    applyTheme(m_theme, false);
 
-    QSettings settings;
     const QByteArray geometry = settings.value(settingsKey(QStringLiteral("geometry"))).toByteArray();
     if (!geometry.isEmpty())
         restoreGeometry(geometry);
@@ -534,6 +629,29 @@ void MainWindow::setupMenus()
     m_pdfMxlAction->setEnabled(false);
     connect(m_pdfMxlAction, &QAction::triggered, this, &MainWindow::exportMxlPdf);
 
+    QMenu *viewMenu = menuBar()->addMenu(QStringLiteral("&Вид"));
+    m_highlightAction = viewMenu->addAction(QStringLiteral("Подсветка модулей"));
+    m_highlightAction->setCheckable(true);
+    m_highlightAction->setChecked(m_highlightEnabled);
+    m_highlightAction->setToolTip(
+        QStringLiteral("Синтаксическая подсветка текстов модулей 1С"));
+    connect(m_highlightAction, &QAction::toggled, this,
+            &MainWindow::setModuleHighlighting);
+
+    QMenu *themeMenu = viewMenu->addMenu(QStringLiteral("Тема"));
+    auto *themeGroup = new QActionGroup(this);
+    themeGroup->setExclusive(true);
+    m_lightThemeAction = themeMenu->addAction(QStringLiteral("Светлая"));
+    m_darkThemeAction = themeMenu->addAction(QStringLiteral("Тёмная"));
+    for (QAction *action : {m_lightThemeAction, m_darkThemeAction}) {
+        action->setCheckable(true);
+        themeGroup->addAction(action);
+    }
+    connect(m_lightThemeAction, &QAction::triggered, this,
+            [this] { applyTheme(QStringLiteral("light")); });
+    connect(m_darkThemeAction, &QAction::triggered, this,
+            [this] { applyTheme(QStringLiteral("dark")); });
+
     QMenu *helpMenu = menuBar()->addMenu(QStringLiteral("&Справка"));
     QAction *aboutAction = helpMenu->addAction(QStringLiteral("О программе…"));
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAbout);
@@ -617,6 +735,9 @@ void MainWindow::setupTabs()
     m_moduleEdit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     m_moduleEdit->setPlaceholderText(QStringLiteral("Выберите объект метаданных"));
     moduleLayout->addWidget(m_moduleEdit, 1);
+    m_highlighter = new BslHighlighter(m_moduleEdit->document());
+    m_highlighter->setEnabled(m_highlightEnabled);
+    m_modulePage = modulePage;
     m_tabs->addTab(modulePage, QStringLiteral("Модуль"));
 
     m_metadataEdit = new QPlainTextEdit();
@@ -711,6 +832,7 @@ bool MainWindow::openFile(const QString &path)
     m_currentObject = nullptr;
     m_currentModules.clear();
     m_moduleCache.clear();
+    m_rootModules = m_reader->configurationModules();
 
     addRecentFile(m_currentPath);
     buildTree();
@@ -1197,18 +1319,62 @@ void MainWindow::extractAll()
     statusBar()->showMessage(QStringLiteral("Сохранено в %1").arg(report.outputDirectory));
 }
 
+void MainWindow::setModuleHighlighting(bool enabled)
+{
+    m_highlightEnabled = enabled;
+    if (m_highlighter)
+        m_highlighter->setEnabled(enabled);
+    QSettings settings;
+    settings.setValue(settingsKey(QStringLiteral("moduleHighlight")), enabled);
+}
+
+void MainWindow::applyTheme(const QString &theme, bool persist)
+{
+    const bool dark =
+        theme.compare(QStringLiteral("dark"), Qt::CaseInsensitive) == 0;
+    m_theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+
+    if (dark) {
+        QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+        QApplication::setPalette(darkPalette());
+        qApp->setStyleSheet(darkStyleSheet());
+    } else {
+        if (!m_defaultStyleName.isEmpty()) {
+            if (QStyle *style = QStyleFactory::create(m_defaultStyleName))
+                QApplication::setStyle(style);
+        }
+        QApplication::setPalette(m_defaultPalette);
+        qApp->setStyleSheet(QString());
+    }
+
+    if (m_highlighter)
+        m_highlighter->setDarkMode(dark);
+    if (m_lightThemeAction)
+        m_lightThemeAction->setChecked(!dark);
+    if (m_darkThemeAction)
+        m_darkThemeAction->setChecked(dark);
+
+    if (persist) {
+        QSettings settings;
+        settings.setValue(settingsKey(QStringLiteral("theme")), m_theme);
+    }
+}
+
 void MainWindow::showAbout()
 {
+    const QString version = QCoreApplication::applicationVersion();
     QMessageBox::about(
         this, QStringLiteral("О программе V8 Reader"),
         QStringLiteral(
-            "<h3>V8 Reader 0.1.0</h3>"
+            "<h3>V8 Reader %1</h3>"
             "<p>Просмотр конфигураций и внешних обработок "
             "1С:Предприятие 8.</p>"
             "<p>Поддерживаемые файлы: <b>.cf</b>, <b>.cfe</b>, "
             "<b>.epf</b>, <b>.erf</b>.</p>"
             "<p>Форматы контейнеров 1C:V8: 1.5 и 1.6.</p>"
-            "<p>Программа работает только на чтение и не изменяет исходные файлы.</p>"));
+            "<p>Qt %2.</p>"
+            "<p>Программа работает только на чтение и не изменяет исходные файлы.</p>")
+            .arg(version, QString::fromLatin1(qVersion())));
 }
 
 void MainWindow::buildTree()
@@ -1241,6 +1407,9 @@ void MainWindow::buildTree()
         font.setBold(true);
         rootItem->setFont(0, font);
     }
+
+    if (isConfiguration)
+        addRootModuleItems(rootItem);
 
     QHash<QString, const MetadataCategory *> byGuid;
     for (MetadataCategory &category : configuration.categories)
@@ -1324,6 +1493,23 @@ void MainWindow::buildTree()
         item->setText(0, QStringLiteral("Объекты метаданных не найдены"));
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
         item->setForeground(0, palette().mid());
+    }
+}
+
+void MainWindow::addRootModuleItems(QTreeWidgetItem *rootItem)
+{
+    for (int i = 0; i < m_rootModules.size(); ++i) {
+        const ModuleInfo &module = m_rootModules.at(i);
+        auto *moduleItem = new QTreeWidgetItem(rootItem);
+        moduleItem->setText(0, module.name);
+        moduleItem->setIcon(0, metadataIcon(module.name.contains(QStringLiteral("сеанса"))
+                                                ? QStringLiteral("editManager")
+                                                : QStringLiteral("editObject")));
+        moduleItem->setData(0, KindRole, RootModuleItem);
+        moduleItem->setData(0, ModuleIndexRole, i);
+        moduleItem->setToolTip(0, QStringLiteral("%1\nЭлемент: %2\nСимволов: %3")
+                                      .arg(module.name, module.elementName)
+                                      .arg(module.text.size()));
     }
 }
 
@@ -1468,6 +1654,11 @@ QTreeWidgetItem *MainWindow::addObjectItem(QTreeWidgetItem *parent,
 
     QString tooltip = QStringLiteral("%1: %2\nGUID: %3")
                           .arg(object.typeTitle, object.displayName(), object.guid);
+    if (!object.typeText.isEmpty())
+        tooltip += QStringLiteral("\nТип: %1").arg(object.typeText);
+    if (!object.eventName.isEmpty())
+        tooltip += QStringLiteral("\nСобытие: %1")
+                       .arg(subscriptionEventDisplay(object.eventName));
     if (!object.synonym.isEmpty())
         tooltip += QStringLiteral("\nСиноним: %1").arg(object.synonym);
     if (!object.comment.isEmpty())
@@ -1510,10 +1701,14 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
         auto *moduleItem = new QTreeWidgetItem(item);
         moduleItem->setText(0, module.name.isEmpty() ? QStringLiteral("Модуль")
                                                      : module.name);
-        moduleItem->setIcon(0, metadataIcon(
-            module.name.contains(QStringLiteral("менеджера"), Qt::CaseInsensitive)
-                ? QStringLiteral("editManager")
-                : QStringLiteral("editObject")));
+        const bool isManager = module.name.contains(QStringLiteral("менеджера"),
+                                                    Qt::CaseInsensitive);
+        const bool isCommand = module.name.contains(QStringLiteral("команды"),
+                                                    Qt::CaseInsensitive);
+        moduleItem->setIcon(0,
+                            metadataIcon(isManager   ? QStringLiteral("editManager")
+                                          : isCommand ? QStringLiteral("command")
+                                                      : QStringLiteral("editObject")));
         moduleItem->setData(0, KindRole, ModuleNodeItem);
         moduleItem->setData(0, GuidRole, object.guid);
         moduleItem->setData(0, ModuleIndexRole, i);
@@ -1555,6 +1750,8 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
 
             QString entryTooltip = QStringLiteral("%1: %2")
                                        .arg(entry.typeTitle, entry.displayName());
+            if (!entry.typeText.isEmpty())
+                entryTooltip += QStringLiteral("\nТип: %1").arg(entry.typeText);
             if (!entry.guid.isEmpty())
                 entryTooltip += QStringLiteral("\nGUID: %1").arg(entry.guid);
             if (!entry.synonym.isEmpty())
@@ -1574,10 +1771,12 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
                                    static_cast<int>(MetadataSectionKind::TabularAttributes));
                 childItem->setData(0, EntryIndexRole, i);
                 childItem->setData(0, ChildIndexRole, j);
-                childItem->setToolTip(0, QStringLiteral("%1: %2\nGUID: %3")
-                                             .arg(child.typeTitle,
-                                                  child.displayName(),
-                                                  child.guid));
+                QString childTooltip = QStringLiteral("%1: %2")
+                                           .arg(child.typeTitle, child.displayName());
+                if (!child.typeText.isEmpty())
+                    childTooltip += QStringLiteral("\nТип: %1").arg(child.typeText);
+                childTooltip += QStringLiteral("\nGUID: %1").arg(child.guid);
+                childItem->setToolTip(0, childTooltip);
             }
         }
         sectionItem->setExpanded(true);
@@ -1682,7 +1881,8 @@ bool MainWindow::filterTreeItem(QTreeWidgetItem *item, const QString &needle)
 
     bool selfMatch = false;
     if (kind == RootItem || kind == GroupItem || kind == CategoryItem
-        || kind == ObjectItem || kind == SectionItem || kind == EntryItem) {
+        || kind == ObjectItem || kind == SectionItem || kind == EntryItem
+        || kind == RootModuleItem) {
         selfMatch = item->text(0).contains(needle, Qt::CaseInsensitive)
             || item->data(0, GuidRole).toString().contains(needle, Qt::CaseInsensitive);
     }
@@ -1791,7 +1991,10 @@ void MainWindow::setProperties(const QVector<QPair<QString, QString>> &rows)
     for (int i = 0; i < rows.size(); ++i) {
         const QPair<QString, QString> &row = rows.at(i);
         m_properties->setItem(i, 0, readOnlyItem(row.first));
-        m_properties->setItem(i, 1, readOnlyItem(row.second));
+        auto *valueItem = readOnlyItem(row.second);
+        if (!row.second.isEmpty())
+            valueItem->setToolTip(row.second);
+        m_properties->setItem(i, 1, valueItem);
     }
     m_properties->resizeColumnToContents(0);
     m_properties->resizeRowsToContents();
@@ -1930,9 +2133,32 @@ void MainWindow::showObject(MetadataObject &object)
     fillMetadata(object);
 
     QVector<QPair<QString, QString>> rows;
-    rows.append({QStringLiteral("Тип"), object.typeTitle});
+    rows.append({QStringLiteral("Вид"), object.typeTitle});
     rows.append({QStringLiteral("Категория"), object.categoryTitle});
     rows.append({QStringLiteral("Имя"), object.name});
+    if (!object.typeText.isEmpty())
+        rows.append({QStringLiteral("Тип"), object.typeText});
+    if (isEventSubscriptionCategory(object.categoryGuid)) {
+        QStringList sourceNames;
+        for (const QString &typeGuid : object.sourceTypeGuids) {
+            const QString name = m_reader->typeNameForGuid(typeGuid);
+            sourceNames << (name.isEmpty() ? typeGuid : name);
+        }
+        rows.append({QStringLiteral("Источник"),
+                     sourceNames.join(QStringLiteral(", "))});
+        rows.append({QStringLiteral("Событие"),
+                     subscriptionEventDisplay(object.eventName)});
+        QString handler = object.handlerProcedure;
+        if (!object.handlerModuleGuid.isEmpty()) {
+            QString moduleName;
+            if (m_reader->readReferenceName(object.handlerModuleGuid, &moduleName,
+                                            nullptr, nullptr)
+                && !moduleName.isEmpty()) {
+                handler = QStringLiteral("%1.%2").arg(moduleName, handler);
+            }
+        }
+        rows.append({QStringLiteral("Обработчик"), handler});
+    }
     rows.append({QStringLiteral("Синоним"), object.synonym});
     rows.append({QStringLiteral("Комментарий"), object.comment});
     rows.append({QStringLiteral("GUID"), object.guid});
@@ -2105,6 +2331,8 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
     QVector<QPair<QString, QString>> rows;
     rows.append({QStringLiteral("Вид"), entry->typeTitle});
     rows.append({QStringLiteral("Имя"), entry->name});
+    if (!entry->typeText.isEmpty())
+        rows.append({QStringLiteral("Тип"), entry->typeText});
     rows.append({QStringLiteral("Синоним"), entry->synonym});
     rows.append({QStringLiteral("Комментарий"), entry->comment});
     rows.append({QStringLiteral("GUID"), entry->guid});
@@ -2638,6 +2866,39 @@ void MainWindow::showModuleNode(MetadataObject &object, int moduleIndex)
                                           : QStringLiteral("модуль")));
 }
 
+void MainWindow::showRootModule(int index)
+{
+    if (!m_reader || index < 0 || index >= m_rootModules.size())
+        return;
+
+    const ModuleInfo &module = m_rootModules.at(index);
+    clearObjectView();
+    m_currentObject = nullptr;
+    m_currentModules.clear();
+    m_moduleCombo->blockSignals(true);
+    m_moduleCombo->clear();
+    m_moduleCombo->addItem(module.name);
+    m_moduleCombo->setEnabled(false);
+    m_moduleCombo->blockSignals(false);
+    m_moduleEdit->setPlainText(module.text);
+
+    QVector<QPair<QString, QString>> rows;
+    rows.append({QStringLiteral("Модуль"), module.name});
+    rows.append({QStringLiteral("Элемент контейнера"), module.elementName});
+    rows.append({QStringLiteral("Символов"), QString::number(module.text.size())});
+    setProperties(rows);
+
+    m_metadataEdit->setPlainText(
+        QStringLiteral("Корневой модуль конфигурации «%1».\n"
+                       "Элемент контейнера: %2")
+            .arg(module.name, module.elementName));
+    const int modulePage = m_modulePage ? m_tabs->indexOf(m_modulePage) : -1;
+    if (modulePage >= 0)
+        m_tabs->setCurrentIndex(modulePage);
+    m_extractAction->setEnabled(false);
+    statusBar()->showMessage(module.name);
+}
+
 void MainWindow::fillSectionComposition(MetadataObject &object,
                                         MetadataSectionKind kind)
 {
@@ -2656,7 +2917,7 @@ void MainWindow::fillSectionComposition(MetadataObject &object,
 
     for (const MetadataEntry &entry : section->entries) {
         auto *entryItem = new QTreeWidgetItem(sectionItem);
-        entryItem->setText(0, entry.typeTitle);
+        entryItem->setText(0, compositionTypeLabel(entry));
         entryItem->setText(1, entry.displayName());
         entryItem->setText(2, entry.synonym);
         entryItem->setText(3, entry.guid);
@@ -2664,7 +2925,7 @@ void MainWindow::fillSectionComposition(MetadataObject &object,
         entryItem->setIcon(0, metadataIcon(sectionIconName(kind)));
         for (const MetadataEntry &child : entry.children) {
             auto *childItem = new QTreeWidgetItem(entryItem);
-            childItem->setText(0, child.typeTitle);
+            childItem->setText(0, compositionTypeLabel(child));
             childItem->setText(1, child.displayName());
             childItem->setText(2, child.synonym);
             childItem->setText(3, child.guid);
@@ -2680,7 +2941,7 @@ void MainWindow::fillEntryComposition(const MetadataEntry &entry)
     m_composition->clear();
 
     auto *entryItem = new QTreeWidgetItem(m_composition);
-    entryItem->setText(0, entry.typeTitle);
+    entryItem->setText(0, compositionTypeLabel(entry));
     entryItem->setText(1, entry.displayName());
     entryItem->setText(2, entry.synonym);
     entryItem->setText(3, entry.guid);
@@ -2689,7 +2950,7 @@ void MainWindow::fillEntryComposition(const MetadataEntry &entry)
 
     for (const MetadataEntry &child : entry.children) {
         auto *childItem = new QTreeWidgetItem(entryItem);
-        childItem->setText(0, child.typeTitle);
+        childItem->setText(0, compositionTypeLabel(child));
         childItem->setText(1, child.displayName());
         childItem->setText(2, child.synonym);
         childItem->setText(3, child.guid);
@@ -2734,7 +2995,7 @@ void MainWindow::fillComposition(const MetadataObject &object)
 
         for (const MetadataEntry &entry : section.entries) {
             auto *entryItem = new QTreeWidgetItem(sectionItem);
-            entryItem->setText(0, entry.typeTitle);
+            entryItem->setText(0, compositionTypeLabel(entry));
             entryItem->setText(1, entry.displayName());
             entryItem->setText(2, entry.synonym);
             entryItem->setText(3, entry.guid);
@@ -2743,7 +3004,7 @@ void MainWindow::fillComposition(const MetadataObject &object)
 
             for (const MetadataEntry &child : entry.children) {
                 auto *childItem = new QTreeWidgetItem(entryItem);
-                childItem->setText(0, child.typeTitle);
+                childItem->setText(0, compositionTypeLabel(child));
                 childItem->setText(1, child.displayName());
                 childItem->setText(2, child.synonym);
                 childItem->setText(3, child.guid);
@@ -2851,6 +3112,11 @@ void MainWindow::onTreeSelectionChanged()
             showCategory(*category);
         else
             showPlaceholderCategory(item->data(0, GuidRole).toString());
+        return;
+    }
+
+    if (kind == RootModuleItem) {
+        showRootModule(item->data(0, ModuleIndexRole).toInt());
         return;
     }
 
@@ -3083,6 +3349,17 @@ void MainWindow::openRecentFile()
     }
 
     openFile(path);
+}
+
+void MainWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+    // Тему применяем после первого показа окна: смена палитры и таблицы
+    // стилей до show() не перерисовывает уже созданные виджеты.
+    if (!m_themeApplied) {
+        m_themeApplied = true;
+        applyTheme(m_theme, false);
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

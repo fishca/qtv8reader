@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QIcon>
 #include <QMainWindow>
+#include <QPalette>
 #include <QStringList>
 #include <QVector>
 
@@ -29,6 +30,7 @@ class QTreeWidgetItem;
 
 namespace v8reader {
 
+class BslHighlighter;
 class ConfigurationReader;
 class FormView;
 class MxlView;
@@ -71,6 +73,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private slots:
     void openFileDialog();
@@ -86,6 +89,8 @@ private slots:
     void printMxl();
     void exportMxlPdf();
     void openRecentFile();
+    void setModuleHighlighting(bool enabled);
+    void applyTheme(const QString &theme, bool persist = true);
 
 private:
     // Вид узла дерева метаданных.
@@ -96,7 +101,8 @@ private:
         ObjectItem,
         SectionItem,
         EntryItem,
-        ModuleNodeItem
+        ModuleNodeItem,
+        RootModuleItem
     };
 
     enum ItemRole {
@@ -122,6 +128,7 @@ private:
     void addRecentFile(const QString &path);
 
     void buildTree();
+    void addRootModuleItems(QTreeWidgetItem *rootItem);
     QTreeWidgetItem *addCategoryItem(QTreeWidgetItem *parent,
                                      const MetadataCategory &category);
     QTreeWidgetItem *addPlaceholderCategoryItem(QTreeWidgetItem *parent,
@@ -156,6 +163,7 @@ private:
     void showEntry(MetadataObject &object, MetadataSectionKind kind, int entryIndex,
                    int childIndex);
     void showModuleNode(MetadataObject &object, int moduleIndex);
+    void showRootModule(int index);
     void fillComposition(const MetadataObject &object);
     void fillSectionComposition(MetadataObject &object, MetadataSectionKind kind);
     void fillEntryComposition(const MetadataEntry &entry);
@@ -175,6 +183,7 @@ private:
     std::unique_ptr<ConfigurationReader> m_reader;
     MetadataObject *m_currentObject = nullptr;
     QVector<ModuleInfo> m_currentModules;
+    QVector<ModuleInfo> m_rootModules;
     QHash<QString, QVector<ModuleInfo>> m_moduleCache;
 
     QLineEdit *m_treeFilter = nullptr;
@@ -194,8 +203,18 @@ private:
     bool m_formDocumentValid = false;
     QComboBox *m_moduleCombo = nullptr;
     QPlainTextEdit *m_moduleEdit = nullptr;
+    QWidget *m_modulePage = nullptr;
     QPlainTextEdit *m_metadataEdit = nullptr;
     QTreeWidget *m_containerTree = nullptr;
+    BslHighlighter *m_highlighter = nullptr;
+    bool m_highlightEnabled = true;
+    QAction *m_highlightAction = nullptr;
+    QString m_theme = QStringLiteral("light");
+    QAction *m_lightThemeAction = nullptr;
+    QAction *m_darkThemeAction = nullptr;
+    QPalette m_defaultPalette;
+    QString m_defaultStyleName;
+    bool m_themeApplied = false;
 
     QAction *m_refreshAction = nullptr;
     QAction *m_extractAction = nullptr;
