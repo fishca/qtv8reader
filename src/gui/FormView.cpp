@@ -47,6 +47,7 @@ struct PreviewControl
     QRectF rect;
     QString title;
     QStringList columns;
+    QVector<double> columnWidths;
     double labelWidth = 0.0;
     bool selectedTab = false;
     bool checkBox = false;
@@ -703,6 +704,26 @@ private:
         control.rect = QRectF(rect.left(), rect.top(), rect.width(),
                               std::min(rect.height(), 360.0));
         tableColumns(item, item.name, &control.columns);
+
+        if (!control.columns.isEmpty()) {
+            QFont headerFont = m_font;
+            headerFont.setBold(true);
+            QFontMetricsF headerMetrics(headerFont);
+            double total = 0.0;
+            for (const QString &column : control.columns) {
+                const double width = std::min(240.0, std::max(80.0,
+                    headerMetrics.horizontalAdvance(column) + 24.0));
+                control.columnWidths.append(width);
+                total += width;
+            }
+            // Если колонки уже помещаются — растягиваем их на всю таблицу;
+            // иначе оставляем ширину по содержимому и показываем прокрутку.
+            if (total < control.rect.width()) {
+                const double extra = (control.rect.width() - total) / control.columnWidths.size();
+                for (double &width : control.columnWidths)
+                    width += extra;
+            }
+        }
         m_controls->append(control);
     }
 
@@ -1056,9 +1077,13 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         const QStringList columns = control.columns;
         if (columns.isEmpty())
             return;
-        const int visible = std::min(9, int(columns.size()));
-        const double columnWidth = rect.width() / visible;
-        const double headerHeight = 28.0;
+        QVector<double> widths = control.columnWidths;
+        if (widths.size() != columns.size()) {
+            widths.clear();
+            for (int i = 0; i < columns.size(); ++i)
+                widths.append(rect.width() / columns.size());
+        }
+        const double headerHeight = 24.0;
         const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
         painter.setPen(QColor(150, 150, 150));
         painter.setBrush(QColor(242, 242, 242));
@@ -1068,25 +1093,28 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         headerFont.setBold(true);
         painter.setFont(headerFont);
         painter.setPen(QColor(40, 40, 40));
-        for (int i = 0; i < visible; ++i) {
-            const QRectF cell(rect.left() + i * columnWidth, rect.top(),
-                              columnWidth, headerHeight);
+        double columnX = rect.left();
+        for (int i = 0; i < columns.size() && columnX < rect.right(); ++i) {
+            const double width = widths.at(i);
+            const QRectF cell(columnX, rect.top(), width, headerHeight);
             painter.drawRect(cell);
             const QString text = metrics.elidedText(columns.at(i), Qt::ElideRight,
-                                                    int(columnWidth) - 8);
+                                                    int(width) - 8);
             painter.drawText(cell.adjusted(4, 0, -4, 0),
                              Qt::AlignLeft | Qt::AlignVCenter, text);
+            columnX += width;
         }
         painter.setFont(font);
         painter.setPen(QColor(150, 150, 150));
         const double rowHeight = 20.0;
         const int rows = std::max(1, int((rect.height() - headerHeight) / rowHeight));
         for (int row = 0; row < rows; ++row) {
-            for (int i = 0; i < visible; ++i) {
-                const QRectF cell(rect.left() + i * columnWidth,
-                                  rect.top() + headerHeight + row * rowHeight,
-                                  columnWidth, rowHeight);
+            double x = rect.left();
+            for (int i = 0; i < widths.size() && x < rect.right(); ++i) {
+                const QRectF cell(x, rect.top() + headerHeight + row * rowHeight,
+                                  widths.at(i), rowHeight);
                 painter.drawRect(cell);
+                x += widths.at(i);
             }
         }
 
@@ -1095,7 +1123,12 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(225, 225, 225));
         painter.drawRoundedRect(track, 3.0, 3.0);
-        const double thumbWidth = rect.width() * 0.45;
+        double columnsTotal = 0.0;
+        for (double width : widths)
+            columnsTotal += width;
+        const double thumbWidth = columnsTotal > rect.width()
+            ? std::max(30.0, rect.width() * rect.width() / columnsTotal)
+            : rect.width() - 12.0;
         painter.setBrush(QColor(190, 190, 190));
         painter.drawRoundedRect(QRectF(track.left() + 6.0, track.top(),
                                        thumbWidth, track.height()), 3.0, 3.0);
