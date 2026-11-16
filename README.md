@@ -63,7 +63,9 @@
 ## Готовые сборки
 
 Самодостаточные сборки публикуются в разделе
-[Releases](https://github.com/fishca/qtv8reader/releases):
+[Releases](https://github.com/fishca/qtv8reader/releases).
+Актуальная версия — **0.3.0**; что нового — в [CHANGELOG.md](CHANGELOG.md)
+и в [описании релиза](docs/release-notes-v0.3.0.md).
 
 - **Windows 10/11 x64** — `qtv8reader-<версия>-windows-x86_64.zip`:
   Qt и все библиотеки внутри, установка не нужна. Распаковать и запустить
@@ -84,7 +86,8 @@
 
 ```sh
 git tag v0.3.0
-git push origin v0.2.0
+git push origin main
+git push origin v0.3.0
 ```
 
 ## Требования
