@@ -107,99 +107,122 @@ QTableWidgetItem *readOnlyItem(const QString &text)
     return item;
 }
 
-QIcon makeFolderIcon(const QColor &color)
+QIcon metadataIcon(const QString &name)
 {
-    QPixmap pixmap(16, 16);
-    pixmap.fill(Qt::transparent);
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setPen(QPen(color.darker(140), 1));
-    painter.setBrush(QBrush(color));
-    painter.drawRoundedRect(QRectF(1.5, 3.0, 13.0, 10.5), 2.0, 2.0);
-    painter.setBrush(QBrush(color.lighter(130)));
-    painter.drawRoundedRect(QRectF(1.5, 1.8, 6.0, 3.4), 1.4, 1.4);
-    painter.end();
-    return QIcon(pixmap);
+    static QHash<QString, QIcon> cache;
+    const auto cached = cache.constFind(name);
+    if (cached != cache.constEnd())
+        return cached.value();
+
+    QIcon icon;
+    const int sizes[] = {16, 24, 32};
+    for (int size : sizes) {
+        const QString path = QStringLiteral(":/icons/metadata/%1_%2.png")
+                                 .arg(name)
+                                 .arg(size);
+        if (QFile::exists(path))
+            icon.addFile(path, QSize(size, size));
+    }
+    if (icon.isNull())
+        icon = QIcon(QStringLiteral(":/icons/metadata/common_16.png"));
+
+    cache.insert(name, icon);
+    return icon;
 }
 
-QIcon makeDotIcon(const QColor &color)
+// Имя иконки типа объекта метаданных (набор metadata-icons, MIT).
+QString categoryIconName(const QString &guid)
 {
-    QPixmap pixmap(16, 16);
-    pixmap.fill(Qt::transparent);
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setPen(QPen(color.darker(140), 1));
-    painter.setBrush(QBrush(color));
-    painter.drawEllipse(QRectF(3.0, 3.0, 10.0, 10.0));
-    painter.end();
-    return QIcon(pixmap);
-}
-
-// Цвет значка для категории объектов метаданных.
-QColor categoryColor(const QString &guid)
-{
-    static const QHash<QString, QColor> colors = [] {
-        QHash<QString, QColor> map;
-        const auto add = [&map](const char *categoryGuid, const char *color) {
-            map.insert(QString::fromLatin1(categoryGuid), QColor(QString::fromLatin1(color)));
+    static const QHash<QString, QString> map = [] {
+        QHash<QString, QString> m;
+        const auto add = [&m](const char *categoryGuid, const char *icon) {
+            m.insert(QString::fromLatin1(categoryGuid), QString::fromLatin1(icon));
         };
-        add("0195e80c-b157-11d4-9435-004095e12fc7", "#B8860B"); // Константы
-        add("cf4abea6-37b2-11d4-940f-008048da11f9", "#1E88E5"); // Справочники
-        add("061d872a-5787-460e-95ac-ed74ea3a3e84", "#43A047"); // Документы
-        add("4612bd75-71b7-4a5c-8cc5-2b0b65f9fa0d", "#00897B"); // Журналы документов
-        add("f6a80749-5ad7-400b-8519-39dc5dff2542", "#8E24AA"); // Перечисления
-        add("631b75a0-29e2-11d6-a3c7-0050bae0a776", "#EF6C00"); // Отчеты
-        add("bf845118-327b-4682-b5c6-285d2a0eb296", "#D81B60"); // Обработки
-        add("857c4a91-e5f4-4fac-86ec-787626f1c108", "#6D4C41"); // Планы обмена
-        add("238e7e88-3c5f-48b2-8a3b-81ebbecb20ed", "#37474F"); // Планы счетов
-        add("82a1b659-b220-4d94-a9bd-14d757b95a48", "#5E35B1"); // ПВХ
-        add("30b100d6-b29f-47ac-aec7-cb8ca8a54767", "#546E7A"); // ПВР
-        add("13134201-f60b-11d5-a3c7-0050bae0a776", "#039BE5"); // Регистры сведений
-        add("b64d9a40-1642-11d6-a3c7-0050bae0a776", "#00ACC1"); // Регистры накопления
-        add("2deed9b8-0056-4ffe-a473-c20a6c32a0bc", "#3949AB"); // Регистры бухгалтерии
-        add("f2de87a8-64e5-45eb-a22d-b3aedab050e7", "#7CB342"); // Регистры расчета
-        add("bc587f20-35d9-11d6-a3c7-0050bae0a776", "#8D6E63"); // Последовательности
-        add("fcd3404e-1523-48ce-9bc0-ecdb822684a1", "#C0CA33"); // Бизнес-процессы
-        add("3e63355c-1378-4953-be9b-1deb5fb6bec5", "#F4511E"); // Задачи
-        add("5274d9fc-9c3a-4a71-8f5e-a0db8ab23de5", "#6D4C41"); // Внешние источники
-        add("0fe48980-252d-11d6-a3c7-0050bae0a776", "#FB8C00"); // Общие модули
-        add("07ee8426-87f1-11d5-b99c-0050bae0a95d", "#29B6F6"); // Общие формы
-        add("0c89c792-16c3-11d5-b96b-0050bae0a95d", "#AB47BC"); // Общие макеты
-        return map;
+        add("0195e80c-b157-11d4-9435-004095e12fc7", "constant");          // Константы
+        add("cf4abea6-37b2-11d4-940f-008048da11f9", "catalog");           // Справочники
+        add("061d872a-5787-460e-95ac-ed74ea3a3e84", "document");          // Документы
+        add("36a8e346-9aaa-4af9-bdbd-83be3c177977", "documentNumerator"); // Нумераторы
+        add("4612bd75-71b7-4a5c-8cc5-2b0b65f9fa0d", "documentJournal");   // Журналы документов
+        add("f6a80749-5ad7-400b-8519-39dc5dff2542", "enum");              // Перечисления
+        add("631b75a0-29e2-11d6-a3c7-0050bae0a776", "report");            // Отчеты
+        add("bf845118-327b-4682-b5c6-285d2a0eb296", "dataProcessor");     // Обработки
+        add("857c4a91-e5f4-4fac-86ec-787626f1c108", "exchangePlan");      // Планы обмена
+        add("238e7e88-3c5f-48b2-8a3b-81ebbecb20ed", "chartsOfAccount");   // Планы счетов
+        add("82a1b659-b220-4d94-a9bd-14d757b95a48", "chartsOfCharacteristicType");
+        add("30b100d6-b29f-47ac-aec7-cb8ca8a54767", "chartsOfCalculationType");
+        add("13134201-f60b-11d5-a3c7-0050bae0a776", "informationRegister");
+        add("b64d9a40-1642-11d6-a3c7-0050bae0a776", "accumulationRegister");
+        add("2deed9b8-0056-4ffe-a473-c20a6c32a0bc", "accountingRegister");
+        add("f2de87a8-64e5-45eb-a22d-b3aedab050e7", "calculationRegister");
+        add("bc587f20-35d9-11d6-a3c7-0050bae0a776", "sequence");          // Последовательности
+        add("fcd3404e-1523-48ce-9bc0-ecdb822684a1", "businessProcess");   // Бизнес-процессы
+        add("3e63355c-1378-4953-be9b-1deb5fb6bec5", "task");              // Задачи
+        add("5274d9fc-9c3a-4a71-8f5e-a0db8ab23de5", "externalDataSource");
+        add("0fe48980-252d-11d6-a3c7-0050bae0a776", "commonModule");      // Общие модули
+        add("07ee8426-87f1-11d5-b99c-0050bae0a95d", "form");              // Общие формы
+        add("0c89c792-16c3-11d5-b96b-0050bae0a95d", "template");          // Общие макеты
+        add("7dcd43d9-aca5-4926-b549-1842e6a4e8cf", "picture");           // Общие картинки
+        add("2f1a5187-fb0e-4b05-9489-dc5dd6412348", "command");           // Общие команды
+        add("1c57eabe-7349-44b3-b1de-ebfeab67b47d", "command");           // Группы команд
+        add("15794563-ccec-41f6-a83c-ec5f7b9a5bc1", "attribute");         // Общие реквизиты
+        add("09736b02-9cac-4e3f-b4f7-d3e9576ab948", "role");              // Роли
+        add("37f2fa9a-b276-11d4-9435-004095e12fc7", "subsystem");         // Подсистемы
+        add("24c43748-c938-45d0-8d14-01424a72b11e", "sessionParameter");
+        add("af547940-3268-434f-a3e7-e47d6d2638c3", "parameter");         // Функциональные опции
+        add("30d554db-541e-4f62-8970-a1c6dcfeb2bc", "parameter");
+        add("c045099e-13b9-4fb6-9d50-fca00202971e", "parameter");         // Определяемые типы
+        add("3e7bfcc0-067d-11d6-a3c7-0050bae0a776", "filterCriteria");
+        add("4e828da6-0f44-4b5b-b1c0-a2b3cfe7bdcc", "eventSubscription");
+        add("11bdaf85-d5ad-4d91-bb24-aa0eee139052", "scheduledJob");
+        add("46b4cd97-fd13-4eaa-aba2-3bddd7699218", "settingsStorage");   // Хранилища настроек
+        add("3e5404af-6ef8-4c73-ad11-91bd2dfac4c8", "style");             // Стили
+        add("58848766-36ea-4076-8800-e91eb49590d7", "style");             // Элементы стиля
+        add("9cd510ce-abfc-11d4-9434-004095e12fc7", "language");          // Языки
+        add("39bddf6a-0c3c-452b-921c-d99cfa1c2f1b", "interfaces");        // Интерфейсы
+        add("0fffc09c-8f4c-47cc-b41c-8d5c5a221d79", "http");              // HTTP-сервисы
+        add("8657032e-7740-4e1d-a3ba-5dd6e8afb78f", "ws");                // Web-сервисы
+        add("d26096fb-7a5d-4df9-af63-47d04771fa9b", "wsLink");            // WS-ссылки
+        add("cc9df798-7c94-4616-97d2-7aa0b7bc515e", "urlTemplate");       // XDTO-пакеты
+        add("6e6dc072-b7ac-41e7-8f88-278d25b6da2a", "bots");              // Боты
+        add("a7641777-7813-45c6-96ef-9d51587a6ac6", "ws");                // WebSocket-клиенты
+        add("bf3420b0-f6f9-41a0-b83a-fe9d4ab0b65d", "ws");                // Сервисы интеграции
+        return m;
     }();
-    const auto it = colors.constFind(guid.toLower());
-    return it != colors.constEnd() ? it.value() : QColor(QStringLiteral("#78909C"));
+
+    const auto it = map.constFind(guid.toLower());
+    return it != map.constEnd() ? it.value() : QStringLiteral("common");
 }
 
-QColor sectionColor(MetadataSectionKind kind)
+QString sectionIconName(MetadataSectionKind kind)
 {
     switch (kind) {
     case MetadataSectionKind::Templates:
-        return QColor(QStringLiteral("#8E24AA"));
+        return QStringLiteral("template");
     case MetadataSectionKind::Commands:
-        return QColor(QStringLiteral("#D81B60"));
+        return QStringLiteral("command");
     case MetadataSectionKind::TabularSections:
-        return QColor(QStringLiteral("#6D4C41"));
+        return QStringLiteral("tabularSection");
     case MetadataSectionKind::Attributes:
-        return QColor(QStringLiteral("#2E7D32"));
+        return QStringLiteral("column");
     case MetadataSectionKind::Forms:
-        return QColor(QStringLiteral("#1565C0"));
+        return QStringLiteral("form");
     case MetadataSectionKind::TabularAttributes:
-        return QColor(QStringLiteral("#558B2F"));
+        return QStringLiteral("column");
     case MetadataSectionKind::Dimensions:
-        return QColor(QStringLiteral("#00838F"));
+        return QStringLiteral("dimension");
     case MetadataSectionKind::Resources:
-        return QColor(QStringLiteral("#0277BD"));
-    case MetadataSectionKind::Values:
-        return QColor(QStringLiteral("#8E24AA"));
+        return QStringLiteral("resource");
     case MetadataSectionKind::AccountingFlags:
+        return QStringLiteral("accountingFlag");
     case MetadataSectionKind::SubcontoFlags:
-        return QColor(QStringLiteral("#616161"));
+        return QStringLiteral("extDimensionAccountingFlag");
+    case MetadataSectionKind::Values:
+        return QStringLiteral("enum");
     case MetadataSectionKind::Columns:
     case MetadataSectionKind::JournalColumns:
-        return QColor(QStringLiteral("#546E7A"));
+        return QStringLiteral("column");
     }
-    return QColor(QStringLiteral("#546E7A"));
+    return QStringLiteral("common");
 }
 
 // Категории, которые в дереве 1С собраны в группу «Общие».
@@ -249,12 +272,12 @@ bool isCommonCategoryGuid(const QString &guid)
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    m_rootIcon = makeFolderIcon(QColor(QStringLiteral("#1F3A93")));
-    m_groupIcon = makeFolderIcon(QColor(QStringLiteral("#546E7A")));
-    m_categoryIcon = makeFolderIcon(QColor(QStringLiteral("#607D8B")));
-    m_sectionIcon = makeFolderIcon(QColor(QStringLiteral("#6D4C41")));
-    m_entryIcon = makeDotIcon(QColor(QStringLiteral("#546E7A")));
-    m_moduleIcon = makeDotIcon(QColor(QStringLiteral("#F57C00")));
+    m_rootIcon = metadataIcon(QStringLiteral("root"));
+    m_groupIcon = metadataIcon(QStringLiteral("group"));
+    m_categoryIcon = metadataIcon(QStringLiteral("common"));
+    m_sectionIcon = metadataIcon(QStringLiteral("tabularSection"));
+    m_entryIcon = metadataIcon(QStringLiteral("column"));
+    m_moduleIcon = metadataIcon(QStringLiteral("editObject"));
 
     setupUi();
     setupMenus();
@@ -933,7 +956,7 @@ QTreeWidgetItem *MainWindow::addCategoryItem(QTreeWidgetItem *parent,
     categoryItem->setText(0, QStringLiteral("%1 (%2)")
                                  .arg(category.title)
                                  .arg(category.objects.size()));
-    categoryItem->setIcon(0, makeFolderIcon(categoryColor(category.guid)));
+    categoryItem->setIcon(0, metadataIcon(categoryIconName(category.guid)));
     categoryItem->setData(0, KindRole, CategoryItem);
     categoryItem->setData(0, GuidRole, category.guid);
     categoryItem->setToolTip(0, QStringLiteral("%1\nТип объекта: %2\nGUID: %3\nОбъектов: %4")
@@ -955,7 +978,7 @@ QTreeWidgetItem *MainWindow::addObjectItem(QTreeWidgetItem *parent,
 {
     auto *objectItem = new QTreeWidgetItem(parent);
     objectItem->setText(0, object.displayName());
-    objectItem->setIcon(0, makeDotIcon(categoryColor(object.categoryGuid)));
+    objectItem->setIcon(0, metadataIcon(categoryIconName(object.categoryGuid)));
     objectItem->setData(0, KindRole, ObjectItem);
     objectItem->setData(0, GuidRole, object.guid);
     objectItem->setData(0, LoadedRole, false);
@@ -1001,7 +1024,10 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
         auto *moduleItem = new QTreeWidgetItem(item);
         moduleItem->setText(0, module.name.isEmpty() ? QStringLiteral("Модуль")
                                                      : module.name);
-        moduleItem->setIcon(0, m_moduleIcon);
+        moduleItem->setIcon(0, metadataIcon(
+            module.name.contains(QStringLiteral("менеджера"), Qt::CaseInsensitive)
+                ? QStringLiteral("editManager")
+                : QStringLiteral("editObject")));
         moduleItem->setData(0, KindRole, ModuleNodeItem);
         moduleItem->setData(0, GuidRole, object.guid);
         moduleItem->setData(0, ModuleIndexRole, i);
@@ -1017,7 +1043,7 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
         sectionItem->setText(0, QStringLiteral("%1 (%2)")
                                     .arg(section.title)
                                     .arg(section.entries.size()));
-        sectionItem->setIcon(0, makeFolderIcon(sectionColor(section.kind)));
+        sectionItem->setIcon(0, metadataIcon(sectionIconName(section.kind)));
         sectionItem->setData(0, KindRole, SectionItem);
         sectionItem->setData(0, GuidRole, object.guid);
         sectionItem->setData(0, SectionKindRole, static_cast<int>(section.kind));
@@ -1031,7 +1057,7 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
             const MetadataEntry &entry = section.entries.at(i);
             auto *entryItem = new QTreeWidgetItem(sectionItem);
             entryItem->setText(0, entry.displayName());
-            entryItem->setIcon(0, makeDotIcon(sectionColor(section.kind)));
+            entryItem->setIcon(0, metadataIcon(sectionIconName(section.kind)));
             entryItem->setData(0, KindRole, EntryItem);
             entryItem->setData(0, GuidRole, object.guid);
             entryItem->setData(0, SectionKindRole, static_cast<int>(section.kind));
@@ -1052,8 +1078,7 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
                 const MetadataEntry &child = entry.children.at(j);
                 auto *childItem = new QTreeWidgetItem(entryItem);
                 childItem->setText(0, child.displayName());
-                childItem->setIcon(0, makeDotIcon(
-                    sectionColor(MetadataSectionKind::TabularAttributes)));
+                childItem->setIcon(0, metadataIcon(QStringLiteral("column")));
                 childItem->setData(0, KindRole, EntryItem);
                 childItem->setData(0, GuidRole, object.guid);
                 childItem->setData(0, SectionKindRole,
@@ -1333,7 +1358,7 @@ void MainWindow::showCategory(const MetadataCategory &category)
     root->setText(0, QStringLiteral("Объекты"));
     root->setText(1, category.title);
     root->setText(3, category.guid);
-    root->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
+    root->setIcon(0, m_groupIcon);
     for (const MetadataObject &object : category.objects) {
         auto *item = new QTreeWidgetItem(root);
         item->setText(0, object.typeTitle);
@@ -1341,7 +1366,7 @@ void MainWindow::showCategory(const MetadataCategory &category)
         item->setText(2, object.synonym);
         item->setText(3, object.guid);
         item->setText(4, object.comment);
-        item->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
+        item->setIcon(0, metadataIcon(categoryIconName(category.guid)));
     }
     root->setExpanded(true);
 
@@ -1428,7 +1453,7 @@ void MainWindow::showGroup(const QString &title,
                                      .arg(category->title)
                                      .arg(category->objects.size()));
         categoryItem->setText(3, category->guid);
-        categoryItem->setIcon(0, makeFolderIcon(categoryColor(category->guid)));
+        categoryItem->setIcon(0, metadataIcon(categoryIconName(category->guid)));
         for (const MetadataObject &object : category->objects) {
             auto *objectItem = new QTreeWidgetItem(categoryItem);
             objectItem->setText(0, object.typeTitle);
@@ -1436,7 +1461,7 @@ void MainWindow::showGroup(const QString &title,
             objectItem->setText(2, object.synonym);
             objectItem->setText(3, object.guid);
             objectItem->setText(4, object.comment);
-            objectItem->setIcon(0, makeDotIcon(categoryColor(category->guid)));
+            objectItem->setIcon(0, metadataIcon(categoryIconName(category->guid)));
         }
     }
     root->setExpanded(true);
@@ -1631,7 +1656,7 @@ void MainWindow::fillSectionComposition(MetadataObject &object,
                                .arg(section->title)
                                .arg(section->entries.size()));
     sectionItem->setText(3, section->guid);
-    sectionItem->setIcon(0, makeFolderIcon(sectionColor(kind)));
+    sectionItem->setIcon(0, metadataIcon(sectionIconName(kind)));
 
     for (const MetadataEntry &entry : section->entries) {
         auto *entryItem = new QTreeWidgetItem(sectionItem);
@@ -1640,7 +1665,7 @@ void MainWindow::fillSectionComposition(MetadataObject &object,
         entryItem->setText(2, entry.synonym);
         entryItem->setText(3, entry.guid);
         entryItem->setText(4, entry.comment);
-        entryItem->setIcon(0, makeDotIcon(sectionColor(kind)));
+        entryItem->setIcon(0, metadataIcon(sectionIconName(kind)));
         for (const MetadataEntry &child : entry.children) {
             auto *childItem = new QTreeWidgetItem(entryItem);
             childItem->setText(0, child.typeTitle);
@@ -1648,8 +1673,7 @@ void MainWindow::fillSectionComposition(MetadataObject &object,
             childItem->setText(2, child.synonym);
             childItem->setText(3, child.guid);
             childItem->setText(4, child.comment);
-            childItem->setIcon(0, makeDotIcon(
-                sectionColor(MetadataSectionKind::TabularAttributes)));
+            childItem->setIcon(0, metadataIcon(QStringLiteral("column")));
         }
     }
     sectionItem->setExpanded(true);
@@ -1665,7 +1689,7 @@ void MainWindow::fillEntryComposition(const MetadataEntry &entry)
     entryItem->setText(2, entry.synonym);
     entryItem->setText(3, entry.guid);
     entryItem->setText(4, entry.comment);
-    entryItem->setIcon(0, makeDotIcon(sectionColor(MetadataSectionKind::Attributes)));
+    entryItem->setIcon(0, metadataIcon(QStringLiteral("column")));
 
     for (const MetadataEntry &child : entry.children) {
         auto *childItem = new QTreeWidgetItem(entryItem);
@@ -1674,8 +1698,7 @@ void MainWindow::fillEntryComposition(const MetadataEntry &entry)
         childItem->setText(2, child.synonym);
         childItem->setText(3, child.guid);
         childItem->setText(4, child.comment);
-        childItem->setIcon(0, makeDotIcon(
-            sectionColor(MetadataSectionKind::TabularAttributes)));
+        childItem->setIcon(0, metadataIcon(QStringLiteral("column")));
     }
     entryItem->setExpanded(true);
 }
@@ -1684,8 +1707,7 @@ void MainWindow::fillComposition(const MetadataObject &object)
 {
     m_composition->clear();
 
-    const QIcon sectionIcon = style()->standardIcon(QStyle::SP_DirIcon);
-    const QIcon entryIcon = style()->standardIcon(QStyle::SP_FileIcon);
+
 
     for (const MetadataSection &section : object.sections) {
         auto *sectionItem = new QTreeWidgetItem(m_composition);
@@ -1694,7 +1716,7 @@ void MainWindow::fillComposition(const MetadataObject &object)
                                    .arg(section.title)
                                    .arg(section.entries.size()));
         sectionItem->setText(3, section.guid);
-        sectionItem->setIcon(0, sectionIcon);
+        sectionItem->setIcon(0, metadataIcon(sectionIconName(section.kind)));
         QFont font = sectionItem->font(1);
         font.setBold(true);
         sectionItem->setFont(1, font);
@@ -1706,7 +1728,7 @@ void MainWindow::fillComposition(const MetadataObject &object)
             entryItem->setText(2, entry.synonym);
             entryItem->setText(3, entry.guid);
             entryItem->setText(4, entry.comment);
-            entryItem->setIcon(0, entryIcon);
+            entryItem->setIcon(0, metadataIcon(sectionIconName(section.kind)));
 
             for (const MetadataEntry &child : entry.children) {
                 auto *childItem = new QTreeWidgetItem(entryItem);
@@ -1715,7 +1737,7 @@ void MainWindow::fillComposition(const MetadataObject &object)
                 childItem->setText(2, child.synonym);
                 childItem->setText(3, child.guid);
                 childItem->setText(4, child.comment);
-                childItem->setIcon(0, entryIcon);
+                childItem->setIcon(0, metadataIcon(QStringLiteral("column")));
             }
         }
 

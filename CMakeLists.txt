@@ -39,6 +39,7 @@ target_include_directories(qtv8reader_core PUBLIC src)
 target_link_libraries(qtv8reader_core PUBLIC Qt6::Core Qt6::Concurrent ZLIB::ZLIB)
 
 qt_add_executable(qtv8reader WIN32
+    resources/resources.qrc
     src/gui/main.cpp
     src/gui/MainWindow.h
     src/gui/MainWindow.cpp
