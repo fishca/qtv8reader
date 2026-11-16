@@ -32,9 +32,36 @@
 - Разбор больших конфигураций распараллелен (Qt Concurrent); состав объектов
   разбирается лениво — по мере выбора объекта.
 
+## Готовые сборки
+
+Самодостаточные сборки публикуются в разделе
+[Releases](https://github.com/fishca/qtv8reader/releases):
+
+- **Windows 10/11 x64** — `qtv8reader-<версия>-windows-x86_64.zip`:
+  Qt и все библиотеки внутри, установка не нужна. Распаковать и запустить
+  `qtv8reader.exe`.
+- **Linux x64** — `qtv8reader-<версия>-linux-x86_64.AppImage`: один
+  самодостаточный файл, Qt и зависимости внутри. Требуется glibc 2.35+
+  (Ubuntu 22.04+, Debian 12+, Fedora 36+):
+
+  ```sh
+  chmod +x qtv8reader-*.AppImage
+  ./qtv8reader-*.AppImage
+  ```
+
+- **Linux x64** — `qtv8reader-<версия>-linux-x86_64.tar.gz`: те же бинарники
+  с библиотеками, включая консольную утилиту `bin/v8reader_cli`.
+
+Релиз собирается автоматически при отправке тега:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
 ## Требования
 
-- CMake ≥ 3.24;
+- CMake ≥ 3.22;
 - компилятор с поддержкой C++17 (проверено на GCC 16 из MSYS2/MinGW-w64, MSVC 2022);
 - Qt 6.4+ с модулями `Core`, `Gui`, `Widgets`, `Test`, `Concurrent`;
 - zlib;

@@ -1,0 +1,276 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег релиза (например v0.2.0)'
+        required: true
+        default: 'v0.2.0'
+
+permissions:
+  contents: write
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  windows:
+    name: Windows portable package
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-zlib
+            zip
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$MINGW_PREFIX"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package portable build
+        run: |
+          set -e
+          PKG="qtv8reader-${RELEASE_TAG}-windows-x86_64"
+          rm -rf dist "$PKG" "$PKG.zip"
+          mkdir -p dist
+          cp build/qtv8reader.exe build/v8reader_cli.exe dist/
+
+          WINDEPLOYQT=""
+          for candidate in windeployqt6 windeployqt; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              WINDEPLOYQT="$candidate"
+              break
+            fi
+          done
+          [ -n "$WINDEPLOYQT" ] || { echo "windeployqt не найден"; exit 1; }
+
+          "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime dist/qtv8reader.exe
+          "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime dist/v8reader_cli.exe
+
+          # headless-плагин нужен для самопроверки на CI
+          mkdir -p dist/platforms
+          if [ -f "$MINGW_PREFIX/share/qt6/plugins/platforms/qoffscreen.dll" ]; then
+            cp "$MINGW_PREFIX/share/qt6/plugins/platforms/qoffscreen.dll" dist/platforms/
+          fi
+
+          # Копируем все сторонние зависимости (MinGW runtime, zlib и т.п.),
+          # чтобы пакет не зависел от установленного MSYS2/Qt.
+          deps=$( (ldd build/qtv8reader.exe; ldd build/v8reader_cli.exe; \
+                   ldd dist/Qt6*.dll; ldd dist/platforms/*.dll) 2>/dev/null \
+                  | awk '{print $3}' \
+                  | grep -iE '^/(ucrt64|mingw64)/bin/' | sort -u )
+          for d in $deps; do cp -n "$d" dist/ 2>/dev/null || true; done
+
+          cp README.md dist/README.md
+          mkdir -p "$PKG"
+          cp -r dist/. "$PKG/"
+          zip -9 -r "$PKG.zip" "$PKG"
+          echo "PACKAGE=$PKG.zip" >> "$GITHUB_ENV"
+          ls -lh "$PKG.zip"
+
+      - name: Verify package has no external dependencies
+        run: |
+          set -e
+          rm -rf verify
+          mkdir verify
+          cp -r dist/. verify/
+          cd verify
+          set +e
+          PATH="/c/Windows/System32:/c/Windows" QT_QPA_PLATFORM=offscreen ./qtv8reader.exe --smoke > smoke.log 2>&1
+          code=$?
+          set -e
+          cat smoke.log || true
+          echo "qtv8reader --smoke exit=$code (ожидается 2: файл не открыт, приложение запустилось)"
+          [ "$code" -eq 2 ]
+          PATH="/c/Windows/System32:/c/Windows" ./v8reader_cli.exe --version
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-portable
+          path: ${{ env.PACKAGE }}
+          if-no-files-found: error
+
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build libgl1-mesa-dev libxkbcommon-dev \
+            zlib1g-dev file patchelf libfuse2 wget
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package AppImage and tarball
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -e
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+          APPIMAGE_NAME="qtv8reader-${RELEASE_TAG}-linux-x86_64.AppImage"
+          TARBALL="qtv8reader-${RELEASE_TAG}-linux-x86_64.tar.gz"
+          rm -rf AppDir
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications \
+                   AppDir/usr/share/icons/hicolor/512x512/apps
+          cp build/qtv8reader build/v8reader_cli AppDir/usr/bin/
+          cp packaging/qtv8reader.desktop AppDir/usr/share/applications/
+          cp packaging/qtv8reader.png \
+             AppDir/usr/share/icons/hicolor/512x512/apps/qtv8reader.png
+          cp packaging/qtv8reader.png AppDir/qtv8reader.png
+
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export OUTPUT="$APPIMAGE_NAME"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --executable AppDir/usr/bin/qtv8reader \
+            --executable AppDir/usr/bin/v8reader_cli \
+            --desktop-file AppDir/usr/share/applications/qtv8reader.desktop \
+            --icon-file packaging/qtv8reader.png \
+            --plugin qt --output appimage
+
+          tar -czf "$TARBALL" -C AppDir/usr .
+          echo "APPIMAGE_NAME=$APPIMAGE_NAME" >> "$GITHUB_ENV"
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+          ls -lh "$APPIMAGE_NAME" "$TARBALL"
+
+      - name: Verify AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -e
+          set +e
+          QT_QPA_PLATFORM=offscreen ./"$APPIMAGE_NAME" --smoke > smoke.log 2>&1
+          code=$?
+          set -e
+          cat smoke.log || true
+          echo "AppImage --smoke exit=$code (ожидается 2: файл не открыт, приложение запустилось)"
+          [ "$code" -eq 2 ]
+          echo "=== содержимое tar.gz (первые строки) ==="
+          tar -tzf "$TARBALL" | head -25
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-packages
+          path: |
+            ${{ env.APPIMAGE_NAME }}
+            ${{ env.TARBALL }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Collect assets and checksums
+        run: |
+          set -e
+          mkdir -p release
+          find artifacts -type f -maxdepth 3 -exec cp {} release/ \;
+          cd release
+          ls -lh
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          cat > notes.md <<'NOTES'
+          ## qtv8reader
+
+          Просмотр конфигураций и внешних обработок 1С:Предприятие 8
+          (`.cf`, `.cfe`, `.epf`, `.erf`, `.cfu`; форматы контейнеров 1.5 и 1.6).
+
+          ### Файлы релиза
+
+          * **Windows x64** — `qtv8reader-*-windows-x86_64.zip` — портативная сборка:
+            Qt и все библиотеки внутри, установка не требуется. Требуется Windows 10/11 x64.
+            Запуск: распаковать и открыть `qtv8reader.exe`.
+          * **Linux x64 AppImage** — `qtv8reader-*-linux-x86_64.AppImage` — один
+            самодостаточный файл, Qt и зависимости внутри.
+            Требуется glibc 2.35+ (Ubuntu 22.04+, Debian 12+, Fedora 36+).
+            Запуск: `chmod +x qtv8reader-*.AppImage && ./qtv8reader-*.AppImage`
+          * **Linux x64 tar.gz** — `qtv8reader-*-linux-x86_64.tar.gz` — те же бинарники
+            с библиотеками, включая консольную утилиту `bin/v8reader_cli`.
+          * `SHA256SUMS` — контрольные суммы.
+
+          ### Возможности
+
+          * дерево метаданных конфигурации, расширения, внешней обработки/отчёта;
+          * состав объектов: реквизиты, табличные части с реквизитами, формы,
+            команды, макеты, измерения, ресурсы, признаки учёта, значения перечислений;
+          * тексты модулей: объекта, менеджера и модули форм;
+          * выгрузка объекта или всей конфигурации в каталог;
+          * GUI (Qt Widgets) и CLI (`info`, `list`, `tree`, `dump`, `metadata`,
+            `modules`, `composition`, `extract`, `extract-all`).
+
+          Проект: https://github.com/fishca/qtv8reader
+          NOTES
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/* --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "qtv8reader ${RELEASE_TAG}" \
+              --notes-file notes.md \
+              --target "$GITHUB_SHA" \
+              release/*
+          fi

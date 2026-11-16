@@ -102,7 +102,7 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-      - name: Package with Qt runtime
+      - name: Package with Qt and MinGW runtime
         run: |
           mkdir -p dist
           cp build/qtv8reader.exe build/v8reader_cli.exe dist/
@@ -114,11 +114,15 @@ jobs:
             fi
           done
           if [ -n "$WINDEPLOYQT" ]; then
-            "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw dist/qtv8reader.exe
-            "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw dist/v8reader_cli.exe
+            "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime dist/qtv8reader.exe
+            "$WINDEPLOYQT" --no-translations --no-system-d3d-compiler --no-opengl-sw --compiler-runtime dist/v8reader_cli.exe
           else
             echo "windeployqt не найден: артефакт будет без DLL Qt"
           fi
+          deps=$( (ldd build/qtv8reader.exe; ldd build/v8reader_cli.exe; \
+                   ldd dist/Qt6*.dll; ldd dist/platforms/*.dll) 2>/dev/null \
+                  | awk '{print $3}' | grep -iE '^/(ucrt64|mingw64)/bin/' | sort -u )
+          for d in $deps; do cp -n "$d" dist/ 2>/dev/null || true; done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
