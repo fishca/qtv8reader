@@ -40,6 +40,7 @@ public:
     void openInitialFile(const QString &path);
 
     bool isFileOpen() const;
+    void expandCommonBranch();
     int objectCount() const;
     QString fileKindTitle() const;
     // Проверка работоспособности без показа окна: открывает первый объект
