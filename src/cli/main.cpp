@@ -517,6 +517,25 @@ void printReport(const ExtractionReport &report)
 
 void printMxlSummary(const QString &title, const mxl::Document &document)
 {
+    const mxl::PrintSettings &settings = document.printSettings;
+    QString printInfo = QStringLiteral("по умолчанию (A4, книжная, 100%)");
+    if (settings.valid) {
+        const QString pageSize = settings.pageSize.isEmpty()
+            ? QStringLiteral("A4") : settings.pageSize;
+        const QString orientation = settings.orientation == 2
+            ? QStringLiteral("альбомная") : QStringLiteral("книжная");
+        printInfo = QStringLiteral("%1, %2, масштаб %3%, поля %4/%5/%6/%7 мм")
+            .arg(pageSize, orientation)
+            .arg(settings.scale > 0 ? settings.scale : 100)
+            .arg(settings.topMarginMm)
+            .arg(settings.bottomMarginMm)
+            .arg(settings.leftMarginMm)
+            .arg(settings.rightMarginMm);
+    }
+    QStringList areaNames;
+    for (const mxl::NamedArea &area : document.namedAreas)
+        areaNames << area.name;
+
     out() << QStringLiteral("%1: %2 строк, %3 колонок, %4 форматов, %5 шрифтов, "
                             "%6 объединений, %7 цветов, %8 линий\n")
                  .arg(title)
@@ -527,6 +546,11 @@ void printMxlSummary(const QString &title, const mxl::Document &document)
                  .arg(document.merges.size())
                  .arg(document.colors.size())
                  .arg(document.lines.size());
+    out() << QStringLiteral("  именованные области (%1): %2\n")
+                 .arg(document.namedAreas.size())
+                 .arg(areaNames.isEmpty() ? QStringLiteral("нет")
+                                          : areaNames.join(QStringLiteral(", ")));
+    out() << QStringLiteral("  печать: %1\n").arg(printInfo);
 }
 
 bool loadTemplatePayload(ConfigurationReader &reader, const MetadataEntry &entry,

@@ -94,6 +94,46 @@ struct ColumnGroup
     QVector<QPair<int, int>> columns; // (номер колонки, 1-базный индекс формата)
 };
 
+// Именованная область макета (область строк, колонок или прямоугольник).
+struct NamedArea
+{
+    enum class Type {
+        Rows,
+        Columns,
+        Rectangle,
+        Unknown
+    };
+
+    QString name;
+    Type type = Type::Unknown;
+    int left = -1;   // -1 — граница не задана (область строк/колонок)
+    int top = -1;
+    int right = -1;
+    int bottom = -1;
+
+    bool hasRows() const { return top >= 0 && bottom >= 0; }
+    bool hasColumns() const { return left >= 0 && right >= 0; }
+    QString boundsText() const;
+};
+
+// Параметры печати макета (страница, ориентация, масштаб, поля).
+struct PrintSettings
+{
+    bool valid = false;
+    QString pageSize;      // A3/A4/A5/Letter/...; пусто — по умолчанию
+    int orientation = 1;   // 1 — книжная, 2 — альбомная
+    int scale = 100;       // масштаб печати, %
+    double topMarginMm = 10.0;
+    double bottomMarginMm = 10.0;
+    double leftMarginMm = 10.0;
+    double rightMarginMm = 10.0;
+    double headerMm = 10.0;
+    double footerMm = 10.0;
+    int pageWidthMm = 0;   // пользовательский размер страницы (если задан)
+    int pageHeightMm = 0;
+
+    QVector<QPair<int, int>> extra; // нераспознанные пары ключ/значение
+};
 enum class DrawingKind {
     Rectangle,
     Text,
@@ -135,6 +175,8 @@ struct Document
     ColumnGroup defaultGroup;
     QVector<ColumnGroup> extraGroups;
     QVector<QPair<int, int>> rowGroups; // (номер строки, индекс доп. группы)
+    QVector<NamedArea> namedAreas;
+    PrintSettings printSettings;
     QVector<Drawing> drawings;
     QVector<QByteArray> pictures;
 

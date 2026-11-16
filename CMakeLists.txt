@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Test Concurrent)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets PrintSupport Test Concurrent)
 find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup()
@@ -51,9 +51,13 @@ qt_add_executable(qtv8reader WIN32
     src/gui/PreviewDialog.cpp
     src/gui/MxlView.h
     src/gui/MxlView.cpp
+    src/gui/MxlRenderer.h
+    src/gui/MxlRenderer.cpp
+    src/gui/MxlPrinter.h
+    src/gui/MxlPrinter.cpp
 )
 
-target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets)
+target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
 
 add_executable(v8reader_cli
     src/cli/main.cpp

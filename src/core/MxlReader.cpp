@@ -577,6 +577,210 @@ bool mergesFromValue(const V8TextNode &node, QVector<mxl::Merge> *merges)
     return true;
 }
 
+bool parseTypedValue(const V8TextNode &node, bool *isNumber, qint64 *number,
+                     QString *text)
+{
+    if (!node.isList() || node.children.size() < 2)
+        return false;
+    const V8TextNode *typeNode = childAt(node, 0);
+    const V8TextNode *valueNode = childAt(node, 1);
+    if (!typeNode || !typeNode->isScalar() || !valueNode || !valueNode->isScalar())
+        return false;
+
+    const QString type = typeNode->value;
+    if (type == QStringLiteral("S")) {
+        if (isNumber)
+            *isNumber = false;
+        if (text)
+            *text = valueNode->value;
+        return true;
+    }
+    if (type == QStringLiteral("N")) {
+        bool ok = false;
+        const qint64 parsed = valueNode->toInteger(&ok);
+        if (!ok)
+            return false;
+        if (isNumber)
+            *isNumber = true;
+        if (number)
+            *number = parsed;
+        return true;
+    }
+    return false;
+}
+
+bool namedAreasFromValue(const V8TextNode &node, QVector<mxl::NamedArea> *areas)
+{
+    if (!node.isList() || node.children.size() < 3)
+        return false;
+    int count = 0;
+    if (!nodeInt(childAt(node, 0), &count) || count <= 0 || count > 10000)
+        return false;
+    if (node.children.size() != 1 + 2 * count)
+        return false;
+
+    QVector<mxl::NamedArea> parsed;
+    parsed.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        const V8TextNode *nameNode = childAt(node, 1 + 2 * i);
+        const V8TextNode *record = childAt(node, 2 + 2 * i);
+        if (!nameNode || !nameNode->isString() || nameNode->value.isEmpty())
+            return false;
+        if (!record || !record->isList() || record->children.size() < 2)
+            return false;
+        const V8TextNode *bounds = childAt(*record, 1);
+        if (!bounds || !bounds->isList() || bounds->children.size() < 5)
+            return false;
+
+        int left = -1;
+        int top = -1;
+        int right = -1;
+        int bottom = -1;
+        if (!nodeInt(childAt(*bounds, 1), &left)
+            || !nodeInt(childAt(*bounds, 2), &top)
+            || !nodeInt(childAt(*bounds, 3), &right)
+            || !nodeInt(childAt(*bounds, 4), &bottom)) {
+            return false;
+        }
+        if (left < -1 || top < -1 || right < -1 || bottom < -1)
+            return false;
+        if (!(left >= 0 || top >= 0 || right >= 0 || bottom >= 0))
+            return false;
+
+        mxl::NamedArea area;
+        area.name = nameNode->value;
+        area.left = left;
+        area.top = top;
+        area.right = right;
+        area.bottom = bottom;
+
+        if (area.hasRows() && area.hasColumns())
+            area.type = mxl::NamedArea::Type::Rectangle;
+        else if (area.hasRows())
+            area.type = mxl::NamedArea::Type::Rows;
+        else if (area.hasColumns())
+            area.type = mxl::NamedArea::Type::Columns;
+        else
+            area.type = mxl::NamedArea::Type::Unknown;
+
+        parsed.append(area);
+    }
+    *areas = parsed;
+    return true;
+}
+
+bool printSettingsFromValue(const V8TextNode &node, mxl::PrintSettings *settings)
+{
+    if (!node.isList() || node.children.size() != 1)
+        return false;
+    const V8TextNode *inner = childAt(node, 0);
+    if (!inner || !inner->isList() || inner->children.size() < 4)
+        return false;
+
+    int flags = 0;
+    int count = 0;
+    int firstKey = 0;
+    if (!nodeInt(childAt(*inner, 0), &flags)
+        || !nodeInt(childAt(*inner, 1), &count)
+        || !nodeInt(childAt(*inner, 2), &firstKey)) {
+        return false;
+    }
+    if (count <= 0 || count > 200)
+        return false;
+
+    QVector<QPair<int, QPair<bool, qint64>>> numericPairs;
+    QVector<QPair<int, QString>> stringPairs;
+    QPair<bool, qint64> dummy{true, 0};
+
+    const auto addPair = [&](int key, const V8TextNode &valueNode) -> bool {
+        bool isNumber = false;
+        qint64 number = 0;
+        QString text;
+        if (!parseTypedValue(valueNode, &isNumber, &number, &text))
+            return false;
+        if (isNumber)
+            numericPairs.append({key, {true, number}});
+        else
+            stringPairs.append({key, text});
+        return true;
+    };
+
+    if (!addPair(firstKey, *childAt(*inner, 3)))
+        return false;
+
+    int index = 4;
+    int parsedCount = 1;
+    while (index + 1 < inner->children.size()) {
+        int key = 0;
+        if (!nodeInt(childAt(*inner, index), &key))
+            return false;
+        if (!addPair(key, *childAt(*inner, index + 1)))
+            return false;
+        index += 2;
+        ++parsedCount;
+    }
+    if (parsedCount != count)
+        return false;
+
+    mxl::PrintSettings parsed;
+    parsed.valid = true;
+    for (const auto &pair : stringPairs) {
+        if (pair.first == 0 && !pair.second.isEmpty())
+            parsed.pageSize = pair.second;
+    }
+    for (const auto &pair : numericPairs) {
+        const int key = pair.first;
+        const qint64 value = pair.second.second;
+        switch (key) {
+        case 0:
+            break; // размер страницы задаётся строкой
+        case 1:
+            parsed.orientation = value == 2 ? 2 : 1;
+            break;
+        case 2:
+            if (value > 0)
+                parsed.scale = static_cast<int>(value);
+            break;
+        case 6:
+            if (value >= 0)
+                parsed.topMarginMm = value / 100.0;
+            break;
+        case 7:
+            if (value >= 0)
+                parsed.bottomMarginMm = value / 100.0;
+            break;
+        case 8:
+            if (value >= 0)
+                parsed.leftMarginMm = value / 100.0;
+            break;
+        case 9:
+            if (value >= 0)
+                parsed.rightMarginMm = value / 100.0;
+            break;
+        case 10:
+            if (value >= 0)
+                parsed.headerMm = value / 100.0;
+            break;
+        case 11:
+            if (value >= 0)
+                parsed.footerMm = value / 100.0;
+            break;
+        case 16:
+            if (value > 0)
+                parsed.pageWidthMm = static_cast<int>(value);
+            break;
+        case 17:
+            if (value > 0)
+                parsed.pageHeightMm = static_cast<int>(value);
+            break;
+        default:
+            parsed.extra.append({key, static_cast<int>(value)});
+            break;
+        }
+    }
+    *settings = parsed;
+    return true;
+}
 bool findFormatAndFontTables(const V8TextNode &root, int start,
                              QVector<mxl::CellFormat> *formats,
                              QVector<mxl::FontSpec> *fonts, int *endIndex)
@@ -755,6 +959,19 @@ void parseTail(const V8TextNode &root, int start, mxl::Document *document)
     }
 
     document->lines = findLineTable(root);
+
+    // Именованные области и параметры печати ищутся по форме, а не по позиции:
+    // их наличие/порядок зависит от версии и содержимого макета.
+    for (const V8TextNode &field : root.children) {
+        QVector<mxl::NamedArea> areas;
+        if (document->namedAreas.isEmpty() && namedAreasFromValue(field, &areas)) {
+            document->namedAreas = areas;
+            continue;
+        }
+        mxl::PrintSettings settings;
+        if (!document->printSettings.valid && printSettingsFromValue(field, &settings))
+            document->printSettings = settings;
+    }
 }
 
 bool validateHeader(const QByteArray &data, int *major, int *minor, int *sub,

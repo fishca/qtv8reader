@@ -3,6 +3,7 @@
 
 #include "core/Configuration.h"
 #include "core/ModuleExtractor.h"
+#include "core/MxlDocument.h"
 
 #include <QByteArray>
 #include <QHash>
@@ -15,6 +16,7 @@
 
 class QAction;
 class QComboBox;
+class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QMenu;
@@ -49,6 +51,14 @@ public:
     // в дереве и возвращает отчёт о заполнении вкладок.
     QString smokeReport();
 
+    // Экспорт текущего макета MXL в PDF (используется и для --mxl-pdf).
+    bool exportCurrentMxlPdf(const QString &path);
+    bool hasMxlDocument() const { return m_mxlDocumentValid; }
+    bool selectFirstTemplate();
+    bool selectTemplateForObject(const QString &query);
+    void setShowNamedAreas(bool show);
+    bool exportMxlFileToPdf(const QString &mxlPath, const QString &pdfPath);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -65,6 +75,8 @@ private slots:
     void onModuleChanged(int index);
     void onContainerDoubleClicked(QTreeWidgetItem *item, int column);
     void onContainerContextMenu(const QPoint &position);
+    void printMxl();
+    void exportMxlPdf();
     void openRecentFile();
 
 private:
@@ -144,6 +156,8 @@ private:
     void previewElement(int index);
     void saveElement(int index);
     void loadTemplatePreview(const MetadataEntry &entry);
+    QString mxlPrintSummary() const;
+    void updateMxlActions();
 
     MetadataObject *selectedObject();
     MetadataCategory *selectedCategory();
@@ -161,6 +175,10 @@ private:
     QTableWidget *m_properties = nullptr;
     QTreeWidget *m_composition = nullptr;
     MxlView *m_mxlView = nullptr;
+    QWidget *m_mxlPage = nullptr;
+    QCheckBox *m_showAreasCheck = nullptr;
+    mxl::Document m_mxlDocument;
+    bool m_mxlDocumentValid = false;
     QComboBox *m_moduleCombo = nullptr;
     QPlainTextEdit *m_moduleEdit = nullptr;
     QPlainTextEdit *m_metadataEdit = nullptr;
@@ -168,6 +186,8 @@ private:
 
     QAction *m_refreshAction = nullptr;
     QAction *m_extractAction = nullptr;
+    QAction *m_printMxlAction = nullptr;
+    QAction *m_pdfMxlAction = nullptr;
     QAction *m_extractAllAction = nullptr;
     QAction *m_closeAction = nullptr;
     QMenu *m_recentMenu = nullptr;

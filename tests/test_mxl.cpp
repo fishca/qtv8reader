@@ -34,6 +34,20 @@ QByteArray makeSyntheticMxl()
         "0,"          // карта строка-группа
         "0,0,"        // графические объекты: нет
         "{1,{0,0,1,0,0}}," // объединение A1:B1
+        // именованные области: 2 области строк
+        "{2,"
+        "\"Шапка\",{\"1\",{\"1\",\"-1\",\"1\",\"-1\",\"5\","
+        "00000000-0000-0000-0000-000000000000},\"0\"},"
+        "\"Строка\",{\"1\",{\"1\",\"-1\",\"7\",\"-1\",\"7\","
+        "00000000-0000-0000-0000-000000000000},\"0\"}},"
+        // параметры печати: A4 альбомная, масштаб 80%, поля 10/12 мм
+        "{{\"0\",\"7\",\"0\",{\"S\",\"A4\"},"
+        "\"1\",{\"N\",\"2\"},"
+        "\"2\",{\"N\",\"80\"},"
+        "\"6\",{\"N\",\"1000\"},"
+        "\"7\",{\"N\",\"1200\"},"
+        "\"8\",{\"N\",\"1000\"},"
+        "\"9\",{\"N\",\"1200\"}}},"
         // таблица форматов: 2 записи
         "2,"
         "{65,0,120}," // шрифт 0, высота 120 (1/288")
@@ -144,6 +158,25 @@ void TestMxl::parseSynthetic()
     QVERIFY(document.mergeAt(1, 0) == nullptr);
     QCOMPARE(document.maxColumn(), 1);
     QCOMPARE(document.maxRowIndex(), 1);
+
+    QCOMPARE(document.namedAreas.size(), 2);
+    QCOMPARE(document.namedAreas.at(0).name, QStringLiteral("Шапка"));
+    QCOMPARE(document.namedAreas.at(0).type, NamedArea::Type::Rows);
+    QCOMPARE(document.namedAreas.at(0).top, 1);
+    QCOMPARE(document.namedAreas.at(0).bottom, 5);
+    QVERIFY(!document.namedAreas.at(0).hasColumns());
+    QCOMPARE(document.namedAreas.at(1).name, QStringLiteral("Строка"));
+    QCOMPARE(document.namedAreas.at(1).top, 7);
+    QCOMPARE(document.namedAreas.at(1).bottom, 7);
+
+    QVERIFY(document.printSettings.valid);
+    QCOMPARE(document.printSettings.pageSize, QStringLiteral("A4"));
+    QCOMPARE(document.printSettings.orientation, 2);
+    QCOMPARE(document.printSettings.scale, 80);
+    QCOMPARE(document.printSettings.topMarginMm, 10.0);
+    QCOMPARE(document.printSettings.bottomMarginMm, 12.0);
+    QCOMPARE(document.printSettings.leftMarginMm, 10.0);
+    QCOMPARE(document.printSettings.rightMarginMm, 12.0);
 }
 
 void TestMxl::rejectsSeventhFormat()
@@ -240,6 +273,12 @@ void TestMxl::realBpTemplate()
     QVERIFY(document.merges.size() > 50);
     QVERIFY(document.colors.size() >= 3);
     QVERIFY(document.lines.size() >= 2);
+    QCOMPARE(document.namedAreas.size(), 4);
+    QCOMPARE(document.namedAreas.at(0).name, QStringLiteral("Подвал"));
+    QVERIFY(document.namedAreas.at(0).hasRows());
+    QVERIFY(document.printSettings.valid);
+    QCOMPARE(document.printSettings.topMarginMm, 10.0);
+    QCOMPARE(document.printSettings.bottomMarginMm, 10.0);
 }
 int runMxlTests(int argc, char **argv)
 {

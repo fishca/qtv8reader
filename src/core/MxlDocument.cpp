@@ -3,6 +3,25 @@
 namespace v8reader {
 namespace mxl {
 
+QString NamedArea::boundsText() const
+{
+    auto range = [](int from, int to) {
+        return QStringLiteral("%1..%2").arg(from).arg(to);
+    };
+    switch (type) {
+    case Type::Rows:
+        return QStringLiteral("строки %1").arg(range(top, bottom));
+    case Type::Columns:
+        return QStringLiteral("колонки %1").arg(range(left, right));
+    case Type::Rectangle:
+        return QStringLiteral("строки %1, колонки %2")
+            .arg(range(top, bottom), range(left, right));
+    case Type::Unknown:
+        break;
+    }
+    return QStringLiteral("границы не заданы");
+}
+
 int Document::maxColumn() const
 {
     int maximum = 0;

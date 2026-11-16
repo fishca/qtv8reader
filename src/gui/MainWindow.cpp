@@ -1,10 +1,16 @@
-#include "gui/MainWindow.h"
+﻿#include "gui/MainWindow.h"
 
 #include "core/ConfigurationReader.h"
 #include "core/Extractor.h"
 #include "core/V8Container.h"
 #include "core/V8Text.h"
+#include "gui/MxlPrinter.h"
 #include "gui/MxlView.h"
+
+#include <QCheckBox>
+#include <QMessageBox>
+#include <QPrintDialog>
+#include <QPrinter>
 #include "gui/PreviewDialog.h"
 
 #include "core/MxlReader.h"
@@ -485,6 +491,9 @@ void MainWindow::setupMenus()
         m_refreshAction->setEnabled(false);
         m_extractAction->setEnabled(false);
         m_extractAllAction->setEnabled(false);
+        m_mxlDocument = mxl::Document();
+        m_mxlDocumentValid = false;
+        updateMxlActions();
         showConfiguration();
         statusBar()->showMessage(QStringLiteral("Файл закрыт"));
     });
@@ -512,6 +521,16 @@ void MainWindow::setupMenus()
     m_extractAllAction = objectMenu->addAction(QStringLiteral("Извлечь все объекты…"));
     m_extractAllAction->setEnabled(false);
     connect(m_extractAllAction, &QAction::triggered, this, &MainWindow::extractAll);
+
+    objectMenu->addSeparator();
+    m_printMxlAction = objectMenu->addAction(QStringLiteral("Печать макета…"));
+    m_printMxlAction->setShortcut(QKeySequence::Print);
+    m_printMxlAction->setEnabled(false);
+    connect(m_printMxlAction, &QAction::triggered, this, &MainWindow::printMxl);
+
+    m_pdfMxlAction = objectMenu->addAction(QStringLiteral("Экспорт макета в PDF…"));
+    m_pdfMxlAction->setEnabled(false);
+    connect(m_pdfMxlAction, &QAction::triggered, this, &MainWindow::exportMxlPdf);
 
     QMenu *helpMenu = menuBar()->addMenu(QStringLiteral("&Справка"));
     QAction *aboutAction = helpMenu->addAction(QStringLiteral("О программе…"));
@@ -628,9 +647,26 @@ void MainWindow::setupTabs()
             this, &MainWindow::onContainerContextMenu);
     m_tabs->addTab(m_containerTree, QStringLiteral("Контейнер"));
 
-    m_mxlView = new MxlView();
+    m_mxlPage = new QWidget();
+    auto *mxlLayout = new QVBoxLayout(m_mxlPage);
+    mxlLayout->setContentsMargins(0, 4, 0, 0);
+    auto *mxlHeader = new QHBoxLayout();
+    m_showAreasCheck = new QCheckBox(QStringLiteral("Именованные области"), m_mxlPage);
+    auto *areasCheck = m_showAreasCheck;
+    areasCheck->setObjectName(QStringLiteral("showNamedAreas"));
+    areasCheck->setToolTip(QStringLiteral("Показывать границы именованных областей макета"));
+    mxlHeader->addWidget(areasCheck);
+    mxlHeader->addStretch();
+    mxlLayout->addLayout(mxlHeader);
+
+    m_mxlView = new MxlView(m_mxlPage);
     m_mxlView->setObjectName(QStringLiteral("mxlView"));
-    m_tabs->addTab(m_mxlView, QStringLiteral("Табличный документ"));
+    mxlLayout->addWidget(m_mxlView, 1);
+    connect(areasCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_mxlView)
+            m_mxlView->setShowNamedAreas(checked);
+    });
+    m_tabs->addTab(m_mxlPage, QStringLiteral("Табличный документ"));
 }
 
 bool MainWindow::openFile(const QString &path)
@@ -943,12 +979,16 @@ QString MainWindow::smokeReport()
             m_tree->setCurrentItem(templateEntry);
             m_tree->scrollToItem(templateEntry);
             QCoreApplication::processEvents();
-            lines << QStringLiteral("макет: %1, строк %2, колонок %3")
+            lines << QStringLiteral(
+                         "макет: %1, строк %2, колонок %3, областей %4, печать: %5")
                          .arg(m_mxlView && m_mxlView->hasDocument()
                                   ? QStringLiteral("MXL разобран")
                                   : QStringLiteral("не MXL"))
                          .arg(m_mxlView ? m_mxlView->rowCount() : 0)
-                         .arg(m_mxlView ? m_mxlView->columnCount() : 0);
+                         .arg(m_mxlView ? m_mxlView->columnCount() : 0)
+                         .arg(m_mxlDocument.namedAreas.size())
+                         .arg(m_mxlDocumentValid ? mxlPrintSummary()
+                                                 : QStringLiteral("—"));
         }
     }
     return lines.join(QLatin1Char('\n'));
@@ -1702,9 +1742,13 @@ void MainWindow::clearObjectView()
     m_moduleEdit->clear();
     m_metadataEdit->clear();
     m_composition->clear();
-    if (m_mxlView) {
+    if (m_mxlView)
         m_mxlView->clear();
-        const int index = m_tabs->indexOf(m_mxlView);
+    m_mxlDocument = mxl::Document();
+    m_mxlDocumentValid = false;
+    updateMxlActions();
+    if (m_mxlPage) {
+        const int index = m_tabs->indexOf(m_mxlPage);
         if (index >= 0)
             m_tabs->setTabText(index, QStringLiteral("Табличный документ"));
     }
@@ -2022,6 +2066,9 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
     fillModules(object);
     fillEntryComposition(*entry);
 
+    if (kind == MetadataSectionKind::Templates)
+        loadTemplatePreview(*entry);
+
     QVector<QPair<QString, QString>> rows;
     rows.append({QStringLiteral("Вид"), entry->typeTitle});
     rows.append({QStringLiteral("Имя"), entry->name});
@@ -2038,6 +2085,18 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
     }
     rows.append({QStringLiteral("Объект"), object.displayName()});
     rows.append({QStringLiteral("Тип объекта"), object.typeTitle});
+    if (kind == MetadataSectionKind::Templates) {
+        rows.append({QStringLiteral("Именованные области"),
+                     QString::number(m_mxlDocument.namedAreas.size())});
+        if (!m_mxlDocument.namedAreas.isEmpty()) {
+            QStringList names;
+            for (const mxl::NamedArea &area : m_mxlDocument.namedAreas)
+                names << area.name;
+            rows.append({QStringLiteral("Области"), names.join(QStringLiteral(", "))});
+        }
+        if (m_mxlDocumentValid)
+            rows.append({QStringLiteral("Печать"), mxlPrintSummary()});
+    }
     setProperties(rows);
 
     m_metadataEdit->clear();
@@ -2072,9 +2131,6 @@ void MainWindow::showEntry(MetadataObject &object, MetadataSectionKind kind,
     }
 
     m_extractAction->setEnabled(true);
-
-    if (kind == MetadataSectionKind::Templates)
-        loadTemplatePreview(*entry);
 
     statusBar()->showMessage(QStringLiteral("%1: %2")
                                  .arg(entry->typeTitle, entry->displayName()));
@@ -2133,7 +2189,10 @@ void MainWindow::loadTemplatePreview(const MetadataEntry &entry)
     }
 
     m_mxlView->setDocument(document);
-    const int index = m_tabs->indexOf(m_mxlView);
+    m_mxlDocument = document;
+    m_mxlDocumentValid = true;
+    updateMxlActions();
+    const int index = m_tabs->indexOf(m_mxlPage);
     if (index >= 0) {
         m_tabs->setTabText(index,
                            QStringLiteral("Табличный документ (%1×%2)")
@@ -2142,6 +2201,185 @@ void MainWindow::loadTemplatePreview(const MetadataEntry &entry)
         m_tabs->setCurrentIndex(index);
     }
 }
+void MainWindow::updateMxlActions()
+{
+    if (m_printMxlAction)
+        m_printMxlAction->setEnabled(m_mxlDocumentValid);
+    if (m_pdfMxlAction)
+        m_pdfMxlAction->setEnabled(m_mxlDocumentValid);
+}
+
+QString MainWindow::mxlPrintSummary() const
+{
+    if (!m_mxlDocumentValid)
+        return QStringLiteral("нет макета");
+    const mxl::PrintSettings &settings = m_mxlDocument.printSettings;
+    QString pageSize = settings.pageSize;
+    if (pageSize.isEmpty())
+        pageSize = QStringLiteral("A4");
+    const QString orientation = settings.orientation == 2
+        ? QStringLiteral("альбомная") : QStringLiteral("книжная");
+    const int scale = settings.scale > 0 ? settings.scale : 100;
+    return QStringLiteral("%1, %2, масштаб %3%, поля %4/%5/%6/%7 мм")
+        .arg(pageSize, orientation)
+        .arg(scale)
+        .arg(settings.topMarginMm)
+        .arg(settings.bottomMarginMm)
+        .arg(settings.leftMarginMm)
+        .arg(settings.rightMarginMm);
+}
+
+void MainWindow::printMxl()
+{
+    if (!m_mxlDocumentValid)
+        return;
+
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setDocName(QStringLiteral("MXL"));
+    QPrintDialog dialog(&printer, this);
+    dialog.setWindowTitle(QStringLiteral("Печать табличного документа"));
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    QString error;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool ok = MxlPrinter::print(m_mxlDocument, printer, &error);
+    QApplication::restoreOverrideCursor();
+    if (!ok) {
+        QMessageBox::critical(this, QStringLiteral("Ошибка печати"), error);
+        return;
+    }
+    statusBar()->showMessage(QStringLiteral("Документ отправлен на печать"));
+}
+
+void MainWindow::exportMxlPdf()
+{
+    if (!m_mxlDocumentValid)
+        return;
+
+    QString defaultPath = m_currentPath;
+    if (!defaultPath.isEmpty()) {
+        QFileInfo info(defaultPath);
+        defaultPath = info.absolutePath() + QLatin1Char('/') + info.completeBaseName()
+            + QStringLiteral("-макет.pdf");
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Экспорт макета в PDF"), defaultPath,
+        QStringLiteral("PDF (*.pdf)"));
+    if (path.isEmpty())
+        return;
+    if (!exportCurrentMxlPdf(path))
+        return;
+    statusBar()->showMessage(QStringLiteral("PDF сохранён: %1").arg(path));
+}
+
+bool MainWindow::exportCurrentMxlPdf(const QString &path)
+{
+    if (!m_mxlDocumentValid)
+        return false;
+
+    QString error;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool ok = MxlPrinter::exportPdf(m_mxlDocument, path, &error);
+    QApplication::restoreOverrideCursor();
+    return ok;
+}
+
+bool MainWindow::selectFirstTemplate()
+{
+    if (!m_reader)
+        return false;
+
+    Configuration &configuration = m_reader->configuration();
+    for (MetadataCategory &category : configuration.categories) {
+        for (MetadataObject &object : category.objects) {
+            if (selectTemplateForObject(object.guid))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool MainWindow::selectTemplateForObject(const QString &query)
+{
+    if (!m_reader)
+        return false;
+
+    Configuration &configuration = m_reader->configuration();
+    for (MetadataCategory &category : configuration.categories) {
+        for (MetadataObject &object : category.objects) {
+            if (!query.isEmpty()) {
+                const bool matches = object.guid.compare(query, Qt::CaseInsensitive) == 0
+                    || object.name.compare(query, Qt::CaseInsensitive) == 0
+                    || object.synonym.compare(query, Qt::CaseInsensitive) == 0
+                    || object.displayName().compare(query, Qt::CaseInsensitive) == 0;
+                if (!matches)
+                    continue;
+            }
+
+            m_reader->loadSections(object);
+            const MetadataSection *section =
+                object.section(MetadataSectionKind::Templates);
+            if (!section || section->entries.isEmpty())
+                continue;
+
+            ensureObjectItemChildren(object.guid);
+            QTreeWidgetItem *objectItem = findObjectItem(object.guid);
+            if (!objectItem)
+                continue;
+            QTreeWidgetItem *sectionItem = nullptr;
+            for (int i = 0; i < objectItem->childCount(); ++i) {
+                QTreeWidgetItem *child = objectItem->child(i);
+                if (child->data(0, KindRole).toInt() == SectionItem
+                    && child->data(0, SectionKindRole).toInt()
+                        == static_cast<int>(MetadataSectionKind::Templates)) {
+                    sectionItem = child;
+                    break;
+                }
+            }
+            if (!sectionItem)
+                continue;
+            sectionItem->setExpanded(true);
+            if (sectionItem->childCount() > 0) {
+                QTreeWidgetItem *entryItem = sectionItem->child(0);
+                m_tree->setCurrentItem(entryItem);
+                m_tree->scrollToItem(entryItem);
+                QCoreApplication::processEvents();
+                return m_mxlDocumentValid;
+            }
+        }
+    }
+    return false;
+}
+
+void MainWindow::setShowNamedAreas(bool show)
+{
+    if (m_showAreasCheck)
+        m_showAreasCheck->setChecked(show);
+    if (m_mxlView)
+        m_mxlView->setShowNamedAreas(show);
+}
+
+bool MainWindow::exportMxlFileToPdf(const QString &mxlPath, const QString &pdfPath)
+{
+    mxl::Document document;
+    QString error;
+    if (!MxlReader::parseFile(mxlPath, &document, &error)) {
+        QMessageBox::critical(this, QStringLiteral("Ошибка разбора MXL"), error);
+        return false;
+    }
+    m_mxlDocument = document;
+    m_mxlDocumentValid = true;
+    if (m_mxlView)
+        m_mxlView->setDocument(document);
+    updateMxlActions();
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool ok = MxlPrinter::exportPdf(document, pdfPath, &error);
+    QApplication::restoreOverrideCursor();
+    return ok;
+}
+
 void MainWindow::showModuleNode(MetadataObject &object, int moduleIndex)
 {
     if (!m_reader)
