@@ -7,6 +7,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QScrollArea>
 #include <QSplitter>
@@ -18,10 +19,31 @@
 
 namespace {
 
+enum class ButtonIcon {
+    None,
+    Create,
+    CreateBasedOn,
+    Copy,
+    Change,
+    Print,
+    Hierarchy,
+    Paperclip,
+    List,
+    Clock,
+    Fill,
+    Chart,
+    Envelope,
+    Help,
+    News,
+    Window
+};
+
 struct PreviewControl
 {
     enum class Kind { Field, Button, Table, PageTab, Decoration, Search };
     Kind kind = Kind::Field;
+    ButtonIcon icon = ButtonIcon::None;
+    bool iconOnly = false;
     QRectF rect;
     QString title;
     QStringList columns;
@@ -85,6 +107,46 @@ QString humanizeIdentifier(const QString &text)
     }
     flush();
     return result;
+}
+
+ButtonIcon iconForButton(const v8reader::FormItem &item)
+{
+    const QString text = item.name + QLatin1Char(' ') + item.synonym;
+    auto has = [&](const QString &part) {
+        return text.contains(part, Qt::CaseInsensitive);
+    };
+    if (has(QStringLiteral("СоздатьНаОсновании")))
+        return ButtonIcon::CreateBasedOn;
+    if (has(QStringLiteral("Создать")))
+        return ButtonIcon::Create;
+    if (has(QStringLiteral("Скопировать")))
+        return ButtonIcon::Copy;
+    if (has(QStringLiteral("Изменить")))
+        return ButtonIcon::Change;
+    if (has(QStringLiteral("Печать")))
+        return ButtonIcon::Print;
+    if (has(QStringLiteral("ПоказатьДвижения"))
+        || has(QStringLiteral("СтруктураПодчиненности")))
+        return ButtonIcon::Hierarchy;
+    if (has(QStringLiteral("ПрисоединенныеФайлы")))
+        return ButtonIcon::Paperclip;
+    if (has(QStringLiteral("ДополнительныеСведения")))
+        return ButtonIcon::List;
+    if (has(QStringLiteral("ИсторияИзменений")))
+        return ButtonIcon::Clock;
+    if (has(QStringLiteral("Заполнить")))
+        return ButtonIcon::Fill;
+    if (has(QStringLiteral("Отчет")))
+        return ButtonIcon::Chart;
+    if (has(QStringLiteral("ЭДО")))
+        return ButtonIcon::Envelope;
+    if (has(QStringLiteral("Справка")))
+        return ButtonIcon::Help;
+    if (has(QStringLiteral("Новости")))
+        return ButtonIcon::News;
+    if (has(QStringLiteral("НовоеОкно")))
+        return ButtonIcon::Window;
+    return ButtonIcon::None;
 }
 
 QString humanizeCommand(const QString &name)
@@ -167,8 +229,17 @@ private:
         switch (item.type) {
         case Type::Field:
             return std::max(170.0, labelWidth(item) + 160.0);
-        case Type::Button:
-            return std::min(220.0, m_metrics.horizontalAdvance(buttonTitle(item)) + 38.0);
+        case Type::Button: {
+            const ButtonIcon icon = iconForButton(item);
+            const bool iconOnly = icon != ButtonIcon::None
+                && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn;
+            if (iconOnly)
+                return 32.0;
+            double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
+            if (icon != ButtonIcon::None)
+                width += 22.0;
+            return std::min(240.0, width);
+        }
         case Type::Search:
             return item.name.contains(QStringLiteral("СтрокаПоиска")) ? 220.0 : 40.0;
         case Type::Table:
@@ -591,6 +662,10 @@ private:
         control.kind = PreviewControl::Kind::Button;
         control.rect = rect;
         control.title = buttonTitle(item);
+        control.icon = iconForButton(item);
+        control.iconOnly = control.icon != ButtonIcon::None
+            && control.icon != ButtonIcon::Create
+            && control.icon != ButtonIcon::CreateBasedOn;
         control.dropDown = dropDown;
         m_controls->append(control);
     }
@@ -679,6 +754,200 @@ private:
     QVector<PreviewControl> *m_controls = nullptr;
 };
 
+void drawButtonIcon(QPainter &painter, ButtonIcon icon, const QRectF &rect)
+{
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QPointF c = rect.center();
+    const double s = rect.width();
+    const double stroke = std::max(1.2, s * 0.08);
+
+    switch (icon) {
+    case ButtonIcon::Create:
+    case ButtonIcon::CreateBasedOn: {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(76, 175, 80));
+        painter.drawEllipse(rect.adjusted(0, 0, 0, 0));
+        QPen pen(Qt::white, stroke, Qt::SolidLine, Qt::RoundCap);
+        painter.setPen(pen);
+        painter.drawLine(QPointF(c.x() - s * 0.22, c.y()),
+                         QPointF(c.x() + s * 0.22, c.y()));
+        painter.drawLine(QPointF(c.x(), c.y() - s * 0.22),
+                         QPointF(c.x(), c.y() + s * 0.22));
+        if (icon == ButtonIcon::CreateBasedOn) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(76, 175, 80));
+            painter.drawEllipse(QPointF(rect.right() - 2.0, rect.top() + 2.0), 3.5, 3.5);
+            painter.setPen(QPen(Qt::white, 1.2));
+            painter.drawLine(QPointF(rect.right() - 4.5, rect.top() + 2.0),
+                             QPointF(rect.right() + 0.5, rect.top() + 2.0));
+            painter.drawLine(QPointF(rect.right() - 2.0, rect.top() - 0.5),
+                             QPointF(rect.right() - 2.0, rect.top() + 4.5));
+        }
+        break;
+    }
+    case ButtonIcon::Copy: {
+        const QRectF back(rect.left() + s * 0.10, rect.top() + s * 0.25,
+                          s * 0.58, s * 0.58);
+        painter.setPen(QPen(QColor(100, 100, 100), stroke));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(back, 1.5, 1.5);
+        const QRectF front(rect.left() + s * 0.28, rect.top() + s * 0.08,
+                           s * 0.58, s * 0.58);
+        painter.setBrush(Qt::white);
+        painter.drawRoundedRect(front, 1.5, 1.5);
+        painter.setBrush(Qt::NoBrush);
+        break;
+    }
+    case ButtonIcon::Change: {
+        QPen pen(QColor(245, 145, 30), stroke, Qt::SolidLine, Qt::RoundCap);
+        painter.setPen(pen);
+        painter.drawLine(QPointF(rect.left() + s * 0.2, rect.bottom() - s * 0.2),
+                         QPointF(rect.right() - s * 0.2, rect.top() + s * 0.2));
+        painter.setPen(QPen(QColor(90, 90, 90), stroke * 0.8));
+        painter.drawLine(QPointF(rect.left() + s * 0.18, rect.bottom() - s * 0.18),
+                         QPointF(rect.left() + s * 0.35, rect.bottom() - s * 0.35));
+        break;
+    }
+    case ButtonIcon::Print: {
+        painter.setPen(QPen(QColor(70, 70, 70), stroke));
+        painter.setBrush(QColor(210, 210, 210));
+        const QRectF body(rect.left() + s * 0.12, rect.top() + s * 0.35,
+                          s * 0.76, s * 0.42);
+        painter.drawRoundedRect(body, 1.5, 1.5);
+        painter.setBrush(Qt::white);
+        painter.drawRect(QRectF(rect.left() + s * 0.25, rect.top() + s * 0.08,
+                                s * 0.5, s * 0.3));
+        painter.setBrush(Qt::white);
+        painter.drawRect(QRectF(rect.left() + s * 0.25, rect.top() + s * 0.62,
+                                s * 0.5, s * 0.3));
+        painter.setBrush(Qt::NoBrush);
+        break;
+    }
+    case ButtonIcon::Hierarchy: {
+        painter.setPen(QPen(QColor(80, 80, 80), stroke));
+        painter.setBrush(Qt::white);
+        painter.drawRect(QRectF(rect.left() + s * 0.08, rect.top() + s * 0.12,
+                                s * 0.34, s * 0.24));
+        painter.drawRect(QRectF(rect.left() + s * 0.58, rect.top() + s * 0.12,
+                                s * 0.34, s * 0.24));
+        painter.drawRect(QRectF(rect.left() + s * 0.34, rect.top() + s * 0.62,
+                                s * 0.34, s * 0.24));
+        painter.drawLine(QPointF(c.x(), rect.top() + s * 0.36),
+                         QPointF(c.x(), rect.top() + s * 0.56));
+        painter.drawLine(QPointF(rect.left() + s * 0.25, rect.top() + s * 0.36),
+                         QPointF(rect.left() + s * 0.25, rect.top() + s * 0.5));
+        painter.drawLine(QPointF(rect.right() - s * 0.25, rect.top() + s * 0.36),
+                         QPointF(rect.right() - s * 0.25, rect.top() + s * 0.5));
+        break;
+    }
+    case ButtonIcon::Paperclip: {
+        painter.setPen(QPen(QColor(90, 90, 90), stroke, Qt::SolidLine, Qt::RoundCap));
+        painter.setBrush(Qt::NoBrush);
+        QPainterPath path;
+        path.moveTo(rect.left() + s * 0.25, rect.top() + s * 0.7);
+        path.cubicTo(rect.left() + s * 0.05, rect.top() + s * 0.45,
+                     rect.left() + s * 0.25, rect.top() + s * 0.1,
+                     rect.left() + s * 0.5, rect.top() + s * 0.25);
+        path.cubicTo(rect.left() + s * 0.7, rect.top() + s * 0.35,
+                     rect.left() + s * 0.55, rect.top() + s * 0.8,
+                     rect.left() + s * 0.78, rect.top() + s * 0.7);
+        painter.drawPath(path);
+        break;
+    }
+    case ButtonIcon::List: {
+        painter.setPen(QPen(QColor(80, 80, 80), stroke));
+        for (int i = 0; i < 3; ++i) {
+            const double y = rect.top() + s * (0.25 + i * 0.25);
+            painter.drawLine(QPointF(rect.left() + s * 0.35, y),
+                             QPointF(rect.right() - s * 0.1, y));
+            painter.drawEllipse(QPointF(rect.left() + s * 0.15, y), s * 0.06, s * 0.06);
+        }
+        break;
+    }
+    case ButtonIcon::Clock: {
+        painter.setPen(QPen(QColor(80, 80, 80), stroke));
+        painter.setBrush(Qt::white);
+        painter.drawEllipse(rect.adjusted(s * 0.12, s * 0.12, -s * 0.12, -s * 0.12));
+        painter.drawLine(c, QPointF(c.x(), c.y() - s * 0.22));
+        painter.drawLine(c, QPointF(c.x() + s * 0.18, c.y() + s * 0.08));
+        break;
+    }
+    case ButtonIcon::Fill: {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(255, 193, 7));
+        QPolygonF bolt;
+        bolt << QPointF(c.x() + s * 0.08, rect.top() + s * 0.05)
+             << QPointF(rect.left() + s * 0.2, c.y() + s * 0.02)
+             << QPointF(c.x(), c.y() + s * 0.02)
+             << QPointF(c.x() - s * 0.12, rect.bottom() - s * 0.05)
+             << QPointF(rect.right() - s * 0.15, c.y() - s * 0.04)
+             << QPointF(c.x() + s * 0.02, c.y() - s * 0.04);
+        painter.drawPolygon(bolt);
+        break;
+    }
+    case ButtonIcon::Chart: {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(66, 133, 244));
+        painter.drawRect(QRectF(rect.left() + s * 0.15, rect.top() + s * 0.5,
+                                s * 0.16, s * 0.4));
+        painter.setBrush(QColor(52, 168, 83));
+        painter.drawRect(QRectF(rect.left() + s * 0.42, rect.top() + s * 0.28,
+                                s * 0.16, s * 0.62));
+        painter.setBrush(QColor(251, 188, 5));
+        painter.drawRect(QRectF(rect.left() + s * 0.69, rect.top() + s * 0.12,
+                                s * 0.16, s * 0.78));
+        break;
+    }
+    case ButtonIcon::Envelope: {
+        painter.setPen(QPen(QColor(80, 80, 80), stroke));
+        painter.setBrush(Qt::white);
+        painter.drawRect(QRectF(rect.left() + s * 0.1, rect.top() + s * 0.22,
+                                s * 0.8, s * 0.56));
+        painter.drawLine(QPointF(rect.left() + s * 0.1, rect.top() + s * 0.22),
+                         QPointF(c.x(), rect.top() + s * 0.56));
+        painter.drawLine(QPointF(rect.right() - s * 0.1, rect.top() + s * 0.22),
+                         QPointF(c.x(), rect.top() + s * 0.56));
+        break;
+    }
+    case ButtonIcon::Help: {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(52, 120, 200));
+        painter.drawEllipse(rect.adjusted(s * 0.08, s * 0.08, -s * 0.08, -s * 0.08));
+        painter.setPen(QColor(Qt::white));
+        QFont font = painter.font();
+        font.setBold(true);
+        font.setPixelSize(int(s * 0.7));
+        painter.setFont(font);
+        painter.drawText(rect, Qt::AlignCenter, QStringLiteral("?"));
+        break;
+    }
+    case ButtonIcon::News: {
+        painter.setPen(QPen(QColor(70, 110, 160), stroke));
+        painter.setBrush(QColor(220, 235, 250));
+        painter.drawEllipse(rect.adjusted(s * 0.1, s * 0.1, -s * 0.1, -s * 0.1));
+        painter.drawLine(QPointF(c.x(), rect.top() + s * 0.1),
+                         QPointF(c.x(), rect.bottom() - s * 0.1));
+        painter.drawLine(QPointF(rect.left() + s * 0.1, c.y()),
+                         QPointF(rect.right() - s * 0.1, c.y()));
+        break;
+    }
+    case ButtonIcon::Window: {
+        painter.setPen(QPen(QColor(80, 80, 80), stroke));
+        painter.setBrush(Qt::white);
+        painter.drawRect(QRectF(rect.left() + s * 0.12, rect.top() + s * 0.22,
+                                s * 0.5, s * 0.5));
+        painter.setBrush(QColor(230, 230, 230));
+        painter.drawRect(QRectF(rect.left() + s * 0.38, rect.top() + s * 0.38,
+                                s * 0.5, s * 0.5));
+        break;
+    }
+    case ButtonIcon::None:
+        break;
+    }
+    painter.restore();
+}
+
 void paintControl(QPainter &painter, const PreviewControl &control,
                   const QFont &font, const QFontMetricsF &metrics)
 {
@@ -729,10 +998,32 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.drawRoundedRect(rect, 3.0, 3.0);
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QColor(35, 35, 35));
-        const double textWidth = rect.width() - (control.dropDown ? 24.0 : 8.0);
-        const QString text = metrics.elidedText(control.title, Qt::ElideRight,
-                                                int(std::max(10.0, textWidth)));
-        painter.drawText(rect.adjusted(4, 0, -4, 0), Qt::AlignCenter, text);
+
+        const double iconSize = std::min(18.0, rect.height() - 8.0);
+        double textLeft = rect.left() + 6.0;
+        double textRight = rect.right() - (control.dropDown ? 18.0 : 6.0);
+        if (control.icon != ButtonIcon::None) {
+            QRectF iconRect;
+            if (control.iconOnly) {
+                iconRect = QRectF(rect.center().x() - iconSize / 2.0,
+                                  rect.center().y() - iconSize / 2.0,
+                                  iconSize, iconSize);
+            } else {
+                iconRect = QRectF(rect.left() + 5.0,
+                                  rect.center().y() - iconSize / 2.0,
+                                  iconSize, iconSize);
+                textLeft = iconRect.right() + 4.0;
+            }
+            drawButtonIcon(painter, control.icon, iconRect);
+        }
+        if (!control.iconOnly) {
+            const QString text = metrics.elidedText(control.title, Qt::ElideRight,
+                                                    int(std::max(10.0, textRight - textLeft)));
+            painter.setPen(QColor(35, 35, 35));
+            painter.drawText(QRectF(textLeft, rect.top(), textRight - textLeft,
+                                    rect.height()),
+                             Qt::AlignLeft | Qt::AlignVCenter, text);
+        }
         if (control.dropDown) {
             const QPointF p(rect.right() - 10.0, rect.center().y());
             painter.setPen(QColor(80, 80, 80));
