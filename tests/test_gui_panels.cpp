@@ -1,4 +1,5 @@
 #include "gui/BslHighlightSettings.h"
+#include "gui/BslHighlighter.h"
 #include "gui/FormView.h"
 #include "gui/HighlightSettingsDialog.h"
 #include "gui/ModulePanel.h"
@@ -10,6 +11,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QColor>
 #include <QFile>
 #include <QMenu>
 #include <QPlainTextEdit>
@@ -35,6 +37,7 @@ private slots:
     void extractionMessages();
     void formViewModuleTab();
     void highlightSettingsDialog();
+    void highlighterUsesCustomColors();
 };
 
 void TestGuiPanels::initTestCase()
@@ -207,6 +210,40 @@ void TestGuiPanels::highlightSettingsDialog()
     const BslHighlightSettings loaded = BslHighlightSettings::load(settings, false);
     QVERIFY(!loaded.enabled);
     QVERIFY(!loaded.boldKeywords);
+
+    BslHighlightSettings custom = BslHighlightSettings::defaults(false);
+    custom.custom = true;
+    custom.keyword = QColor(Qt::yellow);
+    custom.save(settings);
+    const BslHighlightSettings customLoaded = BslHighlightSettings::load(settings, false);
+    QVERIFY(customLoaded.custom);
+    QCOMPARE(customLoaded.keyword.name(), QStringLiteral("#ffff00"));
+}
+
+void TestGuiPanels::highlighterUsesCustomColors()
+{
+    QPlainTextEdit edit;
+    BslHighlighter highlighter(edit.document());
+    edit.setPlainText(QStringLiteral("Процедура"));
+    BslHighlightSettings settings = BslHighlightSettings::defaults(false);
+    settings.custom = true;
+    settings.keyword = QColor(Qt::yellow);
+    highlighter.setSettings(settings);
+    edit.show();
+    QTest::qWait(20);
+    highlighter.rehighlight();
+
+    QTextBlock block = edit.document()->firstBlock();
+    QVERIFY(block.isValid());
+    QVERIFY(block.layout());
+    QColor color;
+    for (const QTextLayout::FormatRange &range : block.layout()->formats()) {
+        if (range.start == 0 && range.length > 0) {
+            color = range.format.foreground().color();
+            break;
+        }
+    }
+    QCOMPARE(color.name(), QStringLiteral("#ffff00"));
 }
 
 QTEST_MAIN(TestGuiPanels)

@@ -86,7 +86,8 @@ void BslHighlighter::rebuildFormats()
         Rule rule;
         rule.pattern = QRegularExpression(
             QStringLiteral("\\b%1\\b").arg(word),
-            QRegularExpression::CaseInsensitiveOption);
+            QRegularExpression::CaseInsensitiveOption
+                | QRegularExpression::UseUnicodePropertiesOption);
         rule.format = keyword;
         m_rules.append(rule);
     }
@@ -95,14 +96,16 @@ void BslHighlighter::rebuildFormats()
     directive.setForeground(m_settings.directive);
     directive.setFontWeight(m_settings.boldDirectives ? QFont::Bold : QFont::Normal);
     Rule directiveRule;
-    directiveRule.pattern = QRegularExpression(QStringLiteral("^\\s*#\\w+"));
+    directiveRule.pattern = QRegularExpression(
+        QStringLiteral("^\\s*#\\w+"), QRegularExpression::UseUnicodePropertiesOption);
     directiveRule.format = directive;
     m_rules.append(directiveRule);
 
     QTextCharFormat annotation;
     annotation.setForeground(m_settings.annotation);
     Rule annotationRule;
-    annotationRule.pattern = QRegularExpression(QStringLiteral("&\\w+"));
+    annotationRule.pattern = QRegularExpression(
+        QStringLiteral("&\\w+"), QRegularExpression::UseUnicodePropertiesOption);
     annotationRule.format = annotation;
     m_rules.append(annotationRule);
 
