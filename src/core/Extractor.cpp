@@ -1,5 +1,6 @@
 #include "core/Extractor.h"
 
+#include "core/BinaryText.h"
 #include "core/MetadataCatalog.h"
 #include "core/ModuleExtractor.h"
 #include "core/V8Text.h"
@@ -44,61 +45,6 @@ QString fileNameWithGuid(const MetadataEntry &entry)
     else if (!entry.guid.isEmpty())
         name = entry.guid;
     return name;
-}
-
-bool looksLikeUtf16(const QByteArray &data)
-{
-    const int sampleSize = static_cast<int>(std::min<qsizetype>(data.size(), 512));
-    if (sampleSize < 4)
-        return false;
-
-    int zeroOdd = 0;
-    int zeroEven = 0;
-    int chars = sampleSize / 2;
-    for (int i = 0; i < sampleSize; ++i) {
-        if (data.at(i) == 0) {
-            if (i & 1)
-                ++zeroOdd;
-            else
-                ++zeroEven;
-        }
-    }
-    return zeroOdd > chars * 0.7 || zeroEven > chars * 0.7;
-}
-
-bool isProbablyText(const QByteArray &data)
-{
-    if (data.isEmpty())
-        return false;
-
-    if (data.startsWith("\xef\xbb\xbf")
-        || data.startsWith("\xff\xfe")
-        || data.startsWith("\xfe\xff")) {
-        return true;
-    }
-
-    if (looksLikeUtf16(data))
-        return true;
-
-    const int sampleSize = static_cast<int>(std::min<qsizetype>(data.size(), 8192));
-    int zeros = 0;
-    int controls = 0;
-    int printable = 0;
-    for (int i = 0; i < sampleSize; ++i) {
-        const auto byte = static_cast<unsigned char>(data.at(i));
-        if (byte == 0)
-            ++zeros;
-        else if (byte < 0x09 || (byte > 0x0d && byte < 0x20) || byte == 0x7f)
-            ++controls;
-        else if (byte >= 0x20)
-            ++printable;
-    }
-
-    if (zeros > sampleSize / 20)
-        return false;
-    if (controls * 20 > sampleSize)
-        return false;
-    return printable * 10 >= sampleSize * 9;
 }
 
 void collectBase64(const V8TextNode &node, QByteArray *best, int depth)
@@ -168,7 +114,7 @@ QString binaryExtension(const QByteArray &data)
 
 QString decodeText(const QByteArray &data)
 {
-    if (!isProbablyText(data))
+    if (!isProbablyText(data, true))
         return QString();
     return V8Text::decode(data, nullptr, nullptr);
 }
@@ -238,7 +184,7 @@ bool Extractor::extractObject(MetadataObject &object, const QString &outputRoot,
     if (const V8Element *element = m_reader.container().find(elementName)) {
         QByteArray payload;
         if (m_reader.container().elementPayload(*element, &payload, nullptr, nullptr)
-            && !payload.isEmpty() && !isProbablyText(payload)) {
+            && !payload.isEmpty() && !isProbablyText(payload, true)) {
             if (!writeFile(QDir(directory).filePath(QStringLiteral("object.bin")),
                            payload, report, error)) {
                 ok = false;

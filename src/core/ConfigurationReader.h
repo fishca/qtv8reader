@@ -2,7 +2,10 @@
 #define QTV8READER_CONFIGURATIONREADER_H
 
 #include "core/Configuration.h"
+#include "core/MetadataTextUtils.h"
 #include "core/ModuleExtractor.h"
+#include "core/SectionBuilder.h"
+#include "core/TypeResolver.h"
 #include "core/V8Container.h"
 #include "core/V8Text.h"
 
@@ -65,27 +68,8 @@ public:
     QVector<ModuleInfo> configurationModules() const;
 
 private:
-    struct ReferenceName
-    {
-        QString name;
-        QString synonym;
-    };
-
-    struct DescriptorInfo
-    {
-        bool found = false;
-        QString guid;
-        QString name;
-        QString synonym;
-        QString comment;
-    };
-
-    // Тип объекта, на который могут ссылаться реквизиты (СправочникСсылка и т. п.).
-    struct TypeObject
-    {
-        QString typeTitle;
-        QString name;
-    };
+    using ReferenceName = detail::ReferenceName;
+    using DescriptorInfo = detail::DescriptorInfo;
 
     bool readRootGuid(QString *rootGuid);
     bool parseElementTree(const QString &elementName, V8TextNode *root) const;
@@ -96,41 +80,14 @@ private:
     MetadataObject objectFromRoot(const QString &guid,
                                   const MetadataCategoryInfo &category,
                                   const V8TextNode &objectRoot) const;
-    QStringList collectTypeIds(const V8TextNode &objectRoot,
-                               const V8TextNode *descriptor) const;
-    void registerTypeIds(const MetadataObject &object);
-    QString referenceTypeName(const QString &typeGuid) const;
-    QString typeTextFromNode(const V8TextNode &typeNode) const;
-    QString typeTextForDescriptor(const V8TextNode &root,
-                                  const V8TextNode *descriptor) const;
-    QString typeTextForItem(const V8TextNode &item) const;
-    void parseSubscription(const V8TextNode &objectRoot,
-                           const V8TextNode *descriptor,
-                           MetadataObject *object) const;
-    QVector<MetadataSection> buildSections(const V8TextNode &objectRoot,
-                                           const QString &categoryGuid) const;
-    QVector<MetadataSection> buildSectionsByLayout(const V8TextNode &objectRoot,
-                                                   const MetadataLayout &layout) const;
-    QVector<MetadataSection> buildSectionsByTableGuids(const V8TextNode &objectRoot,
-                                                       int maxDepth) const;
-    QVector<MetadataSection> buildSectionsFallback(const V8TextNode &objectRoot) const;
-    bool buildSectionFromTable(const V8TextNode &table, MetadataSectionKind kind,
-                               MetadataSection *section) const;
-    MetadataEntry buildEntryFromItem(const V8TextNode &item,
-                                     MetadataSectionKind kind) const;
-    MetadataEntry buildReferenceEntry(const QString &guid,
-                                      MetadataSectionKind kind) const;
-    void attachTabularAttributes(const V8TextNode &item, MetadataEntry *entry) const;
-    const V8TextNode *findDescriptor(const V8TextNode &root, const QString &guid) const;
-    DescriptorInfo descriptorFor(const V8TextNode &root) const;
     ReferenceName referenceName(const QString &guid) const;
     void addWarning(const QString &message);
 
     V8Container m_container;
     Configuration m_configuration;
+    TypeResolver m_types;
+    SectionBuilder m_sections;
     mutable QHash<QString, ReferenceName> m_referenceNames;
-    // Расшифровка внутренних идентификаторов типов: GUID типа → объект.
-    QHash<QString, TypeObject> m_typeIndex;
     // GUID описателя корневого объекта (для поиска корневых модулей).
     QString m_rootDescriptorGuid;
 

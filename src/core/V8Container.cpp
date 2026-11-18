@@ -321,6 +321,7 @@ void V8Container::clear()
     m_sourcePath.clear();
     m_format = V8ContainerFormat();
     m_elements.clear();
+    m_index.clear();
 }
 
 const V8Element *V8Container::at(int index) const
@@ -332,11 +333,8 @@ const V8Element *V8Container::at(int index) const
 
 int V8Container::indexOf(const QString &name) const
 {
-    for (int i = 0; i < m_elements.size(); ++i) {
-        if (m_elements.at(i).name.compare(name, Qt::CaseInsensitive) == 0)
-            return i;
-    }
-    return -1;
+    const auto it = m_index.constFind(name.toCaseFolded());
+    return it != m_index.constEnd() ? it.value() : -1;
 }
 
 const V8Element *V8Container::find(const QString &name) const
@@ -348,6 +346,7 @@ const V8Element *V8Container::find(const QString &name) const
 bool V8Container::parseCandidate(const Candidate &candidate, QString *error)
 {
     m_elements.clear();
+    m_index.clear();
     m_format = V8ContainerFormat();
     m_format.version = candidate.version;
     m_format.baseOffset = candidate.baseOffset;
@@ -448,6 +447,13 @@ bool V8Container::parseCandidate(const Candidate &candidate, QString *error)
         if (error)
             *error = QStringLiteral("не найдено ни одного корректного элемента");
         return false;
+    }
+
+    m_index.reserve(m_elements.size());
+    for (int i = 0; i < m_elements.size(); ++i) {
+        const QString key = m_elements.at(i).name.toCaseFolded();
+        if (!m_index.contains(key))
+            m_index.insert(key, i);
     }
 
     return true;

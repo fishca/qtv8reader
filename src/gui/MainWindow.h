@@ -5,35 +5,34 @@
 #include "core/ModuleExtractor.h"
 #include "core/FormDocument.h"
 #include "core/MxlDocument.h"
+#include "gui/MetadataTreeRoles.h"
 
-#include <QByteArray>
 #include <QHash>
 #include <QIcon>
 #include <QMainWindow>
-#include <QPalette>
 #include <QStringList>
 #include <QVector>
 
 #include <memory>
 
 class QAction;
-class QComboBox;
 class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QMenu;
 class QPlainTextEdit;
 class QTabWidget;
-class QTableWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
 
 namespace v8reader {
 
-class BslHighlighter;
 class ConfigurationReader;
 class FormView;
+class ModulePanel;
 class MxlView;
+class PropertiesPanel;
+class ThemeController;
 
 class MainWindow : public QMainWindow
 {
@@ -83,7 +82,6 @@ private slots:
     void showAbout();
     void onTreeSelectionChanged();
     void onTreeItemExpanded(QTreeWidgetItem *item);
-    void onModuleChanged(int index);
     void onContainerDoubleClicked(QTreeWidgetItem *item, int column);
     void onContainerContextMenu(const QPoint &position);
     void printMxl();
@@ -93,30 +91,6 @@ private slots:
     void applyTheme(const QString &theme, bool persist = true);
 
 private:
-    // Вид узла дерева метаданных.
-    enum ItemKind {
-        RootItem = 1,
-        GroupItem,
-        CategoryItem,
-        ObjectItem,
-        SectionItem,
-        EntryItem,
-        ModuleNodeItem,
-        RootModuleItem
-    };
-
-    enum ItemRole {
-        KindRole = Qt::UserRole,
-        GuidRole,          // GUID объекта для Object/Section/Entry/Module
-        SectionKindRole,   // MetadataSectionKind для Section/Entry
-        EntryIndexRole,    // индекс элемента раздела
-        ChildIndexRole,    // индекс вложенного реквизита ТЧ
-        ModuleIndexRole,   // индекс модуля объекта
-        LoadedRole,        // дочерние узлы объекта уже построены
-        IndexRole          // индекс элемента контейнера (вкладка «Контейнер»)
-
-    };
-
     void setupUi();
     void setupMenus();
     void setupToolBar();
@@ -146,6 +120,7 @@ private:
     bool filterTreeItem(QTreeWidgetItem *item, const QString &needle);
     void updateTreeHint();
     void buildContainerTree();
+    void ensureContainerTree();
 
     MetadataObject *objectForItem(const QTreeWidgetItem *item);
     QTreeWidgetItem *findObjectItem(const QString &guid) const;
@@ -190,7 +165,7 @@ private:
     QTreeWidget *m_tree = nullptr;
     QLabel *m_treeHint = nullptr;
     QTabWidget *m_tabs = nullptr;
-    QTableWidget *m_properties = nullptr;
+    PropertiesPanel *m_properties = nullptr;
     QTreeWidget *m_composition = nullptr;
     MxlView *m_mxlView = nullptr;
     QWidget *m_mxlPage = nullptr;
@@ -201,19 +176,16 @@ private:
     QWidget *m_formPage = nullptr;
     FormDocument m_formDocument;
     bool m_formDocumentValid = false;
-    QComboBox *m_moduleCombo = nullptr;
-    QPlainTextEdit *m_moduleEdit = nullptr;
-    QWidget *m_modulePage = nullptr;
+    ModulePanel *m_modulePanel = nullptr;
     QPlainTextEdit *m_metadataEdit = nullptr;
     QTreeWidget *m_containerTree = nullptr;
-    BslHighlighter *m_highlighter = nullptr;
+    bool m_containerTreeDirty = false;
     bool m_highlightEnabled = true;
     QAction *m_highlightAction = nullptr;
     QString m_theme = QStringLiteral("light");
     QAction *m_lightThemeAction = nullptr;
     QAction *m_darkThemeAction = nullptr;
-    QPalette m_defaultPalette;
-    QString m_defaultStyleName;
+    ThemeController *m_themeController = nullptr;
     bool m_themeApplied = false;
 
     QAction *m_refreshAction = nullptr;

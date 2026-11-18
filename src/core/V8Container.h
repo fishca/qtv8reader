@@ -3,6 +3,7 @@
 
 #include <QByteArray>
 #include <QDateTime>
+#include <QHash>
 #include <QString>
 #include <QVector>
 
@@ -106,6 +107,9 @@ private:
     QString m_sourcePath;
     V8ContainerFormat m_format;
     QVector<V8Element> m_elements;
+    // Имя в нижнем регистре → индекс первого элемента. Ускоряет find()/indexOf()
+    // на больших конфигурациях (тысячи объектов).
+    QHash<QString, int> m_index;
 };
 
 } // namespace v8reader

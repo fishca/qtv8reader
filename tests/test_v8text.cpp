@@ -9,6 +9,7 @@ int runV8ContainerTests(int argc, char **argv);
 int runMetadataTests(int argc, char **argv);
 int runMxlTests(int argc, char **argv);
 int runFormTests(int argc, char **argv);
+int runDisplayTextTests(int argc, char **argv);
 
 class TestV8Text : public QObject
 {
@@ -211,6 +212,7 @@ int main(int argc, char *argv[])
     status |= runMetadataTests(argc, argv);
     status |= runMxlTests(argc, argv);
     status |= runFormTests(argc, argv);
+    status |= runDisplayTextTests(argc, argv);
     return status;
 }
 

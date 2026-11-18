@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.6.0
+    VERSION 0.6.1
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -19,6 +19,18 @@ find_package(ZLIB REQUIRED)
 qt_standard_project_setup()
 
 add_library(qtv8reader_core STATIC
+    src/core/BinaryText.h
+    src/core/BinaryText.cpp
+    src/core/DisplayText.h
+    src/core/DisplayText.cpp
+    src/core/MetadataTextUtils.h
+    src/core/MetadataTextUtils.cpp
+    src/core/TypeResolver.h
+    src/core/TypeResolver.cpp
+    src/core/SubscriptionParser.h
+    src/core/SubscriptionParser.cpp
+    src/core/SectionBuilder.h
+    src/core/SectionBuilder.cpp
     src/core/V8Text.h
     src/core/V8Text.cpp
     src/core/V8Container.h
@@ -46,11 +58,23 @@ add_library(qtv8reader_core STATIC
 target_include_directories(qtv8reader_core PUBLIC src)
 target_link_libraries(qtv8reader_core PUBLIC Qt6::Core Qt6::Concurrent ZLIB::ZLIB)
 
-qt_add_executable(qtv8reader WIN32
-    resources/resources.qrc
-    src/gui/main.cpp
+add_library(qtv8reader_gui STATIC
     src/gui/MainWindow.h
     src/gui/MainWindow.cpp
+    src/gui/MetadataIcons.h
+    src/gui/MetadataIcons.cpp
+    src/gui/ThemeController.h
+    src/gui/ThemeController.cpp
+    src/gui/ModulePanel.h
+    src/gui/ModulePanel.cpp
+    src/gui/PropertiesPanel.h
+    src/gui/PropertiesPanel.cpp
+    src/gui/MainWindowSupport.h
+    src/gui/MainWindowSupport.cpp
+    src/gui/MetadataTreeRoles.h
+    src/gui/MainWindowTree.cpp
+    src/gui/MainWindowDetails.cpp
+    src/gui/MainWindowMxlForm.cpp
     src/gui/PreviewDialog.h
     src/gui/PreviewDialog.cpp
     src/gui/MxlView.h
@@ -65,19 +89,36 @@ qt_add_executable(qtv8reader WIN32
     src/gui/BslHighlighter.cpp
 )
 
-target_link_libraries(qtv8reader PRIVATE qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
+target_link_libraries(qtv8reader_gui PUBLIC qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
+
+qt_add_executable(qtv8reader WIN32
+    resources/resources.qrc
+    src/gui/main.cpp
+)
+
+target_link_libraries(qtv8reader PRIVATE qtv8reader_gui)
 target_compile_definitions(qtv8reader PRIVATE QTV8READER_VERSION="${PROJECT_VERSION}")
+
+add_library(qtv8reader_cli_lib STATIC
+    src/cli/CliApplication.h
+    src/cli/CliApplication.cpp
+    src/cli/Output.h
+    src/cli/Output.cpp
+)
+
+target_link_libraries(qtv8reader_cli_lib PUBLIC qtv8reader_core)
 
 add_executable(v8reader_cli
     src/cli/main.cpp
 )
 
-target_link_libraries(v8reader_cli PRIVATE qtv8reader_core)
+target_link_libraries(v8reader_cli PRIVATE qtv8reader_cli_lib)
 target_compile_definitions(v8reader_cli PRIVATE QTV8READER_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
 
 qt_add_executable(qtv8reader_tests
+    tests/test_display_text.cpp
     tests/test_v8text.cpp
     tests/test_v8container.cpp
     tests/test_metadata.cpp
@@ -90,6 +131,24 @@ qt_add_executable(qtv8reader_tests
 target_link_libraries(qtv8reader_tests PRIVATE qtv8reader_core Qt6::Test)
 
 add_test(NAME qtv8reader_tests COMMAND qtv8reader_tests)
+
+qt_add_executable(qtv8reader_cli_tests
+    tests/test_cli.cpp
+    tests/TestContainerBuilder.h
+    tests/TestContainerBuilder.cpp
+)
+
+target_link_libraries(qtv8reader_cli_tests PRIVATE qtv8reader_cli_lib Qt6::Test)
+add_test(NAME qtv8reader_cli_tests COMMAND qtv8reader_cli_tests)
+
+qt_add_executable(qtv8reader_gui_tests
+    tests/test_gui_panels.cpp
+)
+
+target_link_libraries(qtv8reader_gui_tests PRIVATE qtv8reader_gui Qt6::Test)
+add_test(NAME qtv8reader_gui_tests COMMAND qtv8reader_gui_tests)
+set_tests_properties(qtv8reader_gui_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 if (MSVC)
     target_compile_options(qtv8reader_core PRIVATE /W4 /utf-8)
