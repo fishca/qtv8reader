@@ -89,6 +89,7 @@ jobs:
           for d in $deps; do cp -n "$d" dist/ 2>/dev/null || true; done
 
           cp README.md dist/README.md
+          cp LICENSE dist/LICENSE
           cp packaging/THIRD-PARTY-NOTICES.txt dist/THIRD-PARTY-NOTICES.txt
           mkdir -p "$PKG"
           cp -r dist/. "$PKG/"
@@ -173,6 +174,7 @@ jobs:
           cp packaging/qtv8reader.png AppDir/qtv8reader.png
           cp packaging/THIRD-PARTY-NOTICES.txt AppDir/usr/share/doc/qtv8reader/
           cp README.md AppDir/usr/share/doc/qtv8reader/README.md
+          cp LICENSE AppDir/usr/share/doc/qtv8reader/LICENSE
 
           export QMAKE="$QT_ROOT_DIR/bin/qmake"
           export OUTPUT="$APPIMAGE_NAME"
