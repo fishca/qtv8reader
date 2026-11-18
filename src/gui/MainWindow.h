@@ -19,7 +19,6 @@ class QAction;
 class QCheckBox;
 class QLabel;
 class QLineEdit;
-class QMenu;
 class QPlainTextEdit;
 class QTabWidget;
 class QTreeWidget;
@@ -32,6 +31,7 @@ class FormView;
 class ModulePanel;
 class MxlView;
 class PropertiesPanel;
+class RecentFilesController;
 class ThemeController;
 
 class MainWindow : public QMainWindow
@@ -86,7 +86,6 @@ private slots:
     void onContainerContextMenu(const QPoint &position);
     void printMxl();
     void exportMxlPdf();
-    void openRecentFile();
     void setModuleHighlighting(bool enabled);
     void applyTheme(const QString &theme, bool persist = true);
 
@@ -96,10 +95,6 @@ private:
     void setupToolBar();
     void setupTree();
     void setupTabs();
-    void updateRecentMenu();
-    void loadRecentFiles();
-    void saveRecentFiles();
-    void addRecentFile(const QString &path);
 
     void buildTree();
     void addRootModuleItems(QTreeWidgetItem *rootItem);
@@ -194,9 +189,8 @@ private:
     QAction *m_pdfMxlAction = nullptr;
     QAction *m_extractAllAction = nullptr;
     QAction *m_closeAction = nullptr;
-    QMenu *m_recentMenu = nullptr;
+    RecentFilesController *m_recentFilesController = nullptr;
 
-    QStringList m_recentFiles;
     QString m_currentPath;
 
     QIcon m_rootIcon;

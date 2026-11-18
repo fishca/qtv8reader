@@ -1,10 +1,16 @@
 #include "gui/ModulePanel.h"
 #include "gui/PropertiesPanel.h"
+#include "gui/RecentFilesController.h"
 #include "gui/ThemeController.h"
+#include "gui/ExtractionController.h"
 
+#include <QAction>
 #include <QApplication>
+#include <QFile>
+#include <QMenu>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 using namespace v8reader;
@@ -18,6 +24,8 @@ private slots:
     void themePersists();
     void modulePanelSwitches();
     void propertiesAreReadOnly();
+    void recentFilesOpenAndMissing();
+    void extractionMessages();
 };
 
 void TestGuiPanels::initTestCase()
@@ -81,6 +89,68 @@ void TestGuiPanels::propertiesAreReadOnly()
     QCOMPARE(panel.item(0, 0)->text(), QStringLiteral("Имя"));
     QCOMPARE(panel.item(0, 1)->text(), QStringLiteral("Справочник1"));
     QVERIFY(!(panel.item(0, 0)->flags() & Qt::ItemIsEditable));
+}
+
+void TestGuiPanels::recentFilesOpenAndMissing()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString existing = temp.filePath(QStringLiteral("recent.cf"));
+    {
+        QFile file(existing);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("x");
+    }
+
+    QMenu menu;
+    RecentFilesController controller(&menu);
+    QSignalSpy openSpy(&controller, &RecentFilesController::openRequested);
+    QSignalSpy missingSpy(&controller, &RecentFilesController::missingFile);
+
+    controller.add(existing);
+    controller.add(QStringLiteral("C:/no/such/recent-file.cf"));
+    QCOMPARE(controller.files().size(), 2);
+
+    QAction *first = nullptr;
+    QAction *missing = nullptr;
+    for (QAction *action : menu.actions()) {
+        if (action->data().toString() == existing)
+            first = action;
+        if (action->data().toString().contains(QStringLiteral("recent-file.cf")))
+            missing = action;
+    }
+    QVERIFY(first);
+    first->trigger();
+    QCOMPARE(openSpy.count(), 1);
+    QCOMPARE(openSpy.at(0).at(0).toString(), existing);
+
+    QVERIFY(missing);
+    missing->trigger();
+    QCOMPARE(missingSpy.count(), 1);
+    QCOMPARE(controller.files().size(), 1);
+}
+
+void TestGuiPanels::extractionMessages()
+{
+    MetadataObject object;
+    object.name = QStringLiteral("Справочник1");
+    ExtractionReport report;
+    report.outputDirectory = QStringLiteral("C:/out");
+    report.files.append({QStringLiteral("C:/out/info.txt"), 10});
+    report.moduleCount = 1;
+    report.formCount = 2;
+    report.templateCount = 3;
+    report.warnings.append(QStringLiteral("warning"));
+
+    const QString objectMessage =
+        ExtractionController::objectResultMessage(object, report);
+    QVERIFY(objectMessage.contains(QStringLiteral("Справочник1")));
+    QVERIFY(objectMessage.contains(QStringLiteral("warning")));
+    QVERIFY(objectMessage.contains(QStringLiteral("C:/out")));
+
+    const QString allMessage = ExtractionController::allResultMessage(report);
+    QVERIFY(allMessage.contains(QStringLiteral("Сохранено файлов: 1")));
+    QVERIFY(allMessage.contains(QStringLiteral("warning")));
 }
 
 QTEST_MAIN(TestGuiPanels)

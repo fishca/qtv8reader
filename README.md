@@ -281,7 +281,9 @@ src/
     ThemeController.*      светлая/тёмная тема
     ModulePanel.*          вкладка «Модуль»
     PropertiesPanel.*      таблица «Свойства»
-  cli/                     CliApplication + Output, main.cpp — тонкий
+    RecentFilesController.* недавние файлы
+    ExtractionController.*  выгрузка и отчёт
+  cli/                     CliApplication + команды *Command.cpp, main.cpp — тонкий
 tests/                     Qt Test: контейнер, текст, метаданные, CLI, GUI-панели
 ```
 

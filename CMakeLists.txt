@@ -69,6 +69,10 @@ add_library(qtv8reader_gui STATIC
     src/gui/ModulePanel.cpp
     src/gui/PropertiesPanel.h
     src/gui/PropertiesPanel.cpp
+    src/gui/RecentFilesController.h
+    src/gui/RecentFilesController.cpp
+    src/gui/ExtractionController.h
+    src/gui/ExtractionController.cpp
     src/gui/MainWindowSupport.h
     src/gui/MainWindowSupport.cpp
     src/gui/MetadataTreeRoles.h
@@ -102,8 +106,23 @@ target_compile_definitions(qtv8reader PRIVATE QTV8READER_VERSION="${PROJECT_VERS
 add_library(qtv8reader_cli_lib STATIC
     src/cli/CliApplication.h
     src/cli/CliApplication.cpp
+    src/cli/CommandCommon.h
+    src/cli/Commands.h
+    src/cli/CommandUtils.h
+    src/cli/CommandUtils.cpp
     src/cli/Output.h
     src/cli/Output.cpp
+    src/cli/HelpCommand.cpp
+    src/cli/InfoCommand.cpp
+    src/cli/ListCommand.cpp
+    src/cli/TreeCommand.cpp
+    src/cli/DumpCommand.cpp
+    src/cli/MetadataCommand.cpp
+    src/cli/ModulesCommand.cpp
+    src/cli/CompositionCommand.cpp
+    src/cli/MxlCommand.cpp
+    src/cli/ExtractCommand.cpp
+    src/cli/ExtractAllCommand.cpp
 )
 
 target_link_libraries(qtv8reader_cli_lib PUBLIC qtv8reader_core)

@@ -30,9 +30,16 @@ src/
     ThemeController.*        светлая/тёмная тема и сохранение
     ModulePanel.*            вкладка «Модуль»
     PropertiesPanel.*        таблица «Свойства»
+    RecentFilesController.*  недавние файлы и меню
+    ExtractionController.*   выгрузка и текст отчёта
     MxlView/MxlRenderer/MxlPrinter, FormView, PreviewDialog, BslHighlighter
   cli/                       консольная утилита
-    CliApplication.*         команды и диспетчеризация
+    CliApplication.*         диспетчеризация команд
+    CommandUtils.*           поиск объекта, загрузка, запись файлов, отчёт
+    CommandCommon.h          общие include для команд
+    InfoCommand.cpp, ListCommand.cpp, TreeCommand.cpp, DumpCommand.cpp,
+    MetadataCommand.cpp, ModulesCommand.cpp, CompositionCommand.cpp,
+    MxlCommand.cpp, ExtractCommand.cpp, ExtractAllCommand.cpp, HelpCommand.cpp
     Output.*                 UTF-8 stdout/stderr
     main.cpp                 разбор аргументов и запуск
 tests/                       Qt Test: контейнер, текст, метаданные, CLI, GUI-панели

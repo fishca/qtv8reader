@@ -7,6 +7,8 @@
 #include "gui/MetadataIcons.h"
 #include "gui/ModulePanel.h"
 #include "gui/PropertiesPanel.h"
+#include "gui/RecentFilesController.h"
+#include "gui/ExtractionController.h"
 #include "gui/ThemeController.h"
 #include "gui/MainWindowSupport.h"
 #include "core/Extractor.h"
@@ -115,8 +117,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_modulePanel)
             m_modulePanel->setDarkMode(dark);
     });
-    loadRecentFiles();
-    updateRecentMenu();
+    m_recentFilesController->load();
     applyTheme(m_theme, false);
 
     const QByteArray geometry = settings.value(settingsKey(QStringLiteral("geometry"))).toByteArray();
@@ -201,7 +202,16 @@ void MainWindow::setupMenus()
     openAction->setShortcut(QKeySequence::Open);
     connect(openAction, &QAction::triggered, this, &MainWindow::openFileDialog);
 
-    m_recentMenu = fileMenu->addMenu(QStringLiteral("Недавние файлы"));
+    QMenu *recentMenu = fileMenu->addMenu(QStringLiteral("Недавние файлы"));
+    m_recentFilesController = new RecentFilesController(recentMenu, this);
+    connect(m_recentFilesController, &RecentFilesController::openRequested,
+            this, [this](const QString &path) { openFile(path); });
+    connect(m_recentFilesController, &RecentFilesController::missingFile,
+            this, [this](const QString &path) {
+                QMessageBox::warning(
+                    this, QStringLiteral("Файл не найден"),
+                    QStringLiteral("Файл «%1» больше не существует.").arg(path));
+            });
     fileMenu->addSeparator();
 
     m_closeAction = fileMenu->addAction(QStringLiteral("Закрыть файл"));
@@ -441,7 +451,7 @@ bool MainWindow::openFile(const QString &path)
     m_moduleCache.clear();
     m_rootModules = m_reader->configurationModules();
 
-    addRecentFile(m_currentPath);
+    m_recentFilesController->add(m_currentPath);
     buildTree();
     // «Контейнер» строится лениво: на больших конфигурациях это тысячи
     // QTreeWidgetItem и заметная задержка при открытии файла.
@@ -829,14 +839,13 @@ void MainWindow::extractSelected()
     if (directory.isEmpty())
         return;
 
-    ExtractionOptions options;
     ExtractionReport report;
     QString error;
-    Extractor extractor(*m_reader);
+    ExtractionController controller;
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    const bool ok = extractor.extractObject(*m_currentObject, directory, options,
-                                            &report, &error);
+    const bool ok = controller.extractObject(*m_reader, *m_currentObject, directory,
+                                             &report, &error);
     QApplication::restoreOverrideCursor();
 
     if (!ok) {
@@ -844,27 +853,9 @@ void MainWindow::extractSelected()
         return;
     }
 
-    QString message = QStringLiteral(
-        "Объект «%1» сохранён.\n\n"
-        "Файлов: %2\nМодулей: %3\nФорм: %4\nМакетов: %5\n\n"
-        "Каталог:\n%6")
-        .arg(m_currentObject->displayName())
-        .arg(report.files.size())
-        .arg(report.moduleCount)
-        .arg(report.formCount)
-        .arg(report.templateCount)
-        .arg(report.outputDirectory);
-
-    if (!report.warnings.isEmpty()) {
-        message += QStringLiteral("\n\nПредупреждения:\n");
-        const int count = std::min<int>(report.warnings.size(), 10);
-        for (int i = 0; i < count; ++i)
-            message += QStringLiteral("• %1\n").arg(report.warnings.at(i));
-        if (report.warnings.size() > count)
-            message += QStringLiteral("…\n");
-    }
-
-    QMessageBox::information(this, QStringLiteral("Извлечение завершено"), message);
+    QMessageBox::information(
+        this, QStringLiteral("Извлечение завершено"),
+        ExtractionController::objectResultMessage(*m_currentObject, report));
     statusBar()->showMessage(QStringLiteral("Объект сохранён в %1")
                                  .arg(report.outputDirectory));
 }
@@ -898,13 +889,12 @@ void MainWindow::extractAll()
     if (directory.isEmpty())
         return;
 
-    ExtractionOptions options;
     ExtractionReport report;
     QString error;
-    Extractor extractor(*m_reader);
+    ExtractionController controller;
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    const bool ok = extractor.extractAll(directory, options, &report, &error);
+    const bool ok = controller.extractAll(*m_reader, directory, &report, &error);
     QApplication::restoreOverrideCursor();
 
     if (!ok) {
@@ -912,22 +902,8 @@ void MainWindow::extractAll()
         return;
     }
 
-    QString message = QStringLiteral(
-        "Сохранено файлов: %1\nМодулей: %2\nФорм: %3\nМакетов: %4\n\nКаталог:\n%5")
-        .arg(report.files.size())
-        .arg(report.moduleCount)
-        .arg(report.formCount)
-        .arg(report.templateCount)
-        .arg(report.outputDirectory);
-
-    if (!report.warnings.isEmpty()) {
-        message += QStringLiteral("\n\nПредупреждения:\n");
-        const int count = std::min<int>(report.warnings.size(), 10);
-        for (int i = 0; i < count; ++i)
-            message += QStringLiteral("• %1\n").arg(report.warnings.at(i));
-    }
-
-    QMessageBox::information(this, QStringLiteral("Извлечение завершено"), message);
+    QMessageBox::information(this, QStringLiteral("Извлечение завершено"),
+                             ExtractionController::allResultMessage(report));
     statusBar()->showMessage(QStringLiteral("Сохранено в %1").arg(report.outputDirectory));
 }
 
@@ -1144,98 +1120,6 @@ void MainWindow::saveElement(int index)
     statusBar()->showMessage(QStringLiteral("Сохранено: %1").arg(path));
 }
 
-void MainWindow::loadRecentFiles()
-{
-    QSettings settings;
-    const QStringList stored = settings.value(
-        settingsKey(QStringLiteral("recentFiles"))).toStringList();
-
-    m_recentFiles.clear();
-    for (const QString &path : stored) {
-        if (!path.trimmed().isEmpty()
-            && !m_recentFiles.contains(path, Qt::CaseInsensitive)) {
-            m_recentFiles.append(path);
-        }
-        if (m_recentFiles.size() >= 10)
-            break;
-    }
-}
-
-void MainWindow::saveRecentFiles()
-{
-    QSettings settings;
-    settings.setValue(settingsKey(QStringLiteral("recentFiles")), m_recentFiles);
-}
-
-void MainWindow::addRecentFile(const QString &path)
-{
-    const QString absolute = QFileInfo(path).absoluteFilePath();
-
-    QStringList filtered;
-    filtered.append(absolute);
-    for (const QString &existing : m_recentFiles) {
-        if (existing.compare(absolute, Qt::CaseInsensitive) == 0)
-            continue;
-        filtered.append(existing);
-        if (filtered.size() >= 10)
-            break;
-    }
-    m_recentFiles = filtered;
-
-    saveRecentFiles();
-    updateRecentMenu();
-}
-
-void MainWindow::updateRecentMenu()
-{
-    m_recentMenu->clear();
-
-    if (m_recentFiles.isEmpty()) {
-        QAction *emptyAction = m_recentMenu->addAction(
-            QStringLiteral("Нет недавних файлов"));
-        emptyAction->setEnabled(false);
-        return;
-    }
-
-    for (const QString &path : m_recentFiles) {
-        const QFileInfo info(path);
-        auto *action = m_recentMenu->addAction(info.fileName());
-        action->setToolTip(path);
-        action->setData(path);
-        connect(action, &QAction::triggered, this, &MainWindow::openRecentFile);
-    }
-
-    m_recentMenu->addSeparator();
-    QAction *clearAction = m_recentMenu->addAction(QStringLiteral("Очистить список"));
-    connect(clearAction, &QAction::triggered, this, [this] {
-        m_recentFiles.clear();
-        saveRecentFiles();
-        updateRecentMenu();
-    });
-}
-
-void MainWindow::openRecentFile()
-{
-    auto *action = qobject_cast<QAction *>(sender());
-    if (!action)
-        return;
-
-    const QString path = action->data().toString();
-    if (path.isEmpty())
-        return;
-
-    if (!QFileInfo::exists(path)) {
-        QMessageBox::warning(this, QStringLiteral("Файл не найден"),
-                             QStringLiteral("Файл «%1» больше не существует.").arg(path));
-        m_recentFiles.removeAll(path);
-        saveRecentFiles();
-        updateRecentMenu();
-        return;
-    }
-
-    openFile(path);
-}
-
 void MainWindow::showEvent(QShowEvent *event)
 {
     QMainWindow::showEvent(event);
@@ -1252,7 +1136,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     QSettings settings;
     settings.setValue(settingsKey(QStringLiteral("geometry")), saveGeometry());
     settings.setValue(settingsKey(QStringLiteral("state")), saveState());
-    saveRecentFiles();
+    if (m_recentFilesController)
+        m_recentFilesController->save();
     event->accept();
 }
 
