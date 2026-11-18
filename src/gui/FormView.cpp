@@ -1,6 +1,9 @@
 #include "gui/FormView.h"
 
+#include "gui/BslHighlighter.h"
+
 #include <QComboBox>
+#include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QHBoxLayout>
 #include <QHash>
@@ -8,9 +11,11 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPlainTextEdit>
 #include <QPalette>
 #include <QScrollArea>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -1355,16 +1360,24 @@ namespace v8reader {
 FormView::FormView(QWidget *parent)
     : QWidget(parent)
 {
-    auto *layout = new QVBoxLayout(this);
+    auto *outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_tabs = new QTabWidget(this);
+    m_tabs->setObjectName(QStringLiteral("formTabs"));
+    outerLayout->addWidget(m_tabs);
+
+    auto *formPage = new QWidget(m_tabs);
+    auto *layout = new QVBoxLayout(formPage);
     layout->setContentsMargins(0, 4, 0, 0);
 
-    m_hint = new QLabel(QStringLiteral("Выберите форму в дереве метаданных."), this);
+    m_hint = new QLabel(QStringLiteral("Выберите форму в дереве метаданных."), formPage);
     m_hint->setWordWrap(true);
     layout->addWidget(m_hint);
 
     auto *toolbar = new QHBoxLayout();
-    toolbar->addWidget(new QLabel(QStringLiteral("Масштаб:"), this));
-    m_scaleCombo = new QComboBox(this);
+    toolbar->addWidget(new QLabel(QStringLiteral("Масштаб:"), formPage));
+    m_scaleCombo = new QComboBox(formPage);
     m_scaleCombo->setObjectName(QStringLiteral("formScale"));
     const QVector<int> scales = {50, 75, 100, 125, 150};
     for (int percent : scales)
@@ -1374,7 +1387,7 @@ FormView::FormView(QWidget *parent)
     toolbar->addStretch();
     layout->addLayout(toolbar);
 
-    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    auto *splitter = new QSplitter(Qt::Horizontal, formPage);
 
     m_tree = new QTreeWidget(splitter);
     m_tree->setObjectName(QStringLiteral("formTree"));
@@ -1402,6 +1415,20 @@ FormView::FormView(QWidget *parent)
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({300, 900});
     layout->addWidget(splitter, 1);
+    m_tabs->addTab(formPage, QStringLiteral("Форма"));
+
+    auto *modulePage = new QWidget(m_tabs);
+    auto *moduleLayout = new QVBoxLayout(modulePage);
+    moduleLayout->setContentsMargins(0, 4, 0, 0);
+    m_moduleEdit = new QPlainTextEdit(modulePage);
+    m_moduleEdit->setObjectName(QStringLiteral("formModuleEdit"));
+    m_moduleEdit->setReadOnly(true);
+    m_moduleEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    m_moduleEdit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_moduleEdit->setPlaceholderText(QStringLiteral("Модуль формы пуст."));
+    moduleLayout->addWidget(m_moduleEdit, 1);
+    m_highlighter = new BslHighlighter(m_moduleEdit->document());
+    m_tabs->addTab(modulePage, QStringLiteral("Модуль"));
 
     connect(m_scaleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int index) {
@@ -1433,6 +1460,19 @@ void FormView::setDocument(const FormDocument &document)
 
     fillTree();
     m_preview->setDocument(&m_document);
+    m_moduleEdit->setPlainText(document.moduleText);
+}
+
+void FormView::setModuleHighlightEnabled(bool enabled)
+{
+    if (m_highlighter)
+        m_highlighter->setEnabled(enabled);
+}
+
+void FormView::setDarkMode(bool dark)
+{
+    if (m_highlighter)
+        m_highlighter->setDarkMode(dark);
 }
 
 void FormView::setScalePercent(int percent)
@@ -1457,6 +1497,7 @@ void FormView::setMessage(const QString &message)
     m_hint->setText(message);
     m_tree->clear();
     m_preview->clear();
+    m_moduleEdit->clear();
 }
 
 void FormView::clear()
@@ -1536,11 +1577,6 @@ void FormView::fillTree()
             node->setText(3, command.synonym);
         }
     }
-
-    auto *moduleRoot = new QTreeWidgetItem(m_tree);
-    moduleRoot->setText(0, QStringLiteral("Модуль формы"));
-    moduleRoot->setText(1, QStringLiteral("Модуль"));
-    moduleRoot->setText(2, QStringLiteral("%1 символов").arg(m_document.moduleText.size()));
 }
 
 } // namespace v8reader

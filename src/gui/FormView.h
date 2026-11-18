@@ -7,12 +7,16 @@
 
 class QComboBox;
 class QLabel;
+class QPlainTextEdit;
+class QTabWidget;
 class QTreeWidget;
 class FormPreviewWidget;
 
 namespace v8reader {
 
-// Просмотр управляемой формы: дерево элементов и схематичный макет.
+class BslHighlighter;
+
+// Просмотр управляемой формы: дерево элементов, макет и модуль формы.
 class FormView : public QWidget
 {
     Q_OBJECT
@@ -25,6 +29,8 @@ public:
     void clear();
     bool hasDocument() const { return m_hasDocument; }
     void setScalePercent(int percent);
+    void setModuleHighlightEnabled(bool enabled);
+    void setDarkMode(bool dark);
     const FormDocument &document() const { return m_document; }
 
 private:
@@ -34,6 +40,9 @@ private:
     QTreeWidget *m_tree = nullptr;
     QComboBox *m_scaleCombo = nullptr;
     FormPreviewWidget *m_preview = nullptr;
+    QTabWidget *m_tabs = nullptr;
+    QPlainTextEdit *m_moduleEdit = nullptr;
+    BslHighlighter *m_highlighter = nullptr;
     FormDocument m_document;
     bool m_hasDocument = false;
 };

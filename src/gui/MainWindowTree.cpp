@@ -337,6 +337,9 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
     const QVector<ModuleInfo> modules = m_moduleCache.value(object.guid);
     for (int i = 0; i < modules.size(); ++i) {
         const ModuleInfo &module = modules.at(i);
+        // Модули форм показываются на вкладке формы, а не в дереве объектов.
+        if (module.name.contains(QStringLiteral("Модуль формы"), Qt::CaseInsensitive))
+            continue;
         auto *moduleItem = new QTreeWidgetItem(item);
         moduleItem->setText(0, module.name.isEmpty() ? QStringLiteral("Модуль")
                                                      : module.name);

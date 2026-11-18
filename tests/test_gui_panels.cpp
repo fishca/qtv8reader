@@ -1,3 +1,4 @@
+#include "gui/FormView.h"
 #include "gui/ModulePanel.h"
 #include "gui/PropertiesPanel.h"
 #include "gui/RecentFilesController.h"
@@ -8,9 +9,12 @@
 #include <QApplication>
 #include <QFile>
 #include <QMenu>
+#include <QPlainTextEdit>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTabWidget>
 #include <QTemporaryDir>
+#include <QTreeWidget>
 #include <QTest>
 
 using namespace v8reader;
@@ -26,6 +30,7 @@ private slots:
     void propertiesAreReadOnly();
     void recentFilesOpenAndMissing();
     void extractionMessages();
+    void formViewModuleTab();
 };
 
 void TestGuiPanels::initTestCase()
@@ -151,6 +156,30 @@ void TestGuiPanels::extractionMessages()
     const QString allMessage = ExtractionController::allResultMessage(report);
     QVERIFY(allMessage.contains(QStringLiteral("Сохранено файлов: 1")));
     QVERIFY(allMessage.contains(QStringLiteral("warning")));
+}
+
+void TestGuiPanels::formViewModuleTab()
+{
+    FormDocument document;
+    document.name = QStringLiteral("Форма1");
+    document.synonym = QStringLiteral("Форма 1");
+    document.moduleText = QStringLiteral("Процедура ПриСозданииОбъекта()\nКонецПроцедуры");
+
+    FormView view;
+    view.setDocument(document);
+
+    auto *tabs = view.findChild<QTabWidget *>(QStringLiteral("formTabs"));
+    auto *moduleEdit = view.findChild<QPlainTextEdit *>(QStringLiteral("formModuleEdit"));
+    auto *tree = view.findChild<QTreeWidget *>(QStringLiteral("formTree"));
+    QVERIFY(tabs);
+    QVERIFY(moduleEdit);
+    QVERIFY(tree);
+    QCOMPARE(tabs->count(), 2);
+    QCOMPARE(tabs->tabText(1), QStringLiteral("Модуль"));
+    QCOMPARE(moduleEdit->toPlainText(), document.moduleText);
+    for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+        QVERIFY(tree->topLevelItem(i)->text(0) != QStringLiteral("Модуль формы"));
+    }
 }
 
 QTEST_MAIN(TestGuiPanels)

@@ -109,6 +109,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupTree();
     setupTabs();
     m_modulePanel->setDarkMode(m_themeController->isDark());
+    if (m_formView)
+        m_formView->setDarkMode(m_themeController->isDark());
     connect(m_themeController, &ThemeController::darkModeChanged, this, [this](bool dark) {
         if (m_lightThemeAction)
             m_lightThemeAction->setChecked(!dark);
@@ -116,6 +118,8 @@ MainWindow::MainWindow(QWidget *parent)
             m_darkThemeAction->setChecked(dark);
         if (m_modulePanel)
             m_modulePanel->setDarkMode(dark);
+        if (m_formView)
+            m_formView->setDarkMode(dark);
     });
     m_recentFilesController->load();
     applyTheme(m_theme, false);
@@ -392,6 +396,7 @@ void MainWindow::setupTabs()
     formLayout->setContentsMargins(0, 0, 0, 0);
     m_formView = new FormView(m_formPage);
     m_formView->setObjectName(QStringLiteral("formView"));
+    m_formView->setModuleHighlightEnabled(m_highlightEnabled);
     formLayout->addWidget(m_formView, 1);
     m_tabs->addTab(m_formPage, QStringLiteral("Форма"));
 
@@ -912,6 +917,8 @@ void MainWindow::setModuleHighlighting(bool enabled)
     m_highlightEnabled = enabled;
     if (m_modulePanel)
         m_modulePanel->setHighlightEnabled(enabled);
+    if (m_formView)
+        m_formView->setModuleHighlightEnabled(enabled);
     QSettings settings;
     settings.setValue(settingsKey(QStringLiteral("moduleHighlight")), enabled);
 }
