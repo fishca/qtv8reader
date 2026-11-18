@@ -9,6 +9,7 @@
 #include "gui/PropertiesPanel.h"
 #include "gui/RecentFilesController.h"
 #include "gui/ExtractionController.h"
+#include "gui/HighlightSettingsDialog.h"
 #include "gui/ThemeController.h"
 #include "gui/MainWindowSupport.h"
 #include "core/Extractor.h"
@@ -58,6 +59,7 @@
 #include <QPoint>
 #include <QSet>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
@@ -98,10 +100,15 @@ MainWindow::MainWindow(QWidget *parent)
     m_moduleIcon = MetadataIcons::icon(QStringLiteral("editObject"));
 
     QSettings settings;
-    m_highlightEnabled =
-        settings.value(settingsKey(QStringLiteral("moduleHighlight")), true).toBool();
     m_theme = settings.value(settingsKey(QStringLiteral("theme")),
                              QStringLiteral("light")).toString();
+    m_highlightSettings =
+        BslHighlightSettings::load(settings, m_theme == QStringLiteral("dark"));
+    if (!settings.contains(QStringLiteral("BslHighlight/enabled"))) {
+        m_highlightSettings.enabled =
+            settings.value(settingsKey(QStringLiteral("moduleHighlight")), true).toBool();
+    }
+    m_highlightEnabled = m_highlightSettings.enabled;
 
     setupUi();
     setupMenus();
@@ -123,6 +130,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     m_recentFilesController->load();
     applyTheme(m_theme, false);
+    applyHighlightSettings();
 
     const QByteArray geometry = settings.value(settingsKey(QStringLiteral("geometry"))).toByteArray();
     if (!geometry.isEmpty())
@@ -283,6 +291,10 @@ void MainWindow::setupMenus()
         QStringLiteral("Синтаксическая подсветка текстов модулей 1С"));
     connect(m_highlightAction, &QAction::toggled, this,
             &MainWindow::setModuleHighlighting);
+    QAction *configureHighlight =
+        viewMenu->addAction(QStringLiteral("Настроить подсветку…"));
+    connect(configureHighlight, &QAction::triggered, this,
+            &MainWindow::configureHighlighting);
 
     QMenu *themeMenu = viewMenu->addMenu(QStringLiteral("Тема"));
     auto *themeGroup = new QActionGroup(this);
@@ -914,13 +926,40 @@ void MainWindow::extractAll()
 
 void MainWindow::setModuleHighlighting(bool enabled)
 {
-    m_highlightEnabled = enabled;
-    if (m_modulePanel)
-        m_modulePanel->setHighlightEnabled(enabled);
-    if (m_formView)
-        m_formView->setModuleHighlightEnabled(enabled);
+    m_highlightSettings.enabled = enabled;
+    applyHighlightSettings();
     QSettings settings;
+    m_highlightSettings.save(settings);
     settings.setValue(settingsKey(QStringLiteral("moduleHighlight")), enabled);
+}
+
+void MainWindow::configureHighlighting()
+{
+    QSettings settings;
+    const BslHighlightSettings current =
+        BslHighlightSettings::load(settings, m_theme == QStringLiteral("dark"));
+    HighlightSettingsDialog dialog(current, m_theme == QStringLiteral("dark"), this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    m_highlightSettings = dialog.settings();
+    applyHighlightSettings();
+    m_highlightSettings.save(settings);
+    settings.setValue(settingsKey(QStringLiteral("moduleHighlight")),
+                      m_highlightSettings.enabled);
+}
+
+void MainWindow::applyHighlightSettings()
+{
+    m_highlightEnabled = m_highlightSettings.enabled;
+    if (m_highlightAction) {
+        const QSignalBlocker blocker(m_highlightAction);
+        m_highlightAction->setChecked(m_highlightEnabled);
+    }
+    if (m_modulePanel)
+        m_modulePanel->setHighlightSettings(m_highlightSettings);
+    if (m_formView)
+        m_formView->setHighlightSettings(m_highlightSettings);
 }
 
 void MainWindow::applyTheme(const QString &theme, bool persist)

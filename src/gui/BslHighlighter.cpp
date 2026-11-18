@@ -7,7 +7,8 @@
 namespace v8reader {
 
 BslHighlighter::BslHighlighter(QTextDocument *document)
-    : QSyntaxHighlighter(document)
+    : QSyntaxHighlighter(document),
+      m_settings(BslHighlightSettings::defaults(false))
 {
     rebuildFormats();
 }
@@ -17,6 +18,15 @@ void BslHighlighter::setEnabled(bool enabled)
     if (m_enabled == enabled)
         return;
     m_enabled = enabled;
+    m_settings.enabled = enabled;
+    rehighlight();
+}
+
+void BslHighlighter::setSettings(const BslHighlightSettings &settings)
+{
+    m_settings = settings;
+    m_enabled = settings.enabled;
+    rebuildFormats();
     rehighlight();
 }
 
@@ -25,6 +35,11 @@ void BslHighlighter::setDarkMode(bool dark)
     if (m_dark == dark)
         return;
     m_dark = dark;
+    if (!m_settings.custom) {
+        const bool enabled = m_settings.enabled;
+        m_settings = BslHighlightSettings::defaults(dark);
+        m_settings.enabled = enabled;
+    }
     rebuildFormats();
     rehighlight();
 }
@@ -34,8 +49,8 @@ void BslHighlighter::rebuildFormats()
     m_rules.clear();
 
     QTextCharFormat keyword;
-    keyword.setForeground(m_dark ? QColor(0x56, 0x9C, 0xD6) : QColor(0x00, 0x00, 0xA0));
-    keyword.setFontWeight(QFont::Bold);
+    keyword.setForeground(m_settings.keyword);
+    keyword.setFontWeight(m_settings.boldKeywords ? QFont::Bold : QFont::Normal);
 
     const QStringList keywords = {
         QStringLiteral("Процедура"), QStringLiteral("Функция"),
@@ -77,35 +92,33 @@ void BslHighlighter::rebuildFormats()
     }
 
     QTextCharFormat directive;
-    directive.setForeground(m_dark ? QColor(0xC5, 0x86, 0xC0) : QColor(0x80, 0x00, 0x80));
-    directive.setFontWeight(QFont::Bold);
+    directive.setForeground(m_settings.directive);
+    directive.setFontWeight(m_settings.boldDirectives ? QFont::Bold : QFont::Normal);
     Rule directiveRule;
     directiveRule.pattern = QRegularExpression(QStringLiteral("^\\s*#\\w+"));
     directiveRule.format = directive;
     m_rules.append(directiveRule);
 
     QTextCharFormat annotation;
-    annotation.setForeground(m_dark ? QColor(0x4E, 0xC9, 0xB0) : QColor(0x00, 0x80, 0x80));
+    annotation.setForeground(m_settings.annotation);
     Rule annotationRule;
     annotationRule.pattern = QRegularExpression(QStringLiteral("&\\w+"));
     annotationRule.format = annotation;
     m_rules.append(annotationRule);
 
     QTextCharFormat number;
-    number.setForeground(m_dark ? QColor(0xB5, 0xCE, 0xA8) : QColor(0x99, 0x33, 0x33));
+    number.setForeground(m_settings.number);
     Rule numberRule;
     numberRule.pattern = QRegularExpression(QStringLiteral("\\b\\d+(\\.\\d+)?\\b"));
     numberRule.format = number;
     m_rules.append(numberRule);
 
     m_stringFormat = QTextCharFormat();
-    m_stringFormat.setForeground(m_dark ? QColor(0xCE, 0x91, 0x78)
-                                        : QColor(0xA3, 0x15, 0x15));
+    m_stringFormat.setForeground(m_settings.string);
 
     m_commentFormat = QTextCharFormat();
-    m_commentFormat.setForeground(m_dark ? QColor(0x6A, 0x99, 0x55)
-                                         : QColor(0x00, 0x80, 0x00));
-    m_commentFormat.setFontItalic(true);
+    m_commentFormat.setForeground(m_settings.comment);
+    m_commentFormat.setFontItalic(m_settings.italicComments);
 }
 
 void BslHighlighter::applyRules(const QString &text, int from, int to)

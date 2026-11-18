@@ -2,6 +2,7 @@
 #define QTV8READER_MODULEPANEL_H
 
 #include "core/ModuleExtractor.h"
+#include "gui/BslHighlightSettings.h"
 
 #include <QVector>
 #include <QWidget>
@@ -28,6 +29,7 @@ public:
     QString text() const;
     void setPlaceholder(const QString &text);
     void setHighlightEnabled(bool enabled);
+    void setHighlightSettings(const BslHighlightSettings &settings);
     void setDarkMode(bool dark);
 
 signals:

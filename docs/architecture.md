@@ -32,7 +32,8 @@ src/
     PropertiesPanel.*        таблица «Свойства»
     RecentFilesController.*  недавние файлы и меню
     ExtractionController.*   выгрузка и текст отчёта
-    MxlView/MxlRenderer/MxlPrinter, FormView (форма + модуль), PreviewDialog, BslHighlighter
+    MxlView/MxlRenderer/MxlPrinter, FormView (форма + модуль), PreviewDialog
+    BslHighlighter + BslHighlightSettings + HighlightSettingsDialog
   cli/                       консольная утилита
     CliApplication.*         диспетчеризация команд
     CommandUtils.*           поиск объекта, загрузка, запись файлов, отчёт

@@ -1469,6 +1469,12 @@ void FormView::setModuleHighlightEnabled(bool enabled)
         m_highlighter->setEnabled(enabled);
 }
 
+void FormView::setHighlightSettings(const BslHighlightSettings &settings)
+{
+    if (m_highlighter)
+        m_highlighter->setSettings(settings);
+}
+
 void FormView::setDarkMode(bool dark)
 {
     if (m_highlighter)

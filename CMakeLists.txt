@@ -71,6 +71,10 @@ add_library(qtv8reader_gui STATIC
     src/gui/PropertiesPanel.cpp
     src/gui/RecentFilesController.h
     src/gui/RecentFilesController.cpp
+    src/gui/BslHighlightSettings.h
+    src/gui/BslHighlightSettings.cpp
+    src/gui/HighlightSettingsDialog.h
+    src/gui/HighlightSettingsDialog.cpp
     src/gui/ExtractionController.h
     src/gui/ExtractionController.cpp
     src/gui/MainWindowSupport.h

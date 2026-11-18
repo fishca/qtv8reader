@@ -2,6 +2,7 @@
 #define QTV8READER_FORMVIEW_H
 
 #include "core/FormDocument.h"
+#include "gui/BslHighlightSettings.h"
 
 #include <QWidget>
 
@@ -30,6 +31,7 @@ public:
     bool hasDocument() const { return m_hasDocument; }
     void setScalePercent(int percent);
     void setModuleHighlightEnabled(bool enabled);
+    void setHighlightSettings(const BslHighlightSettings &settings);
     void setDarkMode(bool dark);
     const FormDocument &document() const { return m_document; }
 

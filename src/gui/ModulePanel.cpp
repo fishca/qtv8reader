@@ -110,6 +110,11 @@ void ModulePanel::setHighlightEnabled(bool enabled)
     m_highlighter->setEnabled(enabled);
 }
 
+void ModulePanel::setHighlightSettings(const BslHighlightSettings &settings)
+{
+    m_highlighter->setSettings(settings);
+}
+
 void ModulePanel::setDarkMode(bool dark)
 {
     m_highlighter->setDarkMode(dark);

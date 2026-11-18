@@ -5,6 +5,7 @@
 #include "core/ModuleExtractor.h"
 #include "core/FormDocument.h"
 #include "core/MxlDocument.h"
+#include "gui/BslHighlightSettings.h"
 #include "gui/MetadataTreeRoles.h"
 
 #include <QHash>
@@ -87,6 +88,7 @@ private slots:
     void printMxl();
     void exportMxlPdf();
     void setModuleHighlighting(bool enabled);
+    void configureHighlighting();
     void applyTheme(const QString &theme, bool persist = true);
 
 private:
@@ -95,6 +97,7 @@ private:
     void setupToolBar();
     void setupTree();
     void setupTabs();
+    void applyHighlightSettings();
 
     void buildTree();
     void addRootModuleItems(QTreeWidgetItem *rootItem);
@@ -176,6 +179,7 @@ private:
     QTreeWidget *m_containerTree = nullptr;
     bool m_containerTreeDirty = false;
     bool m_highlightEnabled = true;
+    BslHighlightSettings m_highlightSettings;
     QAction *m_highlightAction = nullptr;
     QString m_theme = QStringLiteral("light");
     QAction *m_lightThemeAction = nullptr;

@@ -1,6 +1,8 @@
 #ifndef QTV8READER_BSLHIGHLIGHTER_H
 #define QTV8READER_BSLHIGHLIGHTER_H
 
+#include "gui/BslHighlightSettings.h"
+
 #include <QRegularExpression>
 #include <QSyntaxHighlighter>
 #include <QTextCharFormat>
@@ -22,6 +24,11 @@ public:
     void setEnabled(bool enabled);
     bool isEnabled() const { return m_enabled; }
 
+    // Пользовательские цвета/начертания. При custom == false цвета
+    // пересчитываются под светлую/тёмную тему.
+    void setSettings(const BslHighlightSettings &settings);
+    const BslHighlightSettings &settings() const { return m_settings; }
+
     // Цвета для тёмной/светлой темы.
     void setDarkMode(bool dark);
     bool isDarkMode() const { return m_dark; }
@@ -42,6 +49,7 @@ private:
     QVector<Rule> m_rules;
     QTextCharFormat m_stringFormat;
     QTextCharFormat m_commentFormat;
+    BslHighlightSettings m_settings;
     bool m_enabled = true;
     bool m_dark = false;
 };

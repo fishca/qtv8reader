@@ -1,4 +1,6 @@
+#include "gui/BslHighlightSettings.h"
 #include "gui/FormView.h"
+#include "gui/HighlightSettingsDialog.h"
 #include "gui/ModulePanel.h"
 #include "gui/PropertiesPanel.h"
 #include "gui/RecentFilesController.h"
@@ -7,6 +9,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QFile>
 #include <QMenu>
 #include <QPlainTextEdit>
@@ -31,6 +34,7 @@ private slots:
     void recentFilesOpenAndMissing();
     void extractionMessages();
     void formViewModuleTab();
+    void highlightSettingsDialog();
 };
 
 void TestGuiPanels::initTestCase()
@@ -180,6 +184,29 @@ void TestGuiPanels::formViewModuleTab()
     for (int i = 0; i < tree->topLevelItemCount(); ++i) {
         QVERIFY(tree->topLevelItem(i)->text(0) != QStringLiteral("Модуль формы"));
     }
+}
+
+void TestGuiPanels::highlightSettingsDialog()
+{
+    BslHighlightSettings defaults = BslHighlightSettings::defaults(false);
+    HighlightSettingsDialog dialog(defaults, false);
+
+    auto *enabled = dialog.findChild<QCheckBox *>(QStringLiteral("highlightEnabled"));
+    auto *bold = dialog.findChild<QCheckBox *>(QStringLiteral("highlightBoldKeywords"));
+    QVERIFY(enabled);
+    QVERIFY(bold);
+    enabled->setChecked(false);
+    bold->setChecked(false);
+
+    const BslHighlightSettings result = dialog.settings();
+    QVERIFY(!result.enabled);
+    QVERIFY(!result.boldKeywords);
+
+    QSettings settings;
+    result.save(settings);
+    const BslHighlightSettings loaded = BslHighlightSettings::load(settings, false);
+    QVERIFY(!loaded.enabled);
+    QVERIFY(!loaded.boldKeywords);
 }
 
 QTEST_MAIN(TestGuiPanels)
