@@ -1,6 +1,7 @@
 #include "gui/FormView.h"
 
 #include "controls/ButtonControl.h"
+#include "controls/CommandBarControl.h"
 #include "controls/FieldControl.h"
 #include "controls/FormControl.h"
 #include "controls/FormStyle.h"
@@ -794,39 +795,15 @@ private:
             }
         }
 
-        QVector<QVector<int>> rows;
-        if (!allowWrap) {
-            QVector<int> row;
-            for (int i = 0; i < visible.size(); ++i)
-                row.append(i);
-            rows.append(row);
-        } else {
-            QVector<int> currentRow;
-            double currentWidth = 0.0;
-            for (int i = 0; i < visible.size(); ++i) {
-                const double gap = currentRow.isEmpty() ? 0.0 : 8.0;
-                if (!currentRow.isEmpty()
-                    && currentWidth + gap + widths.at(i) > rect.width()) {
-                    rows.append(currentRow);
-                    currentRow.clear();
-                    currentWidth = 0.0;
-                }
-                currentRow.append(i);
-                currentWidth += (currentRow.size() > 1 ? 8.0 : 0.0) + widths.at(i);
-            }
-            if (!currentRow.isEmpty())
-                rows.append(currentRow);
-        }
+        const QVector<QVector<int>> rows =
+            controls::commandBarRows(widths, rect.width(), allowWrap);
 
         double y = rect.top();
         for (const QVector<int> &row : rows) {
             QVector<double> rowWidths;
-            double total = 0.0;
-            for (int index : row) {
+            for (int index : row)
                 rowWidths.append(widths.at(index));
-                total += widths.at(index);
-            }
-            total += 8.0 * (row.size() - 1);
+            const double total = controls::commandBarTotal(rowWidths);
 
             // Если не помещается и перенос не разрешён — сжимаем пропорционально.
             if (!allowWrap && total > rect.width()) {
@@ -868,13 +845,8 @@ private:
                     }
                 }
             }
-            double rowUsed = 0.0;
-            for (int c = 0; c < row.size(); ++c)
-                rowUsed += rowWidths.at(c);
-            if (row.size() > 1)
-                rowUsed += 8.0 * (row.size() - 1);
-            const double rightShift = (rightStart > 0 && rowUsed < rect.width())
-                ? rect.width() - rowUsed : 0.0;
+            const double rightShift =
+                controls::commandBarRightShift(rowWidths, rect.width(), rightStart);
 
             double x = rect.left();
             for (int c = 0; c < row.size(); ++c) {
