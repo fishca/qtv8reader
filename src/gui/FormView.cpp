@@ -1071,10 +1071,10 @@ private:
             for (int i = 0; i < control.columns.size(); ++i) {
                 const QString &column = control.columns.at(i);
                 const int units = i < widthUnits.size() ? widthUnits.at(i) : -1;
-                const double width = units > 0
+                const double width = std::max(70.0, units > 0
                     ? units * 10.0
-                    : std::min(240.0, std::max(80.0,
-                        headerMetrics.horizontalAdvance(column) + 24.0));
+                    : std::min(240.0, std::max(110.0,
+                        headerMetrics.horizontalAdvance(column) + 24.0)));
                 control.columnWidths.append(width);
                 total += width;
             }
