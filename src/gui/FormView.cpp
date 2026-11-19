@@ -1310,8 +1310,8 @@ private:
             tableTop += 30.0;
             tableHeight = std::max(80.0, tableHeight - 30.0);
         }
-        control.rect = QRectF(rect.left() + 6.0, tableTop,
-                              std::max(1.0, rect.width() - 12.0),
+        control.rect = QRectF(rect.left() - 4.0, tableTop,
+                              std::max(1.0, rect.width() - 2.0),
                               std::min(std::max(0.0, rect.height() - (tableTop - rect.top())),
                                        tableHeight));
         QVector<int> widthUnits;
