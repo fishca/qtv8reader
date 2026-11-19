@@ -33,6 +33,7 @@ struct FormItem
     int verticalStretch = -1;
     bool visible = true;
     bool showTitle = true;      // TitleLocation != None
+    bool labelOnly = false;     // LabelField/PictureField без поля ввода
 
     QString guid;
     QString name;

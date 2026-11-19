@@ -87,6 +87,7 @@ struct PreviewControl
     bool checkBox = false;
     bool dropDown = false;
     bool primary = false;
+    bool labelOnly = false;
 };
 
 bool looksTechnical(const QString &text)
@@ -1009,6 +1010,7 @@ private:
         control.labelWidth = labelW;
         control.checkBox = checkBox;
         control.dropDown = dropDown;
+        control.labelOnly = item.labelOnly;
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
             control.inputWidth = item.widthUnits * 10.0;
         m_controls->append(control);
@@ -1036,8 +1038,11 @@ private:
             if (isServiceItem(child) || isServiceDecoration(child))
                 continue;
             if (child.type == v8reader::FormItem::Type::Field) {
-                if (child.name == QStringLiteral("ЕстьФайлы"))
+                // Служебные колонки, которые платформа не показывает в списке.
+                if (child.name == QStringLiteral("ЕстьФайлы")
+                    || child.name == QStringLiteral("Ссылка")) {
                     continue;
+                }
                 QString base = child.name;
                 if (!tableName.isEmpty() && base.startsWith(tableName)
                     && base.size() > tableName.size()) {
@@ -1354,6 +1359,18 @@ void paintControl(QPainter &painter, const PreviewControl &control,
     switch (control.kind) {
     case PreviewControl::Kind::Field: {
         const QString label = control.title;
+        if (control.labelOnly) {
+            if (label.isEmpty())
+                break;
+            const bool link = label.contains(QStringLiteral("Цен"), Qt::CaseInsensitive)
+                || label.contains(QStringLiteral("НДС"), Qt::CaseInsensitive)
+                || label.contains(QStringLiteral("Настрой"), Qt::CaseInsensitive)
+                || label.contains(QStringLiteral("Изменить"), Qt::CaseInsensitive);
+            painter.setPen(link ? QColor(0, 102, 204) : FormStyle::text);
+            painter.drawText(rect.adjusted(2, 0, -2, 0),
+                             Qt::AlignLeft | Qt::AlignVCenter, label);
+            break;
+        }
         double x = rect.left();
         if (!label.isEmpty()) {
             const double labelWidth = std::min(control.labelWidth > 0.0
@@ -1520,7 +1537,7 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             painter.setPen(FormStyle::text);
             const QString text = metrics.elidedText(columns.at(i), Qt::ElideRight,
                                                     int(width) - 8);
-            painter.drawText(cell.adjusted(5, 0, -4, 0),
+            painter.drawText(cell.adjusted(8, 0, -6, 0),
                              Qt::AlignLeft | Qt::AlignVCenter, text);
             // Индикатор сортировки, как у списка 1С: по дате/периоду.
             if (i == 0 && (text == QStringLiteral("Дата")

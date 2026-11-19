@@ -144,6 +144,7 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
                 continue;
             const int kind = static_cast<int>(first->toInteger());
             if (kind == 10 || kind == 11) {
+                item->labelOnly = true;
                 if (child.child(1) && child.child(1)->isInteger())
                     item->widthUnits = static_cast<int>(child.child(1)->toInteger());
                 if (child.child(2) && child.child(2)->isInteger())
@@ -152,9 +153,10 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
                     item->horizontalStretch = static_cast<int>(child.child(3)->toInteger());
                 if (child.child(4) && child.child(4)->isInteger())
                     item->verticalStretch = static_cast<int>(child.child(4)->toInteger());
-                return;
+                continue;
             }
             if (kind == 32) {
+                item->labelOnly = false;
                 if (child.child(2) && child.child(2)->isInteger())
                     item->widthUnits = static_cast<int>(child.child(2)->toInteger());
                 if (child.child(3) && child.child(3)->isInteger())
