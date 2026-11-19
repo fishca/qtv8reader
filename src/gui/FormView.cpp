@@ -931,6 +931,30 @@ private:
                 visible = filtered;
         }
 
+        // На увеличенном масштабе панель не переносится: второстепенные
+        // команды убираются, как в 1С, чтобы поиск и «Еще» оставались видны.
+        if (runtimeCommands) {
+            const QStringList droppable = {
+                QStringLiteral("НастроитьСписок"),
+                QStringLiteral("ПрисоединенныеФайлы"),
+                QStringLiteral("Просмотреть"),
+                QStringLiteral("Изменить"),
+                QStringLiteral("Скопировать"),
+                QStringLiteral("АтКт"),
+                QStringLiteral("СоздатьНаОсновании")
+            };
+            for (const QString &name : droppable) {
+                if (totalWidth(visible) <= rect.width())
+                    break;
+                for (int i = 0; i < visible.size(); ++i) {
+                    if (visible.at(i)->name == name) {
+                        visible.removeAt(i);
+                        break;
+                    }
+                }
+            }
+        }
+
         // Кнопка по умолчанию в 1С подсвечена жёлтым. Она выбирается после
         // раскладки: «Создать» для формы списка и «Провести и закрыть»
         // для формы документа.
