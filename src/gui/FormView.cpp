@@ -1,6 +1,7 @@
 #include "gui/FormView.h"
 
 #include "controls/ButtonControl.h"
+#include "controls/FieldControl.h"
 #include "controls/FormControl.h"
 #include "controls/FormStyle.h"
 #include "controls/SearchControl.h"
@@ -1265,94 +1266,17 @@ void paintControl(QPainter &painter, const PreviewControl &control,
 
     switch (control.kind) {
     case PreviewControl::Kind::Field: {
-        const QString label = control.title;
-        if (control.labelOnly) {
-            if (label.isEmpty())
-                break;
-            const bool link = label.contains(QStringLiteral("Цен"), Qt::CaseInsensitive)
-                || label.contains(QStringLiteral("НДС"), Qt::CaseInsensitive)
-                || label.contains(QStringLiteral("Настрой"), Qt::CaseInsensitive)
-                || label.contains(QStringLiteral("Изменить"), Qt::CaseInsensitive);
-            painter.setPen(link ? QColor(0, 102, 204) : FormStyle::text);
-            painter.drawText(rect.adjusted(2, 0, -2, 0),
-                             Qt::AlignLeft | Qt::AlignVCenter, label);
-            break;
-        }
-        double x = rect.left();
-        if (!label.isEmpty()) {
-            const double labelWidth = std::min(control.labelWidth > 0.0
-                    ? control.labelWidth
-                    : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":")) + 6.0),
-                rect.width() * 0.7);
-            const QRectF labelRect(rect.left(), rect.top(),
-                                   std::max(0.0, labelWidth), rect.height());
-            painter.setPen(FormStyle::text);
-            if (control.checkBox) {
-                painter.drawText(labelRect.adjusted(0, 0, -2, 0),
-                                 Qt::AlignLeft | Qt::AlignVCenter,
-                                 label + QStringLiteral(":"));
-                x = labelRect.right() + 2.0;
-            } else {
-                painter.drawText(labelRect.adjusted(0, 0, -4, 0),
-                                 Qt::AlignLeft | Qt::AlignVCenter,
-                                 label + QStringLiteral(":"));
-                x = labelRect.right() + 3.0;
-            }
-        }
-        if (control.checkBox) {
-            const QRectF box(x + 1.0, rect.top() + (rect.height() - 13.0) / 2.0,
-                             13.0, 13.0);
-            painter.setPen(FormStyle::fieldBorder);
-            painter.setBrush(Qt::white);
-            painter.drawRect(box);
-            painter.setBrush(Qt::NoBrush);
-            x += 19.0;
-        }
-        double editWidth = std::max(24.0, rect.right() - x - 4.0);
-        if (control.inputWidth > 0.0)
-            editWidth = std::min(editWidth, control.inputWidth);
-        const QRectF edit(x, rect.top() + 3.0, editWidth, rect.height() - 6.0);
-        painter.setPen(FormStyle::fieldBorder);
-        painter.setBrush(Qt::white);
-        painter.drawRect(edit);
-        painter.setBrush(Qt::NoBrush);
-        const bool fieldButton = control.dropDown || control.calendar
-            || control.choiceButton;
-        if (fieldButton && edit.width() > 44.0) {
-            const double buttonWidth = 15.0;
-            const QRectF button(edit.right() - buttonWidth, edit.top() + 1.0,
-                                buttonWidth - 1.0, edit.height() - 2.0);
-            QLinearGradient gradient(button.topLeft(), button.bottomLeft());
-            gradient.setColorAt(0.0, QColor(251, 251, 247));
-            gradient.setColorAt(1.0, QColor(236, 231, 216));
-            painter.setPen(QColor(165, 165, 165));
-            painter.setBrush(gradient);
-            painter.drawRect(button);
-            painter.setBrush(Qt::NoBrush);
-            painter.setPen(QColor(80, 80, 80));
-            const QPointF center = button.center();
-            if (control.dropDown) {
-                painter.drawLine(center + QPointF(-4, -2), center + QPointF(0, 2));
-                painter.drawLine(center + QPointF(0, 2), center + QPointF(4, -2));
-            } else if (control.calendar) {
-                const QRectF cal(center.x() - 4.5, center.y() - 4.5, 9.0, 9.0);
-                painter.drawRect(QRectF(cal.left(), cal.top() + 2.0,
-                                        cal.width(), cal.height() - 2.0));
-                painter.drawLine(QPointF(cal.left(), cal.top() + 4.0),
-                                 QPointF(cal.right(), cal.top() + 4.0));
-                painter.drawLine(QPointF(cal.left() + 2.0, cal.top()),
-                                 QPointF(cal.left() + 2.0, cal.top() + 3.0));
-                painter.drawLine(QPointF(cal.right() - 2.0, cal.top()),
-                                 QPointF(cal.right() - 2.0, cal.top() + 3.0));
-            } else {
-                painter.setBrush(QColor(80, 80, 80));
-                for (int i = 0; i < 3; ++i) {
-                    painter.drawEllipse(QPointF(center.x() - 4.0 + i * 4.0,
-                                               center.y()), 1.2, 1.2);
-                }
-                painter.setBrush(Qt::NoBrush);
-            }
-        }
+        controls::FieldVisual visual;
+        visual.rect = rect;
+        visual.label = control.title;
+        visual.labelWidth = control.labelWidth;
+        visual.inputWidth = control.inputWidth;
+        visual.labelOnly = control.labelOnly;
+        visual.checkBox = control.checkBox;
+        visual.dropDown = control.dropDown;
+        visual.calendar = control.calendar;
+        visual.choiceButton = control.choiceButton;
+        controls::paintField(painter, visual, metrics);
         break;
     }
     case PreviewControl::Kind::Button: {
