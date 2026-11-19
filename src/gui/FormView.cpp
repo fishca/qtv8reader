@@ -1445,7 +1445,7 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             painter.setClipRect(r);
         }
         ~ClipGuard() { painter.restore(); }
-    } clip(painter, rect);
+    } clip(painter, rect.adjusted(-1.0, -1.0, 1.0, 1.0));
 
     switch (control.kind) {
     case PreviewControl::Kind::Field: {
