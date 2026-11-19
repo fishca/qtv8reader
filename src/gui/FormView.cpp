@@ -1060,6 +1060,7 @@ private:
             && control.icon != ButtonIcon::CreateBasedOn
             && control.icon != ButtonIcon::Print;
         control.dropDown = dropDown;
+        control.bordered = item.name == QStringLiteral("Еще");
         m_controls->append(control);
     }
 
