@@ -1303,21 +1303,21 @@ private:
                 double width = 0.0;
                 if (list) {
                     if (column == QStringLiteral("Дата"))
-                        width = 150.0;
+                        width = 137.0;
                     else if (column == QStringLiteral("Номер"))
-                        width = 125.0;
+                        width = 127.0;
                     else if (column == QStringLiteral("Подотчетное лицо"))
-                        width = 140.0;
+                        width = 125.0;
                     else if (column == QStringLiteral("Сумма"))
-                        width = 105.0;
+                        width = 117.0;
                     else if (column == QStringLiteral("Валюта"))
-                        width = 100.0;
+                        width = 88.0;
                     else if (column == QStringLiteral("Склад"))
-                        width = 95.0;
+                        width = 125.0;
                     else if (column == QStringLiteral("Вид операции"))
-                        width = 120.0;
+                        width = 125.0;
                     else if (column == QStringLiteral("Организация"))
-                        width = 150.0;
+                        width = 97.0;
                     else
                         width = std::max(120.0,
                             headerMetrics.horizontalAdvance(column) + 24.0);

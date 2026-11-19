@@ -25,7 +25,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     }
     const double headerHeight = FormStyle::tableHeaderHeight;
     const double verticalScrollWidth = 10.0;
-    const double actionWidth = visual.actionColumn ? 60.0 : 0.0;
+    const double actionWidth = visual.actionColumn ? 37.0 : 0.0;
     const double contentWidth = std::max(1.0, rect.width() - verticalScrollWidth);
     double columnsTotal = actionWidth;
     for (double width : widths)
