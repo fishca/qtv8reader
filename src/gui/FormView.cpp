@@ -327,7 +327,7 @@ public:
             }
             if (table) {
                 const double chipsTop = table->rect.top();
-                const double chipsLeft = table->rect.left();
+                const double chipsLeft = std::max(0.0, table->rect.left() - 6.0);
                 const double chipHeight = 26.0;
                 const double chipGap = 4.0;
                 for (PreviewControl &control : *controls) {
@@ -435,7 +435,7 @@ private:
             if (icon != ButtonIcon::None)
                 width += 22.0;
             if (item.name == QStringLiteral("Создать"))
-                width += 15.0;
+                width += 35.0;
             return std::min(250.0, width);
         }
         case Type::Search:
@@ -460,7 +460,7 @@ private:
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
                 if (item.name == QStringLiteral("Создать2"))
-                    return 90.0;
+                    return 100.0;
                 if (item.name == QStringLiteral("Еще"))
                     return 55.0;
                 return std::max(64.0,
@@ -1284,7 +1284,8 @@ private:
             tableTop += 30.0;
             tableHeight = std::max(80.0, tableHeight - 30.0);
         }
-        control.rect = QRectF(rect.left(), tableTop, rect.width(),
+        control.rect = QRectF(rect.left() + 6.0, tableTop,
+                              std::max(1.0, rect.width() - 12.0),
                               std::min(std::max(0.0, rect.height() - (tableTop - rect.top())),
                                        tableHeight));
         QVector<int> widthUnits;
