@@ -1,5 +1,7 @@
 #include "gui/MainWindow.h"
 
+#include "controls/ControlGallery.h"
+
 #include <QApplication>
 #include <QLocale>
 #include <QPixmap>
@@ -26,6 +28,7 @@ int main(int argc, char *argv[])
     bool expandCommon = false;
     bool expandDocuments = false;
     QString screenshotPath;
+    QString controlGalleryPath;
     QString mxlPdfPath;
     QString mxlObject;
     QString selectMxl;
@@ -51,6 +54,11 @@ int main(int argc, char *argv[])
         if (argument == QStringLiteral("--screenshot")
             && i + 1 < arguments.size()) {
             screenshotPath = arguments.at(++i);
+            continue;
+        }
+        if (argument == QStringLiteral("--control-gallery")
+            && i + 1 < arguments.size()) {
+            controlGalleryPath = arguments.at(++i);
             continue;
         }
         if (argument == QStringLiteral("--mxl-pdf")
@@ -84,6 +92,16 @@ int main(int argc, char *argv[])
         }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
+    }
+
+    if (!controlGalleryPath.isEmpty()) {
+        const QPixmap gallery = controls::renderControlGallery();
+        const bool saved = !gallery.isNull() && gallery.save(controlGalleryPath);
+        QTextStream out(stdout);
+        out << (saved ? QStringLiteral("GALLERY OK: ")
+                      : QStringLiteral("GALLERY FAILED: "))
+            << controlGalleryPath << Qt::endl;
+        return saved ? 0 : 1;
     }
 
     const bool standaloneMxl = filePath.endsWith(QStringLiteral(".mxl"),

@@ -97,6 +97,8 @@ add_library(qtv8reader_gui STATIC
     src/gui/controls/ButtonControl.cpp
     src/gui/controls/CommandBarControl.h
     src/gui/controls/CommandBarControl.cpp
+    src/gui/controls/ControlGallery.h
+    src/gui/controls/ControlGallery.cpp
     src/gui/controls/FieldControl.h
     src/gui/controls/FieldControl.cpp
     src/gui/controls/FormControl.h
