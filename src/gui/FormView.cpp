@@ -1691,6 +1691,8 @@ private:
             logicalHeight = std::max(logicalHeight,
                 margin * 2.0 + targetContentHeight + titleBarHeight);
         }
+        if (viewportLogical > 0.0 && m_document->runtimeListCommands)
+            logicalHeight = std::min(logicalHeight, viewportLogical);
         setFixedSize(int(logicalWidth * m_scale), int(logicalHeight * m_scale));
         update();
     }
