@@ -103,6 +103,8 @@ add_library(qtv8reader_gui STATIC
     src/gui/controls/SearchControl.cpp
     src/gui/controls/ScrollBarControl.h
     src/gui/controls/ScrollBarControl.cpp
+    src/gui/controls/StaticControl.h
+    src/gui/controls/StaticControl.cpp
     src/gui/controls/TabControl.h
     src/gui/controls/TabControl.cpp
     src/gui/controls/TableControl.h

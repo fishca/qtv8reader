@@ -5,6 +5,7 @@
 #include "controls/FormControl.h"
 #include "controls/FormStyle.h"
 #include "controls/SearchControl.h"
+#include "controls/StaticControl.h"
 #include "controls/TabControl.h"
 #include "controls/TableControl.h"
 #include "gui/BslHighlighter.h"
@@ -1318,21 +1319,16 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         break;
     }
     case PreviewControl::Kind::Decoration: {
-        painter.setPen(FormStyle::text);
-        painter.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter,
-                         metrics.elidedText(control.title, Qt::ElideRight,
-                                            int(rect.width())));
+        controls::paintText(painter, controls::TextVisual{rect, control.title},
+                            metrics);
         break;
     }
     case PreviewControl::Kind::Separator: {
-        painter.setPen(QPen(FormStyle::separator, 1.0));
-        painter.drawLine(rect.topLeft(), rect.bottomLeft());
+        controls::paintSeparator(painter, rect);
         break;
     }
     case PreviewControl::Kind::HorizontalLine: {
-        painter.setPen(QPen(FormStyle::fieldBorder, 1.0));
-        painter.drawLine(QPointF(rect.left(), rect.center().y()),
-                         QPointF(rect.right(), rect.center().y()));
+        controls::paintHorizontalLine(painter, rect);
         break;
     }
     }
