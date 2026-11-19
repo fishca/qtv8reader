@@ -693,14 +693,16 @@ private:
 
         const QHash<QString, QString> usage = usageLabels(items);
 
-        // 1С добавляет в форму команды, которых нет в модели: для формы
-        // списка — «Создать на основании», для любой формы — «Еще» и «?».
+        // 1С добавляет в форму команды, которых нет в модели:
+        // «Создать на основании» для формы списка и документа,
+        // «Еще» и «?» — для любой формы.
         const bool listBar = runtimeCommands && m_document.runtimeListCommands;
+        const bool documentBar = runtimeCommands && m_document.runtimeDocumentCommands;
         v8reader::FormItem createBasedOn;
         v8reader::FormItem more;
         v8reader::FormItem help;
         if (runtimeCommands) {
-            if (listBar) {
+            if (listBar || documentBar) {
                 createBasedOn.type = v8reader::FormItem::Type::Group;
                 createBasedOn.groupKind = 1;
                 createBasedOn.name = QStringLiteral("СоздатьНаОсновании");
@@ -715,7 +717,7 @@ private:
             help.name = QStringLiteral("Справка");
             help.synonym = QStringLiteral("?");
 
-            if (listBar) {
+            if (listBar || documentBar) {
                 int insertAt = 0;
                 for (int i = 0; i < visible.size(); ++i) {
                     if (visible.at(i)->name == QStringLiteral("Создать")) {
