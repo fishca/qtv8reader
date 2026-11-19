@@ -92,12 +92,12 @@ void paintTable(QPainter &painter, const TableVisual &visual,
         const QRectF track(rect.left() + 1.0,
                            rect.top() + tableHeight - scrollHeight + 1.0,
                            std::max(20.0, rect.width() - verticalScrollWidth
-                               - cornerWidth - 2.0),
+                               - cornerWidth - 21.0),
                            scrollHeight - 2.0);
         paintHorizontalScrollBar(painter, track, (contentWidth / columnsTotal) * 0.78);
 
         // Уголок с кнопками прокрутки, как в конфигураторе.
-        const QRectF corner(rect.right() - cornerWidth,
+        const QRectF corner(rect.right() - cornerWidth - 19.0,
                             rect.top() + tableHeight - 20.0,
                             cornerWidth, 20.0);
         painter.fillRect(corner, QColor(240, 240, 240));
