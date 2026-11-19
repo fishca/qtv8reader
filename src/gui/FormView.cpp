@@ -435,7 +435,7 @@ private:
             if (icon != ButtonIcon::None)
                 width += 22.0;
             if (item.name == QStringLiteral("Создать"))
-                width += 10.0;
+                width += 16.0;
             return std::min(250.0, width);
         }
         case Type::Search:
