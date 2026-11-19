@@ -92,6 +92,7 @@ struct PreviewControl
     bool labelOnly = false;
     bool calendar = false;
     bool bordered = false;
+    bool choiceButton = false;
 };
 
 bool looksTechnical(const QString &text)
@@ -99,6 +100,28 @@ bool looksTechnical(const QString &text)
     return text.contains(QLatin1Char('='))
         || text.startsWith(QStringLiteral("ДЛФ"))
         || text.contains(QLatin1Char('%'));
+}
+
+// Имена реквизитов, которые в 1С являются ссылочными: у их полей есть
+// кнопка выбора (три точки) справа.
+bool looksLikeReferenceField(const QString &name)
+{
+    static const QStringList parts = {
+        QStringLiteral("Организация"), QStringLiteral("ФизЛицо"),
+        QStringLiteral("Склад"), QStringLiteral("Подразделение"),
+        QStringLiteral("Ответственный"), QStringLiteral("Валюта"),
+        QStringLiteral("Контрагент"), QStringLiteral("Номенклатура"),
+        QStringLiteral("Пользователь"), QStringLiteral("Документ"),
+        QStringLiteral("Ссылка"), QStringLiteral("Счет"),
+        QStringLiteral("Статья"), QStringLiteral("Договор"),
+        QStringLiteral("Банк"), QStringLiteral("Касса"),
+        QStringLiteral("ТипЦен"), QStringLiteral("Проект")
+    };
+    for (const QString &part : parts) {
+        if (name.contains(part, Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
 }
 
 bool isServiceItem(const v8reader::FormItem &item)
@@ -1018,6 +1041,8 @@ private:
         control.calendar = !item.labelOnly
             && (item.name.contains(QStringLiteral("Дата"))
                 || item.name.contains(QStringLiteral("Период")));
+        control.choiceButton = !item.labelOnly && !control.calendar && !dropDown
+            && looksLikeReferenceField(item.name);
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
             control.inputWidth = item.widthUnits * 10.0;
         m_controls->append(control);
@@ -1554,6 +1579,18 @@ void paintControl(QPainter &painter, const PreviewControl &control,
                              QPointF(cal.left() + 2.0, cal.top() + 3.0));
             painter.drawLine(QPointF(cal.right() - 2.0, cal.top()),
                              QPointF(cal.right() - 2.0, cal.top() + 3.0));
+        }
+        if (control.choiceButton && edit.width() > 44.0) {
+            painter.setPen(FormStyle::secondaryText);
+            painter.drawLine(QPointF(edit.right() - 20.0, edit.top() + 2.0),
+                             QPointF(edit.right() - 20.0, edit.bottom() - 2.0));
+            const double dotsY = edit.center().y();
+            for (int i = 0; i < 3; ++i) {
+                painter.setBrush(FormStyle::secondaryText);
+                painter.drawEllipse(QPointF(edit.right() - 14.0 + i * 4.0, dotsY),
+                                    1.2, 1.2);
+            }
+            painter.setBrush(Qt::NoBrush);
         }
         break;
     }
