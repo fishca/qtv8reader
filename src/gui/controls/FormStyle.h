@@ -20,7 +20,7 @@ inline const QColor alternateRow(250, 250, 250);
 inline const QColor separator(208, 208, 208);
 
 inline constexpr double buttonHeight = 24.0;
-inline constexpr double tableHeaderHeight = 22.0;
+inline constexpr double tableHeaderHeight = 26.0;
 inline constexpr double tableRowHeight = 20.0;
 
 } // namespace FormStyle

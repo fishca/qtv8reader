@@ -219,6 +219,56 @@ void drawButtonIcon(QPainter &painter, ButtonIcon icon, const QRectF &rect)
                                 s * 0.5, s * 0.5));
         break;
     }
+    case ButtonIcon::AtKt: {
+        const QRectF doc(rect.left() + s * 0.2, rect.top() + s * 0.06,
+                         s * 0.6, s * 0.86);
+        painter.setPen(QPen(QColor(90, 110, 130), stroke));
+        painter.setBrush(Qt::white);
+        painter.drawRect(doc);
+        painter.setBrush(Qt::NoBrush);
+        QFont font = painter.font();
+        font.setPixelSize(std::max(4, int(s * 0.3)));
+        font.setBold(true);
+        painter.setFont(font);
+        painter.setPen(QColor(60, 150, 90));
+        painter.drawText(QRectF(doc.left(), doc.top() + s * 0.05,
+                                doc.width(), doc.height() / 2.0),
+                         Qt::AlignCenter, QStringLiteral("Ат"));
+        painter.setPen(QColor(180, 70, 70));
+        painter.drawText(QRectF(doc.left(), doc.center().y(),
+                                doc.width(), doc.height() / 2.0),
+                         Qt::AlignCenter, QStringLiteral("КТ"));
+        break;
+    }
+    case ButtonIcon::ListSettings: {
+        painter.setPen(QPen(QColor(80, 80, 80), stroke));
+        painter.setBrush(Qt::white);
+        const double rowWidth = s * 0.45;
+        for (int i = 0; i < 3; ++i) {
+            const double y = rect.top() + s * (0.18 + i * 0.24);
+            painter.drawRect(QRectF(rect.left() + s * 0.12, y,
+                                    rowWidth, s * 0.16));
+        }
+        painter.setPen(QPen(QColor(70, 150, 90), stroke, Qt::SolidLine,
+                            Qt::RoundCap));
+        const QPointF start(rect.left() + s * 0.62, rect.top() + s * 0.28);
+        painter.drawLine(start, start + QPointF(s * 0.18, s * 0.28));
+        painter.drawLine(start + QPointF(s * 0.18, s * 0.28),
+                         start + QPointF(s * 0.11, s * 0.2));
+        painter.drawLine(start + QPointF(s * 0.18, s * 0.28),
+                         start + QPointF(s * 0.11, s * 0.36));
+        break;
+    }
+    case ButtonIcon::Pencil: {
+        painter.setPen(QPen(QColor(70, 150, 90), stroke, Qt::SolidLine,
+                            Qt::RoundCap));
+        painter.drawLine(QPointF(rect.left() + s * 0.2, rect.bottom() - s * 0.2),
+                         QPointF(rect.right() - s * 0.2, rect.top() + s * 0.2));
+        painter.setPen(QPen(QColor(120, 90, 50), stroke * 0.8));
+        painter.drawLine(QPointF(rect.left() + s * 0.18, rect.bottom() - s * 0.18),
+                         QPointF(rect.left() + s * 0.32, rect.bottom() - s * 0.32));
+        break;
+    }
     case ButtonIcon::Up:
     case ButtonIcon::Down: {
         const bool up = icon == ButtonIcon::Up;

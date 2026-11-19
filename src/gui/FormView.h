@@ -11,7 +11,9 @@ class QLabel;
 class QPlainTextEdit;
 class QResizeEvent;
 class QShowEvent;
+class QSplitter;
 class QTabWidget;
+class QToolButton;
 class QTreeWidget;
 class FormPreviewWidget;
 
@@ -46,6 +48,8 @@ private:
 
     QLabel *m_hint = nullptr;
     QTreeWidget *m_tree = nullptr;
+    QSplitter *m_splitter = nullptr;
+    QToolButton *m_treeToggle = nullptr;
     QComboBox *m_scaleCombo = nullptr;
     FormPreviewWidget *m_preview = nullptr;
     QTabWidget *m_tabs = nullptr;

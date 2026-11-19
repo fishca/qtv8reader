@@ -30,6 +30,7 @@
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -43,7 +44,7 @@ using controls::ButtonIcon;
 
 struct PreviewControl
 {
-    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator, HorizontalLine };
+    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator, HorizontalLine, FilterChip };
     Kind kind = Kind::Field;
     ButtonIcon icon = ButtonIcon::None;
     bool iconOnly = false;
@@ -54,6 +55,7 @@ struct PreviewControl
     double labelWidth = 0.0;
     double inputWidth = -1.0;
     bool selectedTab = false;
+    bool actionColumn = false;
     bool checkBox = false;
     bool checkboxOnly = false;
     bool dropDown = false;
@@ -152,12 +154,20 @@ ButtonIcon iconForButton(const v8reader::FormItem &item)
     };
     if (has(QStringLiteral("СоздатьНаОсновании")))
         return ButtonIcon::None;
+    if (item.name == QStringLiteral("Создать2"))
+        return ButtonIcon::None;
     if (has(QStringLiteral("Создать")))
         return ButtonIcon::Create;
+    if (has(QStringLiteral("АтКт")))
+        return ButtonIcon::AtKt;
     if (has(QStringLiteral("Скопировать")))
         return ButtonIcon::Copy;
+    if (has(QStringLiteral("НастроитьСписок")))
+        return ButtonIcon::ListSettings;
+    if (has(QStringLiteral("Просмотреть")))
+        return ButtonIcon::List;
     if (has(QStringLiteral("Изменить")))
-        return ButtonIcon::Change;
+        return ButtonIcon::Pencil;
     if (has(QStringLiteral("Печать")))
         return ButtonIcon::Print;
     if (has(QStringLiteral("ПоказатьДвижения"))
@@ -271,6 +281,48 @@ public:
                 items.append(&item);
         }
         *contentHeight = layoutVertical(items, QRectF(0.0, 0.0, m_width, 100000.0), 0);
+
+        // В конфигураторе над таблицей списка показывается строка отборов
+        // с образцами значений. Добавляем её как отдельный контрол.
+        if (m_document.runtimeListCommands) {
+            PreviewControl *table = nullptr;
+            double bestArea = 0.0;
+            for (PreviewControl &control : *controls) {
+                if (control.kind != PreviewControl::Kind::Table)
+                    continue;
+                const double area = control.rect.width() * control.rect.height();
+                if (!table || area > bestArea) {
+                    table = &control;
+                    bestArea = area;
+                }
+            }
+            if (table) {
+                const double chipsTop = table->rect.top();
+                const double chipsLeft = table->rect.left();
+                const double chipHeight = 22.0;
+                const double chipGap = 4.0;
+                for (PreviewControl &control : *controls) {
+                    if (control.rect.top() >= chipsTop - 0.1)
+                        control.rect.moveTop(control.rect.top() + chipHeight + chipGap);
+                }
+                const QStringList chipTexts = {
+                    QStringLiteral("Поле1: Значение1"),
+                    QStringLiteral("Поле2: Значение2")
+                };
+                double chipX = chipsLeft;
+                for (const QString &text : chipTexts) {
+                    const double width = std::min(220.0, std::max(120.0,
+                        m_metrics.horizontalAdvance(text) + 34.0));
+                    PreviewControl chip;
+                    chip.kind = PreviewControl::Kind::FilterChip;
+                    chip.rect = QRectF(chipX, chipsTop, width, chipHeight);
+                    chip.title = text;
+                    m_controls->append(chip);
+                    chipX += width + 8.0;
+                }
+                *contentHeight += chipHeight + chipGap;
+            }
+        }
 
         // В окне 1С таблица забирает свободную высоту, а элементы под ней
         // (подвал формы) прижимаются к низу. Повторяем это для предпросмотра.
@@ -741,6 +793,71 @@ private:
             visible.append(&help);
         }
 
+        // В конфигураторе у формы списка своя панель: две «Создать»,
+        // группа служебных иконок и «Создать на основании». Повторяем её.
+        v8reader::FormItem createPrimary;
+        v8reader::FormItem create2;
+        v8reader::FormItem copyButton;
+        v8reader::FormItem atKt;
+        v8reader::FormItem listSettings;
+        v8reader::FormItem paperclip;
+        v8reader::FormItem listDoc;
+        v8reader::FormItem pencil;
+        if (listBar) {
+            const v8reader::FormItem *create = nullptr;
+            const v8reader::FormItem *search = nullptr;
+            const v8reader::FormItem *searchOptions = nullptr;
+            for (const v8reader::FormItem *item : visible) {
+                if (item->name == QStringLiteral("Создать"))
+                    create = item;
+                else if (item->name.contains(QStringLiteral("СтрокаПоиска")))
+                    search = item;
+                else if (item->name.contains(QStringLiteral("УправлениеПоиском")))
+                    searchOptions = item;
+            }
+            if (create && search && searchOptions) {
+                createPrimary.type = v8reader::FormItem::Type::Button;
+                createPrimary.typeCode = 31;
+                createPrimary.name = QStringLiteral("Создать");
+                createPrimary.synonym = QStringLiteral("Создать");
+
+                create2.type = v8reader::FormItem::Type::Group;
+                create2.groupKind = 1;
+                create2.name = QStringLiteral("Создать2");
+                create2.synonym = QStringLiteral("Создать");
+
+                copyButton.type = v8reader::FormItem::Type::Button;
+                copyButton.typeCode = 31;
+                copyButton.name = QStringLiteral("Скопировать");
+
+                atKt.type = v8reader::FormItem::Type::Button;
+                atKt.typeCode = 31;
+                atKt.name = QStringLiteral("АтКт");
+
+                listSettings.type = v8reader::FormItem::Type::Button;
+                listSettings.typeCode = 31;
+                listSettings.name = QStringLiteral("НастроитьСписок");
+
+                paperclip.type = v8reader::FormItem::Type::Button;
+                paperclip.typeCode = 31;
+                paperclip.name = QStringLiteral("ПрисоединенныеФайлы");
+
+                listDoc.type = v8reader::FormItem::Type::Button;
+                listDoc.typeCode = 31;
+                listDoc.name = QStringLiteral("Просмотреть");
+
+                pencil.type = v8reader::FormItem::Type::Button;
+                pencil.typeCode = 31;
+                pencil.name = QStringLiteral("Изменить");
+
+                visible = {&createPrimary, &create2, &copyButton, &atKt,
+                           &createBasedOn, &listSettings, &paperclip,
+                           &listDoc, &pencil, search, searchOptions,
+                           &more, &help};
+                dropDownButtons.insert(&createPrimary);
+            }
+        }
+
         auto estimatedWidth = [&](const v8reader::FormItem *item) {
             double width = preferredWidth(*item);
             const bool searchOptions = item->type == v8reader::FormItem::Type::Search
@@ -1018,7 +1135,15 @@ private:
             && control.icon != ButtonIcon::Print;
         control.dropDown = dropDown;
         control.bordered = item.name == QStringLiteral("Еще")
-            || item.name == QStringLiteral("Справка");
+            || item.name == QStringLiteral("Справка")
+            || item.name == QStringLiteral("Создать2")
+            || item.name == QStringLiteral("СоздатьНаОсновании")
+            || item.name == QStringLiteral("Скопировать")
+            || item.name == QStringLiteral("АтКт")
+            || item.name == QStringLiteral("НастроитьСписок")
+            || item.name == QStringLiteral("ПрисоединенныеФайлы")
+            || item.name == QStringLiteral("Просмотреть")
+            || item.name == QStringLiteral("Изменить");
         m_controls->append(control);
     }
 
@@ -1062,6 +1187,8 @@ private:
     {
         PreviewControl control;
         control.kind = PreviewControl::Kind::Table;
+        control.actionColumn = m_document.runtimeListCommands
+            || m_document.runtimeCatalogListCommands;
         double tableTop = rect.top();
         double tableHeight = m_document.runtimeListCommands ? 470.0 : 360.0;
         if (m_document.runtimeDocumentCommands && !m_document.runtimeListCommands) {
@@ -1110,73 +1237,44 @@ private:
         QVector<int> widthUnits;
         tableColumns(item, item.name, &control.columns, &widthUnits);
 
-        // В списках 1С по умолчанию показывает ключевые колонки, а остальные
-        // пользователь добавляет сам. Повторяем типовой набор, чтобы таблица
-        // выглядела как список платформы, а не как выгрузка всех полей.
-        if ((m_document.runtimeListCommands || m_document.runtimeCatalogListCommands)
-            && control.columns.size() > 4) {
-            const QVector<QStringList> preferred = {
-                {QStringLiteral("Дата"), QStringLiteral("Период")},
-                {QStringLiteral("Номер")},
-                {QStringLiteral("Подотчетное лицо"), QStringLiteral("Контрагент"),
-                 QStringLiteral("Сотрудник"), QStringLiteral("Физическое лицо")},
-                {QStringLiteral("Сумма")},
-                {QStringLiteral("Вид операции"), QStringLiteral("Статус"),
-                 QStringLiteral("Состояние")},
-                {QStringLiteral("Комментарий")},
-                {QStringLiteral("Наименование")},
-                {QStringLiteral("Код")},
-                {QStringLiteral("Курс")},
-                {QStringLiteral("Кратность")}
-            };
-            QVector<int> picked;
-            for (const QStringList &keys : preferred) {
-                for (int i = 0; i < control.columns.size(); ++i) {
-                    if (picked.contains(i))
-                        continue;
-                    bool matches = false;
-                    for (const QString &key : keys) {
-                        if (control.columns.at(i).contains(key, Qt::CaseInsensitive)) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                    if (matches) {
-                        picked.append(i);
-                        break;
-                    }
-                }
-            }
-            if (picked.size() >= 4) {
-                QStringList filteredColumns;
-                QVector<int> filteredUnits;
-                for (int index : picked) {
-                    filteredColumns.append(control.columns.at(index));
-                    if (index < widthUnits.size())
-                        filteredUnits.append(widthUnits.at(index));
-                    else
-                        filteredUnits.append(-1);
-                }
-                control.columns = filteredColumns;
-                widthUnits = filteredUnits;
-            }
-        }
-
         if (!control.columns.isEmpty()) {
             QFont headerFont = m_font;
-            headerFont.setBold(true);
+            headerFont.setBold(false);
             QFontMetricsF headerMetrics(headerFont);
             double total = 0.0;
             for (int i = 0; i < control.columns.size(); ++i) {
                 const QString &column = control.columns.at(i);
                 const int units = i < widthUnits.size() ? widthUnits.at(i) : -1;
-                const double minWidth =
-                    (m_document.runtimeListCommands
-                     || m_document.runtimeCatalogListCommands) ? 110.0 : 80.0;
-                const double width = std::max(70.0, units > 0
-                    ? units * 10.0
-                    : std::min(240.0, std::max(minWidth,
-                        headerMetrics.horizontalAdvance(column) + 24.0)));
+                const bool list = m_document.runtimeListCommands
+                    || m_document.runtimeCatalogListCommands;
+                double width = 0.0;
+                if (list) {
+                    if (column == QStringLiteral("Дата"))
+                        width = 200.0;
+                    else if (column == QStringLiteral("Номер"))
+                        width = 150.0;
+                    else if (column == QStringLiteral("Подотчетное лицо"))
+                        width = 190.0;
+                    else if (column == QStringLiteral("Сумма"))
+                        width = 130.0;
+                    else if (column == QStringLiteral("Валюта"))
+                        width = 120.0;
+                    else if (column == QStringLiteral("Склад"))
+                        width = 110.0;
+                    else if (column == QStringLiteral("Вид операции"))
+                        width = 160.0;
+                    else if (column == QStringLiteral("Организация"))
+                        width = 200.0;
+                    else
+                        width = std::max(130.0,
+                            headerMetrics.horizontalAdvance(column) + 24.0);
+                } else {
+                    const double minWidth = 80.0;
+                    width = std::max(70.0, units > 0
+                        ? units * 10.0
+                        : std::min(240.0, std::max(minWidth,
+                            headerMetrics.horizontalAdvance(column) + 24.0)));
+                }
                 control.columnWidths.append(width);
                 total += width;
             }
@@ -1255,6 +1353,15 @@ void paintControl(QPainter &painter, const PreviewControl &control,
 {
     painter.setFont(font);
     const QRectF rect = control.rect;
+    struct ClipGuard {
+        QPainter &painter;
+        ClipGuard(QPainter &p, const QRectF &r) : painter(p)
+        {
+            painter.save();
+            painter.setClipRect(r);
+        }
+        ~ClipGuard() { painter.restore(); }
+    } clip(painter, rect);
 
     switch (control.kind) {
     case PreviewControl::Kind::Field: {
@@ -1297,6 +1404,7 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         visual.rect = rect;
         visual.columns = control.columns;
         visual.widths = control.columnWidths;
+        visual.actionColumn = control.actionColumn;
         controls::paintTable(painter, visual, font, metrics);
         break;
     }
@@ -1306,6 +1414,10 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         visual.title = control.title;
         visual.selected = control.selectedTab;
         controls::paintTab(painter, visual, metrics);
+        break;
+    }
+    case PreviewControl::Kind::FilterChip: {
+        controls::paintFilterChip(painter, controls::ChipVisual{rect, control.title});
         break;
     }
     case PreviewControl::Kind::Decoration: {
@@ -1391,6 +1503,13 @@ protected:
         painter.setFont(font);
         for (const PreviewControl &control : m_controls)
             paintControl(painter, control, font, metrics);
+
+        // Тонкая рамка клиентской области, как у окна конфигуратора.
+        painter.setPen(QPen(QColor(140, 150, 160), 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(QRectF(0.0, 0.0,
+                                width() / m_scale - 1.0,
+                                height() / m_scale - 1.0));
     }
 
 private:
@@ -1504,12 +1623,19 @@ FormView::FormView(QWidget *parent)
         m_scaleCombo->addItem(QStringLiteral("%1%").arg(percent), percent);
     m_scaleCombo->setCurrentIndex(1);
     toolbar->addWidget(m_scaleCombo);
+    m_treeToggle = new QToolButton(formPage);
+    m_treeToggle->setObjectName(QStringLiteral("formTreeToggle"));
+    m_treeToggle->setText(QStringLiteral("Дерево"));
+    m_treeToggle->setCheckable(true);
+    m_treeToggle->setChecked(false);
+    m_treeToggle->setToolTip(QStringLiteral("Показать дерево элементов формы"));
+    toolbar->addWidget(m_treeToggle);
     toolbar->addStretch();
     layout->addLayout(toolbar);
 
-    auto *splitter = new QSplitter(Qt::Horizontal, formPage);
+    m_splitter = new QSplitter(Qt::Horizontal, formPage);
 
-    m_tree = new QTreeWidget(splitter);
+    m_tree = new QTreeWidget(m_splitter);
     m_tree->setObjectName(QStringLiteral("formTree"));
     m_tree->setColumnCount(4);
     m_tree->setHeaderLabels({QStringLiteral("Элемент"), QStringLiteral("Тип"),
@@ -1523,20 +1649,32 @@ FormView::FormView(QWidget *parent)
     m_tree->setColumnWidth(2, 220);
     m_tree->setColumnWidth(3, 200);
 
-    auto *scroll = new QScrollArea(splitter);
+    auto *scroll = new QScrollArea(m_splitter);
     scroll->setWidgetResizable(false);
     scroll->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_preview = new FormPreviewWidget(scroll);
     scroll->setWidget(m_preview);
 
-    splitter->addWidget(m_tree);
-    splitter->addWidget(scroll);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    // Дереву элементов достаточно узкой колонки: форма должна занимать
-    // основную часть панели, как клиентское окно в 1С.
-    splitter->setSizes({230, 970});
-    layout->addWidget(splitter, 1);
+    m_splitter->addWidget(m_tree);
+    m_splitter->addWidget(scroll);
+    m_splitter->setStretchFactor(0, 0);
+    m_splitter->setStretchFactor(1, 1);
+    // По умолчанию форма занимает всю ширину вкладки, как в конфигураторе;
+    // дерево элементов открывается кнопкой «Дерево».
+    m_splitter->setSizes({0, 10000});
+    connect(m_treeToggle, &QToolButton::toggled, this, [this](bool visible) {
+        const QList<int> sizes = m_splitter->sizes();
+        const int total = sizes.value(0) + sizes.value(1);
+        if (visible)
+            m_splitter->setSizes({230, std::max(1, total - 230)});
+        else
+            m_splitter->setSizes({0, std::max(1, total)});
+    });
+    QTimer::singleShot(0, this, [this] {
+        if (!m_treeToggle->isChecked())
+            m_splitter->setSizes({0, std::max(1, m_splitter->width())});
+    });
+    layout->addWidget(m_splitter, 1);
     m_tabs->addTab(formPage, QStringLiteral("Форма"));
 
     auto *modulePage = new QWidget(m_tabs);

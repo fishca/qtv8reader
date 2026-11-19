@@ -15,8 +15,15 @@ struct TextVisual
     QString text;
 };
 
+struct ChipVisual
+{
+    QRectF rect;
+    QString text;
+};
+
 void paintText(QPainter &painter, const TextVisual &visual,
                const QFontMetricsF &metrics);
+void paintFilterChip(QPainter &painter, const ChipVisual &visual);
 void paintSeparator(QPainter &painter, const QRectF &rect);
 void paintHorizontalLine(QPainter &painter, const QRectF &rect);
 

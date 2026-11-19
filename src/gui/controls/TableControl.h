@@ -15,6 +15,7 @@ struct TableVisual
     QRectF rect;
     QStringList columns;
     QVector<double> widths;
+    bool actionColumn = false;
 };
 
 void paintTable(QPainter &painter, const TableVisual &visual,

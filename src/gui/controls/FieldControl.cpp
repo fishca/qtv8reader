@@ -74,12 +74,18 @@ void paintField(QPainter &painter, const FieldVisual &visual,
         const double buttonWidth = 15.0;
         const QRectF button(edit.right() - buttonWidth, edit.top() + 1.0,
                             buttonWidth - 1.0, edit.height() - 2.0);
-        QLinearGradient gradient(button.topLeft(), button.bottomLeft());
-        gradient.setColorAt(0.0, QColor(251, 251, 247));
-        gradient.setColorAt(1.0, QColor(236, 231, 216));
-        painter.setPen(QColor(165, 165, 165));
-        painter.setBrush(gradient);
-        painter.drawRect(button);
+        if (visual.dropDown) {
+            painter.setPen(QColor(160, 160, 160));
+            painter.setBrush(Qt::white);
+            painter.drawRect(button);
+        } else {
+            QLinearGradient gradient(button.topLeft(), button.bottomLeft());
+            gradient.setColorAt(0.0, QColor(251, 251, 247));
+            gradient.setColorAt(1.0, QColor(236, 231, 216));
+            painter.setPen(QColor(165, 165, 165));
+            painter.setBrush(gradient);
+            painter.drawRect(button);
+        }
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QColor(80, 80, 80));
         const QPointF center = button.center();

@@ -25,7 +25,10 @@ enum class ButtonIcon {
     News,
     Window,
     Up,
-    Down
+    Down,
+    AtKt,
+    ListSettings,
+    Pencil
 };
 
 struct ButtonVisual
