@@ -190,7 +190,7 @@ void MainWindow::setupUi()
     splitter->addWidget(m_tabs);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
-    splitter->setSizes({280, 1000});
+    splitter->setSizes({270, 1010});
 
     setCentralWidget(splitter);
 

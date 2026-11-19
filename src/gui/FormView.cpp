@@ -986,7 +986,7 @@ private:
 
             // Две строки быстрого отбора делят ширину поровну, как в
             // конфигураторе; иначе первое поле съедает почти всю строку.
-            if (!runtimeCommands && row.size() == 2) {
+            if (row.size() == 2) {
                 bool bothFilters = true;
                 for (int index : row) {
                     const v8reader::FormItem *item = visible.at(index);
@@ -1540,9 +1540,9 @@ protected:
 
         const double logicalW = width() / m_scale;
         const double logicalH = height() / m_scale;
-        const double titleHeight = 28.0;
+        const double titleHeight = 26.0;
 
-        // Рамка и заголовок окна конфигуратора.
+        // Рамка и пустая синяя полоса заголовка окна конфигуратора.
         QLinearGradient titleGradient(0.0, 0.0, 0.0, titleHeight);
         titleGradient.setColorAt(0.0, QColor(143, 185, 225));
         titleGradient.setColorAt(1.0, QColor(155, 185, 213));
@@ -1556,26 +1556,6 @@ protected:
         painter.drawRect(QRectF(1.5, 1.5, logicalW - 3.0, logicalH - 3.0));
         painter.setPen(QColor(226, 255, 255));
         painter.drawRect(QRectF(2.5, 2.5, logicalW - 5.0, logicalH - 5.0));
-
-        QFont windowFont = formFont();
-        windowFont.setBold(true);
-        painter.setFont(windowFont);
-        painter.setPen(QColor(23, 52, 86));
-        const QString windowTitle = !m_document ? QStringLiteral("Форма")
-            : (!m_document->synonym.isEmpty() ? m_document->synonym
-                                              : m_document->name);
-        painter.drawText(QRectF(10.0, 1.0, logicalW - 90.0, titleHeight - 2.0),
-                         Qt::AlignLeft | Qt::AlignVCenter, windowTitle);
-        // Кнопки окна.
-        painter.setPen(QColor(240, 250, 255));
-        const double buttonY = titleHeight / 2.0;
-        painter.drawLine(QPointF(logicalW - 62.0, buttonY + 4.0),
-                         QPointF(logicalW - 52.0, buttonY + 4.0));
-        painter.drawRect(QRectF(logicalW - 42.0, buttonY - 4.0, 8.0, 8.0));
-        painter.drawLine(QPointF(logicalW - 20.0, buttonY - 4.0),
-                         QPointF(logicalW - 12.0, buttonY + 4.0));
-        painter.drawLine(QPointF(logicalW - 20.0, buttonY + 4.0),
-                         QPointF(logicalW - 12.0, buttonY - 4.0));
         painter.setPen(QColor(120, 150, 180));
         painter.drawLine(QPointF(0.0, titleHeight), QPointF(logicalW, titleHeight));
 
@@ -1599,7 +1579,7 @@ protected:
         // Тонкая рамка клиентской области под заголовком.
         painter.setPen(QPen(QColor(150, 160, 170), 1.0));
         painter.setBrush(Qt::NoBrush);
-        painter.drawRect(QRectF(3.0, 28.0, logicalW - 6.0, logicalH - 31.0));
+        painter.drawRect(QRectF(3.0, 26.0, logicalW - 6.0, logicalH - 29.0));
     }
 
 private:
@@ -1633,9 +1613,9 @@ private:
         // а не оставлять пустую полосу под собой.
         const double viewportLogical = viewportHeight > 0.0
             ? viewportHeight / m_scale : 0.0;
-        const double titleBarHeight = 28.0;
+        const double titleBarHeight = 26.0;
         const double targetContentHeight = std::max(0.0,
-            viewportLogical - margin * 2.0 - titleBarHeight - 2.0);
+            viewportLogical - titleBarHeight - 44.0);
 
         LayoutEngine engine(*m_document, contentWidth);
         double contentHeight = 0.0;
@@ -1665,7 +1645,7 @@ private:
         }
 
         for (PreviewControl &control : controls)
-            control.rect.translate(margin, margin + titleBarHeight);
+            control.rect.translate(margin, titleBarHeight + 22.0);
         m_controls = controls;
         m_contentHeight = contentHeight;
         double logicalHeight = qBound(280.0,
