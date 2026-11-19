@@ -1682,7 +1682,7 @@ private:
         }
 
         for (PreviewControl &control : controls)
-            control.rect.translate(margin, titleBarHeight + 22.0);
+            control.rect.translate(margin, titleBarHeight + 14.0);
         m_controls = controls;
         m_contentHeight = contentHeight;
         double logicalHeight = qBound(280.0,
