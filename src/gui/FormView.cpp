@@ -1060,6 +1060,53 @@ private:
         QVector<int> widthUnits;
         tableColumns(item, item.name, &control.columns, &widthUnits);
 
+        // В списках 1С по умолчанию показывает ключевые колонки, а остальные
+        // пользователь добавляет сам. Повторяем типовой набор, чтобы таблица
+        // выглядела как список платформы, а не как выгрузка всех полей.
+        if (m_document.runtimeListCommands && control.columns.size() > 6) {
+            const QVector<QStringList> preferred = {
+                {QStringLiteral("Дата"), QStringLiteral("Период")},
+                {QStringLiteral("Номер")},
+                {QStringLiteral("Подотчетное лицо"), QStringLiteral("Контрагент"),
+                 QStringLiteral("Сотрудник"), QStringLiteral("Физическое лицо")},
+                {QStringLiteral("Сумма")},
+                {QStringLiteral("Вид операции"), QStringLiteral("Статус"),
+                 QStringLiteral("Состояние")},
+                {QStringLiteral("Комментарий")}
+            };
+            QVector<int> picked;
+            for (const QStringList &keys : preferred) {
+                for (int i = 0; i < control.columns.size(); ++i) {
+                    if (picked.contains(i))
+                        continue;
+                    bool matches = false;
+                    for (const QString &key : keys) {
+                        if (control.columns.at(i).contains(key, Qt::CaseInsensitive)) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                    if (matches) {
+                        picked.append(i);
+                        break;
+                    }
+                }
+            }
+            if (picked.size() >= 4) {
+                QStringList filteredColumns;
+                QVector<int> filteredUnits;
+                for (int index : picked) {
+                    filteredColumns.append(control.columns.at(index));
+                    if (index < widthUnits.size())
+                        filteredUnits.append(widthUnits.at(index));
+                    else
+                        filteredUnits.append(-1);
+                }
+                control.columns = filteredColumns;
+                widthUnits = filteredUnits;
+            }
+        }
+
         if (!control.columns.isEmpty()) {
             QFont headerFont = m_font;
             headerFont.setBold(true);
