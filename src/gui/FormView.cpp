@@ -229,47 +229,46 @@ public:
         m_controls = controls;
         QVector<v8reader::FormItem> localItems = m_document.items;
 
-        // Платформа сама добавляет в форму документа стандартные команды
-        // «Провести и закрыть», «Записать», «Провести» в начало командной
-        // панели; в бинарной форме их нет.
-        if (m_document.runtimeDocumentCommands) {
-            std::function<v8reader::FormItem *(v8reader::FormItem &)> findCommandGroup =
+        // Платформа сама добавляет в форму стандартные команды записи
+        // в начало командной панели; в бинарной форме их нет.
+        if (m_document.runtimeDocumentCommands || m_document.runtimeCatalogCommands) {
+            std::function<v8reader::FormItem *(v8reader::FormItem &)> findCommandBar =
                 [&](v8reader::FormItem &item) -> v8reader::FormItem * {
-                    if (item.type == v8reader::FormItem::Type::Group
-                        && item.groupKind == 6
-                        && (item.name.contains(QStringLiteral("Командн"))
-                            || item.synonym.contains(QStringLiteral("командн"),
-                                                     Qt::CaseInsensitive))) {
+                    if (isTopCommandBar(item))
                         return &item;
-                    }
                     for (v8reader::FormItem &child : item.children) {
-                        if (v8reader::FormItem *found = findCommandGroup(child))
+                        if (v8reader::FormItem *found = findCommandBar(child))
                             return found;
                     }
                     return nullptr;
                 };
             for (v8reader::FormItem &root : localItems) {
-                v8reader::FormItem *group = findCommandGroup(root);
+                v8reader::FormItem *group = findCommandBar(root);
                 if (!group)
                     continue;
+                const bool document = m_document.runtimeDocumentCommands;
                 v8reader::FormItem close;
                 close.type = v8reader::FormItem::Type::Button;
                 close.typeCode = 31;
-                close.name = QStringLiteral("ПровестиИЗакрыть");
-                close.synonym = QStringLiteral("Провести и закрыть");
+                close.name = document ? QStringLiteral("ПровестиИЗакрыть")
+                                      : QStringLiteral("ЗаписатьИЗакрыть");
+                close.synonym = document ? QStringLiteral("Провести и закрыть")
+                                         : QStringLiteral("Записать и закрыть");
                 v8reader::FormItem write;
                 write.type = v8reader::FormItem::Type::Button;
                 write.typeCode = 31;
                 write.name = QStringLiteral("Записать");
                 write.synonym = QStringLiteral("Записать");
-                v8reader::FormItem post;
-                post.type = v8reader::FormItem::Type::Button;
-                post.typeCode = 31;
-                post.name = QStringLiteral("Провести");
-                post.synonym = QStringLiteral("Провести");
                 group->children.insert(0, close);
                 group->children.insert(1, write);
-                group->children.insert(2, post);
+                if (document) {
+                    v8reader::FormItem post;
+                    post.type = v8reader::FormItem::Type::Button;
+                    post.typeCode = 31;
+                    post.name = QStringLiteral("Провести");
+                    post.synonym = QStringLiteral("Провести");
+                    group->children.insert(2, post);
+                }
                 break;
             }
         }
@@ -431,6 +430,22 @@ private:
             && (item.name.contains(QStringLiteral("КоманднойПанели"))
                 || item.synonym.contains(QStringLiteral("командн"),
                                          Qt::CaseInsensitive))) {
+            return true;
+        }
+        // Формы элементов/справочников могут не иметь отдельной группы
+        // кнопок: командная панель — внешняя группа вида 9.
+        if (item.groupKind == 9
+            && item.name.contains(QStringLiteral("ФормаКоманднаяПанель"))) {
+            for (const v8reader::FormItem &child : item.children) {
+                if (child.type != v8reader::FormItem::Type::Group)
+                    continue;
+                if ((child.groupKind == 0 || child.groupKind == 6)
+                    && (child.name.contains(QStringLiteral("Командн"))
+                        || child.synonym.contains(QStringLiteral("командн"),
+                                                  Qt::CaseInsensitive))) {
+                    return false;
+                }
+            }
             return true;
         }
         return false;

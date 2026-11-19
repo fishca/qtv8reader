@@ -74,6 +74,8 @@ struct FormDocument
     // Форма документа: платформа добавляет «Провести и закрыть»,
     // «Записать» и «Провести».
     bool runtimeDocumentCommands = false;
+    // Форма элемента справочника: «Записать и закрыть» и «Записать».
+    bool runtimeCatalogCommands = false;
 
     int itemCount() const;
     int fieldCount() const;
