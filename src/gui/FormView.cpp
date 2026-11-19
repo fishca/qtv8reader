@@ -1580,6 +1580,14 @@ protected:
         painter.setPen(QPen(QColor(150, 160, 170), 1.0));
         painter.setBrush(Qt::NoBrush);
         painter.drawRect(QRectF(3.0, 26.0, logicalW - 6.0, logicalH - 29.0));
+
+        // Белая внешняя кромка окна.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(Qt::white);
+        painter.drawRect(QRectF(0.0, 0.0, logicalW, 2.0));
+        painter.drawRect(QRectF(0.0, 0.0, 2.0, logicalH));
+        painter.drawRect(QRectF(logicalW - 2.0, 0.0, 2.0, logicalH));
+        painter.drawRect(QRectF(0.0, logicalH - 2.0, logicalW, 2.0));
     }
 
 private:

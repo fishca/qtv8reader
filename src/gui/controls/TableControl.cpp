@@ -101,7 +101,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     painter.drawLine(verticalTrack.topLeft(), verticalTrack.bottomLeft());
 
     if (horizontalScroll) {
-        const double cornerWidth = 64.0;
+        const double cornerWidth = 80.0;
         const QRectF track(rect.left() + 1.0,
                            rect.top() + tableHeight - scrollHeight + 1.0,
                            std::max(20.0, rect.width() - verticalScrollWidth
@@ -117,7 +117,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
         painter.setPen(FormStyle::tableBorder);
         painter.drawRect(corner);
         for (int i = 0; i < 4; ++i) {
-            const QRectF cell(corner.left() + i * 16.0, corner.top(), 16.0, 20.0);
+            const QRectF cell(corner.left() + i * 20.0, corner.top(), 20.0, 20.0);
             painter.setPen(FormStyle::tableBorder);
             painter.setBrush(QColor(240, 240, 240));
             painter.drawRect(cell);

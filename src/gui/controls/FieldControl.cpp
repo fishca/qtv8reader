@@ -50,20 +50,20 @@ void paintField(QPainter &painter, const FieldVisual &visual,
         }
     }
     if (visual.checkBox) {
-        const QRectF box(x + 1.0, rect.top() + (rect.height() - 13.0) / 2.0,
-                         13.0, 13.0);
+        const QRectF box(x + 1.0, rect.top() + (rect.height() - 15.0) / 2.0,
+                         15.0, 15.0);
         painter.setPen(FormStyle::fieldBorder);
         painter.setBrush(Qt::white);
         painter.drawRect(box);
         painter.setBrush(Qt::NoBrush);
-        x += 19.0;
+        x += 21.0;
         if (visual.checkboxOnly)
             return;
     }
     double editWidth = std::max(24.0, rect.right() - x - 4.0);
     if (visual.inputWidth > 0.0)
         editWidth = std::min(editWidth, visual.inputWidth);
-    const QRectF edit(x, rect.top() + 3.0, editWidth, rect.height() - 6.0);
+    const QRectF edit(x, rect.top() + 2.0, editWidth, rect.height() - 4.0);
     painter.setPen(FormStyle::fieldBorder);
     painter.setBrush(Qt::white);
     painter.drawRect(edit);
