@@ -156,6 +156,7 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
             && m_currentObject->typeTitle.contains(QStringLiteral("Документ"),
                                                    Qt::CaseInsensitive);
         document.runtimeListCommands = isDocument && hasTable;
+        document.runtimeDocumentCommands = isDocument && !hasTable;
     }
     if (m_currentObject) {
         QHash<QString, QString> objectTitles;

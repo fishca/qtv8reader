@@ -9,11 +9,13 @@
 #include <QHash>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QPalette>
 #include <QScrollArea>
+#include <QSet>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTreeWidget>
@@ -23,6 +25,29 @@
 #include <functional>
 
 namespace {
+
+// Палитра и метрики интерфейса 1С:Предприятие 8.3 («Такси»).
+// Форма управляемого приложения рисуется на белом фоне; заголовки таблиц,
+// поля и кнопки имеют собственные цвета платформы.
+namespace FormStyle {
+
+const QColor text(0, 0, 0);
+const QColor secondaryText(90, 90, 90);
+const QColor fieldBorder(160, 160, 160);
+const QColor primaryTop(255, 250, 205);
+const QColor primaryBottom(250, 237, 158);
+const QColor primaryBorder(226, 203, 120);
+const QColor tableBorder(183, 183, 183);
+const QColor gridLine(199, 199, 199);
+const QColor headerBackground(242, 242, 242);
+const QColor alternateRow(250, 250, 250);
+const QColor separator(208, 208, 208);
+
+constexpr double buttonHeight = 24.0;
+constexpr double tableHeaderHeight = 22.0;
+constexpr double tableRowHeight = 20.0;
+
+} // namespace FormStyle
 
 enum class ButtonIcon {
     None,
@@ -45,7 +70,7 @@ enum class ButtonIcon {
 
 struct PreviewControl
 {
-    enum class Kind { Field, Button, Table, PageTab, Decoration, Search };
+    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, Separator };
     Kind kind = Kind::Field;
     ButtonIcon icon = ButtonIcon::None;
     bool iconOnly = false;
@@ -58,6 +83,7 @@ struct PreviewControl
     bool selectedTab = false;
     bool checkBox = false;
     bool dropDown = false;
+    bool primary = false;
 };
 
 bool looksTechnical(const QString &text)
@@ -125,7 +151,7 @@ ButtonIcon iconForButton(const v8reader::FormItem &item)
         return text.contains(part, Qt::CaseInsensitive);
     };
     if (has(QStringLiteral("СоздатьНаОсновании")))
-        return ButtonIcon::CreateBasedOn;
+        return ButtonIcon::None;
     if (has(QStringLiteral("Создать")))
         return ButtonIcon::Create;
     if (has(QStringLiteral("Скопировать")))
@@ -192,8 +218,55 @@ public:
     void build(QVector<PreviewControl> *controls, double *contentHeight)
     {
         m_controls = controls;
+        QVector<v8reader::FormItem> localItems = m_document.items;
+
+        // Платформа сама добавляет в форму документа стандартные команды
+        // «Провести и закрыть», «Записать», «Провести» в начало командной
+        // панели; в бинарной форме их нет.
+        if (m_document.runtimeDocumentCommands) {
+            std::function<v8reader::FormItem *(v8reader::FormItem &)> findCommandGroup =
+                [&](v8reader::FormItem &item) -> v8reader::FormItem * {
+                    if (item.type == v8reader::FormItem::Type::Group
+                        && item.groupKind == 6
+                        && (item.name.contains(QStringLiteral("Командн"))
+                            || item.synonym.contains(QStringLiteral("командн"),
+                                                     Qt::CaseInsensitive))) {
+                        return &item;
+                    }
+                    for (v8reader::FormItem &child : item.children) {
+                        if (v8reader::FormItem *found = findCommandGroup(child))
+                            return found;
+                    }
+                    return nullptr;
+                };
+            for (v8reader::FormItem &root : localItems) {
+                v8reader::FormItem *group = findCommandGroup(root);
+                if (!group)
+                    continue;
+                v8reader::FormItem close;
+                close.type = v8reader::FormItem::Type::Button;
+                close.typeCode = 31;
+                close.name = QStringLiteral("ПровестиИЗакрыть");
+                close.synonym = QStringLiteral("Провести и закрыть");
+                v8reader::FormItem write;
+                write.type = v8reader::FormItem::Type::Button;
+                write.typeCode = 31;
+                write.name = QStringLiteral("Записать");
+                write.synonym = QStringLiteral("Записать");
+                v8reader::FormItem post;
+                post.type = v8reader::FormItem::Type::Button;
+                post.typeCode = 31;
+                post.name = QStringLiteral("Провести");
+                post.synonym = QStringLiteral("Провести");
+                group->children.insert(0, close);
+                group->children.insert(1, write);
+                group->children.insert(2, post);
+                break;
+            }
+        }
+
         QVector<const v8reader::FormItem *> items;
-        for (const v8reader::FormItem &item : m_document.items) {
+        for (const v8reader::FormItem &item : localItems) {
             if (!isServiceItem(item))
                 items.append(&item);
         }
@@ -246,7 +319,8 @@ private:
         case Type::Button: {
             const ButtonIcon icon = iconForButton(item);
             const bool iconOnly = icon != ButtonIcon::None
-                && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn;
+                && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn
+                && icon != ButtonIcon::Print;
             if (iconOnly)
                 return 32.0;
             double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
@@ -470,7 +544,9 @@ private:
             commonLabel = std::max(commonLabel,
                 usageLabel.isEmpty()
                     ? labelWidth(*item)
-                    : std::min(210.0, m_metrics.horizontalAdvance(usageLabel + QStringLiteral(":")) + 10.0));
+                    : std::min(210.0,
+                          m_metrics.horizontalAdvance(usageLabel + QStringLiteral(":"))
+                              + 10.0 + 19.0));
         }
 
         double y = rect.top();
@@ -520,6 +596,44 @@ private:
         if (visible.isEmpty())
             return 0.0;
 
+        // 1С не показывает подменю отдельной кнопкой: если рядом есть кнопка
+        // с тем же именем («ПодменюСоздать» и «Создать»), подменю становится
+        // выпадающим списком этой кнопки.
+        QSet<const v8reader::FormItem *> mergedMenus;
+        QSet<const v8reader::FormItem *> dropDownButtons;
+        for (const v8reader::FormItem *menu : visible) {
+            if (menu->type != v8reader::FormItem::Type::Group
+                || menu->groupKind != 1) {
+                continue;
+            }
+            QString base = menu->name;
+            const QString prefix = QStringLiteral("Подменю");
+            if (base.startsWith(prefix) && base.size() > prefix.size())
+                base = base.mid(prefix.size());
+            if (base.isEmpty())
+                continue;
+            for (const v8reader::FormItem *button : visible) {
+                if (button->type != v8reader::FormItem::Type::Button)
+                    continue;
+                if (button->name != base && button->synonym != menu->synonym)
+                    continue;
+                if (mergedMenus.contains(menu))
+                    continue;
+                mergedMenus.insert(menu);
+                dropDownButtons.insert(button);
+            }
+        }
+        if (!mergedMenus.isEmpty()) {
+            QVector<const v8reader::FormItem *> filtered;
+            for (const v8reader::FormItem *item : visible) {
+                if (!mergedMenus.contains(item))
+                    filtered.append(item);
+            }
+            if (filtered.isEmpty())
+                return 0.0;
+            visible = filtered;
+        }
+
         const QHash<QString, QString> usage = usageLabels(items);
 
         // 1С добавляет в форму списка документа команды, которых нет в модели.
@@ -547,14 +661,44 @@ private:
                     break;
                 }
             }
+            // «Создать на основании» в 1С стоит после кнопок важных команд.
+            for (int i = insertAt; i < visible.size(); ++i) {
+                const v8reader::FormItem *item = visible.at(i);
+                if (item->type == v8reader::FormItem::Type::Group
+                    && item->groupKind == 6) {
+                    insertAt = i + 1;
+                    break;
+                }
+            }
             visible.insert(insertAt, &createBasedOn);
             visible.append(&more);
             visible.append(&help);
         }
 
+        // Кнопка по умолчанию в 1С подсвечена жёлтым. Она выбирается после
+        // раскладки: «Создать» для формы списка и «Провести и закрыть»
+        // для формы документа.
+
         QVector<double> widths;
-        for (int i = 0; i < visible.size(); ++i)
-            widths.append(std::max(34.0, preferredWidth(*visible.at(i))));
+        for (int i = 0; i < visible.size(); ++i) {
+            double width = std::max(34.0, preferredWidth(*visible.at(i)));
+            if (dropDownButtons.contains(visible.at(i)))
+                width += 12.0;
+            widths.append(width);
+        }
+
+        // В командной панели 1С разделяет группы команд вертикальными линиями.
+        QVector<bool> separatorBefore(visible.size(), false);
+        for (int i = 1; i < visible.size(); ++i) {
+            const v8reader::FormItem *item = visible.at(i);
+            if (item->type == v8reader::FormItem::Type::Group
+                && item->groupKind == 6) {
+                separatorBefore[i] = true;
+            } else if (item->type == v8reader::FormItem::Type::Search
+                       && item->name.contains(QStringLiteral("СтрокаПоиска"))) {
+                separatorBefore[i] = true;
+            }
+        }
 
         QVector<QVector<int>> rows;
         if (!allowWrap) {
@@ -618,14 +762,24 @@ private:
 
             double x = rect.left();
             for (int c = 0; c < row.size(); ++c) {
-                const v8reader::FormItem *item = visible.at(row.at(c));
+                const int index = row.at(c);
+                const v8reader::FormItem *item = visible.at(index);
+                if (separatorBefore.at(index) && c > 0) {
+                    PreviewControl line;
+                    line.kind = PreviewControl::Kind::Separator;
+                    line.rect = QRectF(x - 5.0, y + 4.0, 1.0,
+                                       std::max(12.0, rowHeight - 8.0));
+                    m_controls->append(line);
+                }
                 const QString usageName = item->name + QStringLiteral("Использование");
                 const QString usageLabel = usage.value(usageName);
                 if (item->type == v8reader::FormItem::Type::Field) {
                     layoutField(*item, QRectF(x, y, rowWidths.at(c), 27.0), 0.0,
                                 usageLabel, !usageLabel.isEmpty(), !usageLabel.isEmpty());
                 } else {
-                    layoutNode(*item, QRectF(x, y, rowWidths.at(c), rowHeight), depth + 1);
+                    layoutNode(*item, QRectF(x, y, rowWidths.at(c), rowHeight), depth + 1,
+                               QString(), false, false,
+                               dropDownButtons.contains(item));
                 }
                 x += rowWidths.at(c) + 8.0;
             }
@@ -636,7 +790,7 @@ private:
 
     void layoutNode(const v8reader::FormItem &item, const QRectF &rect, int depth,
                     const QString &usageLabel = QString(), bool usageCheck = false,
-                    bool usageDropDown = false)
+                    bool usageDropDown = false, bool buttonDropDown = false)
     {
         using Type = v8reader::FormItem::Type;
         if (depth > 40)
@@ -649,7 +803,7 @@ private:
         case Type::Button:
             layoutButton(item, QRectF(rect.left(), rect.top(),
                                       std::min(rect.width(), preferredWidth(item)),
-                                      27.0), false);
+                                      FormStyle::buttonHeight), buttonDropDown);
             return;
         case Type::Search:
             if (!item.name.contains(QStringLiteral("СтрокаПоиска")))
@@ -658,7 +812,8 @@ private:
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::Search;
                 control.rect = QRectF(rect.left(), rect.top(),
-                                      std::min(rect.width(), 220.0), 27.0);
+                                      std::min(rect.width(), 220.0),
+                                      FormStyle::buttonHeight);
                 control.title = QStringLiteral("Поиск (Ctrl+F)");
                 m_controls->append(control);
             }
@@ -680,7 +835,7 @@ private:
             if (item.groupKind == 1) {
                 layoutButton(item, QRectF(rect.left(), rect.top(),
                                           std::min(rect.width(), preferredWidth(item)),
-                                          27.0), true);
+                                          FormStyle::buttonHeight), true);
                 return;
             }
             if (isPages(item)) {
@@ -711,9 +866,11 @@ private:
             ? labelOverride
             : (item.showTitle ? fieldLabel(item) : QString());
         double labelW = forcedLabelWidth;
-        if (labelW <= 0.0)
+        if (labelW <= 0.0) {
             labelW = std::min(210.0,
-                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0);
+                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0
+                    + (checkBox ? 19.0 : 0.0));
+        }
         labelW = std::min(labelW, rect.width() * 0.7);
 
         PreviewControl control;
@@ -737,7 +894,8 @@ private:
         control.icon = iconForButton(item);
         control.iconOnly = control.icon != ButtonIcon::None
             && control.icon != ButtonIcon::Create
-            && control.icon != ButtonIcon::CreateBasedOn;
+            && control.icon != ButtonIcon::CreateBasedOn
+            && control.icon != ButtonIcon::Print;
         control.dropDown = dropDown;
         m_controls->append(control);
     }
@@ -796,8 +954,9 @@ private:
             }
             // Если колонки уже помещаются — растягиваем их на всю таблицу;
             // иначе оставляем ширину по содержимому и показываем прокрутку.
-            if (total < control.rect.width()) {
-                const double extra = (control.rect.width() - total) / control.columnWidths.size();
+            const double availableWidth = std::max(60.0, control.rect.width());
+            if (total < availableWidth) {
+                const double extra = (availableWidth - total) / control.columnWidths.size();
                 for (double &width : control.columnWidths)
                     width += extra;
             }
@@ -1057,49 +1216,62 @@ void paintControl(QPainter &painter, const PreviewControl &control,
     case PreviewControl::Kind::Field: {
         const QString label = control.title;
         double x = rect.left();
-        if (!label.isEmpty()) {
-            const double labelWidth = std::min(control.labelWidth > 0.0
-                    ? control.labelWidth
-                    : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":")) + 6.0),
-                rect.width() * 0.7);
-            const QRectF labelRect(x, rect.top(), labelWidth, rect.height());
-            painter.setPen(QColor(50, 50, 50));
-            painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter,
-                             label + QStringLiteral(":"));
-            x += labelWidth + 2.0;
-        }
         if (control.checkBox) {
-            const QRectF box(x, rect.top() + (rect.height() - 15.0) / 2.0, 15.0, 15.0);
-            painter.setPen(QColor(150, 150, 150));
+            const QRectF box(x + 1.0, rect.top() + (rect.height() - 13.0) / 2.0,
+                             13.0, 13.0);
+            painter.setPen(FormStyle::fieldBorder);
             painter.setBrush(Qt::white);
             painter.drawRect(box);
             painter.setBrush(Qt::NoBrush);
             x += 19.0;
         }
+        if (!label.isEmpty()) {
+            const double labelWidth = std::min(control.labelWidth > 0.0
+                    ? control.labelWidth - (control.checkBox ? 19.0 : 0.0)
+                    : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":")) + 6.0),
+                rect.width() * 0.7);
+            const QRectF labelRect(rect.left() + (control.checkBox ? 19.0 : 0.0),
+                                   rect.top(), std::max(0.0, labelWidth), rect.height());
+            painter.setPen(FormStyle::text);
+            painter.drawText(labelRect.adjusted(0, 0, -4, 0),
+                             Qt::AlignRight | Qt::AlignVCenter,
+                             label + QStringLiteral(":"));
+            x = labelRect.right() + 3.0;
+        }
         double editWidth = std::max(24.0, rect.right() - x - 4.0);
         if (control.inputWidth > 0.0)
             editWidth = std::min(editWidth, control.inputWidth);
         const QRectF edit(x, rect.top() + 3.0, editWidth, rect.height() - 6.0);
-        painter.setPen(QColor(165, 165, 165));
+        painter.setPen(FormStyle::fieldBorder);
         painter.setBrush(Qt::white);
-        painter.drawRoundedRect(edit, 2.0, 2.0);
+        painter.drawRect(edit);
         painter.setBrush(Qt::NoBrush);
         if (control.dropDown) {
             const QPointF p(edit.right() - 12.0, edit.center().y());
-            painter.setPen(QColor(90, 90, 90));
+            painter.setPen(FormStyle::secondaryText);
             painter.drawLine(p + QPointF(-4, -2), p + QPointF(0, 2));
             painter.drawLine(p + QPointF(0, 2), p + QPointF(4, -2));
         }
         break;
     }
     case PreviewControl::Kind::Button: {
-        painter.setPen(QColor(125, 125, 125));
-        painter.setBrush(QColor(240, 240, 240));
-        painter.drawRoundedRect(rect, 3.0, 3.0);
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QColor(35, 35, 35));
+        // В современном интерфейсе 1С кнопки командной панели плоские:
+        // фон и рамка есть только у кнопки по умолчанию (жёлтая заливка).
+        if (control.primary) {
+            QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
+            gradient.setColorAt(0.0, FormStyle::primaryTop);
+            gradient.setColorAt(1.0, FormStyle::primaryBottom);
+            painter.setPen(FormStyle::primaryBorder);
+            painter.setBrush(gradient);
+            painter.drawRoundedRect(rect, 2.0, 2.0);
+            painter.setBrush(Qt::NoBrush);
+        } else {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(Qt::NoBrush);
+        }
+        painter.setPen(FormStyle::text);
 
-        const double iconSize = std::min(18.0, rect.height() - 8.0);
+        const double iconSize = std::min(16.0, rect.height() - 8.0);
         double textLeft = rect.left() + 6.0;
         double textRight = rect.right() - (control.dropDown ? 18.0 : 6.0);
         if (control.icon != ButtonIcon::None) {
@@ -1119,30 +1291,30 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         if (!control.iconOnly) {
             const QString text = metrics.elidedText(control.title, Qt::ElideRight,
                                                     int(std::max(10.0, textRight - textLeft)));
-            painter.setPen(QColor(35, 35, 35));
+            painter.setPen(FormStyle::text);
             painter.drawText(QRectF(textLeft, rect.top(), textRight - textLeft,
                                     rect.height()),
                              Qt::AlignLeft | Qt::AlignVCenter, text);
         }
         if (control.dropDown) {
             const QPointF p(rect.right() - 10.0, rect.center().y());
-            painter.setPen(QColor(80, 80, 80));
+            painter.setPen(FormStyle::secondaryText);
             painter.drawLine(p + QPointF(-3, -2), p + QPointF(0, 2));
             painter.drawLine(p + QPointF(0, 2), p + QPointF(3, -2));
         }
         break;
     }
     case PreviewControl::Kind::Search: {
-        painter.setPen(QColor(165, 165, 165));
+        painter.setPen(FormStyle::fieldBorder);
         painter.setBrush(Qt::white);
-        painter.drawRoundedRect(rect, 3.0, 3.0);
+        painter.drawRect(rect);
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QColor(140, 140, 140));
         const double cy = rect.center().y();
         painter.drawEllipse(QPointF(rect.left() + 15.0, cy), 5.0, 5.0);
         painter.drawLine(QPointF(rect.left() + 19.0, cy + 4.0),
                          QPointF(rect.left() + 24.0, cy + 9.0));
-        painter.setPen(QColor(170, 170, 170));
+        painter.setPen(QColor(160, 160, 160));
         painter.drawText(rect.adjusted(30, 0, -22, 0),
                          Qt::AlignLeft | Qt::AlignVCenter, control.title);
         painter.setPen(QColor(130, 130, 130));
@@ -1162,75 +1334,89 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             for (int i = 0; i < columns.size(); ++i)
                 widths.append(rect.width() / columns.size());
         }
-        const double headerHeight = 24.0;
+        const double headerHeight = FormStyle::tableHeaderHeight;
+        const double rowHeight = FormStyle::tableRowHeight;
         const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
-        painter.setPen(QColor(150, 150, 150));
-        painter.setBrush(QColor(242, 242, 242));
+        painter.setPen(FormStyle::tableBorder);
+        painter.setBrush(FormStyle::headerBackground);
         painter.drawRect(header);
         painter.setBrush(Qt::NoBrush);
         QFont headerFont = font;
-        headerFont.setBold(true);
         painter.setFont(headerFont);
-        painter.setPen(QColor(40, 40, 40));
+        painter.setPen(FormStyle::text);
         double columnX = rect.left();
-        for (int i = 0; i < columns.size() && columnX < rect.right(); ++i) {
+        for (int i = 0; i < columns.size() && columnX < header.right(); ++i) {
             const double width = widths.at(i);
             const QRectF cell(columnX, rect.top(), width, headerHeight);
-            painter.drawRect(cell);
+            painter.setPen(FormStyle::gridLine);
+            if (columnX + width < header.right()) {
+                painter.drawLine(cell.topRight(), cell.bottomRight());
+            }
+            painter.setPen(FormStyle::tableBorder);
+            painter.drawLine(cell.bottomLeft(), cell.bottomRight());
+            painter.setPen(FormStyle::text);
             const QString text = metrics.elidedText(columns.at(i), Qt::ElideRight,
                                                     int(width) - 8);
-            painter.drawText(cell.adjusted(4, 0, -4, 0),
+            painter.drawText(cell.adjusted(5, 0, -4, 0),
                              Qt::AlignLeft | Qt::AlignVCenter, text);
             columnX += width;
         }
         painter.setFont(font);
-        painter.setPen(QColor(150, 150, 150));
-        const double rowHeight = 20.0;
+        painter.setPen(FormStyle::tableBorder);
+        painter.drawRect(header);
+
         const int rows = std::max(1, int((rect.height() - headerHeight) / rowHeight));
         for (int row = 0; row < rows; ++row) {
+            const QRectF rowRect(rect.left(),
+                                 rect.top() + headerHeight + row * rowHeight,
+                                 rect.width(), rowHeight);
+            if (row % 2 == 1) {
+                painter.fillRect(rowRect, FormStyle::alternateRow);
+            }
+            painter.setPen(QPen(FormStyle::gridLine, 1.0, Qt::DotLine));
+            painter.drawLine(rowRect.bottomLeft(), rowRect.bottomRight());
+            painter.setPen(QPen(QColor(216, 216, 216), 1.0));
             double x = rect.left();
-            for (int i = 0; i < widths.size() && x < rect.right(); ++i) {
-                const QRectF cell(x, rect.top() + headerHeight + row * rowHeight,
-                                  widths.at(i), rowHeight);
-                painter.drawRect(cell);
+            for (int i = 0; i < widths.size() && x < rowRect.right(); ++i) {
+                painter.drawLine(QPointF(x, rowRect.top()), QPointF(x, rowRect.bottom()));
                 x += widths.at(i);
             }
         }
-
-        // Горизонтальная полоса прокрутки, как у списка.
-        const QRectF track(rect.left(), rect.bottom() - 6.0, rect.width(), 6.0);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(225, 225, 225));
-        painter.drawRoundedRect(track, 3.0, 3.0);
-        double columnsTotal = 0.0;
-        for (double width : widths)
-            columnsTotal += width;
-        const double thumbWidth = columnsTotal > rect.width()
-            ? std::max(30.0, rect.width() * rect.width() / columnsTotal)
-            : rect.width() - 12.0;
-        painter.setBrush(QColor(190, 190, 190));
-        painter.drawRoundedRect(QRectF(track.left() + 6.0, track.top(),
-                                       thumbWidth, track.height()), 3.0, 3.0);
-        painter.setBrush(Qt::NoBrush);
+        painter.setPen(FormStyle::tableBorder);
+        painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(),
+                                headerHeight + rows * rowHeight));
         break;
     }
     case PreviewControl::Kind::PageTab: {
-        painter.setPen(QColor(140, 140, 140));
+        QPainterPath tab;
+        tab.moveTo(rect.left(), rect.bottom());
+        tab.lineTo(rect.left(), rect.top() + 3.0);
+        tab.quadTo(rect.left(), rect.top(), rect.left() + 3.0, rect.top());
+        tab.lineTo(rect.right() - 3.0, rect.top());
+        tab.quadTo(rect.right(), rect.top(), rect.right(), rect.top() + 3.0);
+        tab.lineTo(rect.right(), rect.bottom());
+        tab.closeSubpath();
+        painter.setPen(FormStyle::fieldBorder);
         painter.setBrush(control.selectedTab ? QColor(255, 255, 255)
-                                             : QColor(238, 238, 238));
-        painter.drawRect(rect);
+                                             : QColor(236, 236, 236));
+        painter.drawPath(tab);
         painter.setBrush(Qt::NoBrush);
-        painter.setPen(QColor(40, 40, 40));
+        painter.setPen(FormStyle::text);
         const QString text = metrics.elidedText(control.title, Qt::ElideRight,
                                                 int(rect.width()) - 8);
         painter.drawText(rect.adjusted(4, 0, -4, 0), Qt::AlignCenter, text);
         break;
     }
     case PreviewControl::Kind::Decoration: {
-        painter.setPen(QColor(80, 80, 80));
+        painter.setPen(FormStyle::text);
         painter.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter,
                          metrics.elidedText(control.title, Qt::ElideRight,
                                             int(rect.width())));
+        break;
+    }
+    case PreviewControl::Kind::Separator: {
+        painter.setPen(QPen(FormStyle::separator, 1.0));
+        painter.drawLine(rect.topLeft(), rect.bottomLeft());
         break;
     }
     }
@@ -1297,26 +1483,6 @@ protected:
             return;
         }
 
-        painter.setFont(titleFont);
-        painter.setPen(QColor(30, 30, 30));
-        QString title = m_document->synonym;
-        if (title.isEmpty())
-            title = m_document->name;
-        if (title.isEmpty())
-            title = QStringLiteral("Форма");
-        painter.drawText(QRectF(20, 14, kFormWidth - 40, 28),
-                         Qt::AlignHCenter | Qt::AlignVCenter, title);
-
-        QFont subtitleFont(QStringLiteral("Arial"), 8);
-        painter.setFont(subtitleFont);
-        painter.setPen(QColor(130, 130, 130));
-        painter.drawText(QRectF(20, 40, kFormWidth - 40, 16),
-                         Qt::AlignHCenter | Qt::AlignVCenter,
-                         QStringLiteral("управляемая форма · %1 элементов · %2 полей · %3 команд")
-                             .arg(m_document->itemCount())
-                             .arg(m_document->fieldCount())
-                             .arg(m_document->commands.size()));
-
         painter.setFont(font);
         for (const PreviewControl &control : m_controls)
             paintControl(painter, control, font, metrics);
@@ -1333,16 +1499,40 @@ private:
             return;
         }
 
-        const double contentWidth = kFormWidth - 40.0;
+        const double margin = 8.0;
+        const double contentWidth = kFormWidth - margin * 2.0;
         LayoutEngine engine(*m_document, contentWidth);
         double contentHeight = 0.0;
         QVector<PreviewControl> controls;
         engine.build(&controls, &contentHeight);
+
+        // Кнопка по умолчанию (жёлтая) — «Создать» в форме списка и
+        // «Провести и закрыть» в форме документа.
         for (PreviewControl &control : controls)
-            control.rect.translate(20.0, 72.0);
+            control.primary = false;
+        auto markPrimary = [&controls](const std::function<bool(const PreviewControl &)> &predicate) {
+            for (PreviewControl &control : controls) {
+                if (control.kind != PreviewControl::Kind::Button || control.iconOnly)
+                    continue;
+                if (predicate(control)) {
+                    control.primary = true;
+                    return true;
+                }
+            }
+            return false;
+        };
+        if (!markPrimary([](const PreviewControl &control) {
+                return control.title == QStringLiteral("Создать")
+                    || control.title.startsWith(QStringLiteral("Провести и закрыть"));
+            })) {
+            markPrimary([](const PreviewControl &) { return true; });
+        }
+
+        for (PreviewControl &control : controls)
+            control.rect.translate(margin, margin);
         m_controls = controls;
         m_contentHeight = contentHeight;
-        const double logicalHeight = qBound(280.0, 72.0 + contentHeight + 24.0, 8000.0);
+        const double logicalHeight = qBound(280.0, margin * 2.0 + contentHeight, 8000.0);
         setFixedSize(int(kFormWidth * m_scale), int(logicalHeight * m_scale));
         update();
     }

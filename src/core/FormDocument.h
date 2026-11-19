@@ -70,6 +70,9 @@ struct FormDocument
     // Форма списка документа: платформа добавляет команды
     // «Создать на основании», «Еще», «?».
     bool runtimeListCommands = false;
+    // Форма документа: платформа добавляет «Провести и закрыть»,
+    // «Записать» и «Провести».
+    bool runtimeDocumentCommands = false;
 
     int itemCount() const;
     int fieldCount() const;
