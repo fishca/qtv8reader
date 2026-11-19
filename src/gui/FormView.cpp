@@ -600,7 +600,7 @@ private:
                     ? labelWidth(*item)
                     : std::min(210.0,
                           m_metrics.horizontalAdvance(usageLabel + QStringLiteral(":"))
-                              + 10.0 + 19.0));
+                              + 10.0));
         }
 
         double y = rect.top();
@@ -996,8 +996,7 @@ private:
         double labelW = forcedLabelWidth;
         if (labelW <= 0.0) {
             labelW = std::min(210.0,
-                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0
-                    + (checkBox ? 19.0 : 0.0));
+                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0);
         }
         labelW = std::min(labelW, rect.width() * 0.7);
 
@@ -1354,6 +1353,26 @@ void paintControl(QPainter &painter, const PreviewControl &control,
     case PreviewControl::Kind::Field: {
         const QString label = control.title;
         double x = rect.left();
+        if (!label.isEmpty()) {
+            const double labelWidth = std::min(control.labelWidth > 0.0
+                    ? control.labelWidth
+                    : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":")) + 6.0),
+                rect.width() * 0.7);
+            const QRectF labelRect(rect.left(), rect.top(),
+                                   std::max(0.0, labelWidth), rect.height());
+            painter.setPen(FormStyle::text);
+            if (control.checkBox) {
+                painter.drawText(labelRect.adjusted(0, 0, -2, 0),
+                                 Qt::AlignLeft | Qt::AlignVCenter,
+                                 label + QStringLiteral(":"));
+                x = labelRect.right() + 2.0;
+            } else {
+                painter.drawText(labelRect.adjusted(0, 0, -4, 0),
+                                 Qt::AlignRight | Qt::AlignVCenter,
+                                 label + QStringLiteral(":"));
+                x = labelRect.right() + 3.0;
+            }
+        }
         if (control.checkBox) {
             const QRectF box(x + 1.0, rect.top() + (rect.height() - 13.0) / 2.0,
                              13.0, 13.0);
@@ -1362,19 +1381,6 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             painter.drawRect(box);
             painter.setBrush(Qt::NoBrush);
             x += 19.0;
-        }
-        if (!label.isEmpty()) {
-            const double labelWidth = std::min(control.labelWidth > 0.0
-                    ? control.labelWidth - (control.checkBox ? 19.0 : 0.0)
-                    : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":")) + 6.0),
-                rect.width() * 0.7);
-            const QRectF labelRect(rect.left() + (control.checkBox ? 19.0 : 0.0),
-                                   rect.top(), std::max(0.0, labelWidth), rect.height());
-            painter.setPen(FormStyle::text);
-            painter.drawText(labelRect.adjusted(0, 0, -4, 0),
-                             Qt::AlignRight | Qt::AlignVCenter,
-                             label + QStringLiteral(":"));
-            x = labelRect.right() + 3.0;
         }
         double editWidth = std::max(24.0, rect.right() - x - 4.0);
         if (control.inputWidth > 0.0)
