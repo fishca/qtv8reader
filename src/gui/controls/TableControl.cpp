@@ -24,7 +24,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
             widths.append(rect.width() / columns.size());
     }
     const double headerHeight = FormStyle::tableHeaderHeight;
-    const double verticalScrollWidth = 10.0;
+    const double verticalScrollWidth = 0.0;
     const double actionWidth = visual.actionColumn ? 37.0 : 0.0;
     const double contentWidth = std::max(1.0, rect.width() - verticalScrollWidth);
     double columnsTotal = actionWidth;
@@ -86,20 +86,6 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     // Пустая таблица конфигуратора — белое поле без строк.
     painter.setPen(FormStyle::tableBorder);
     painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(), tableHeight));
-
-    // Вертикальная полоса прокрутки вдоль правого края таблицы.
-    const QRectF verticalTrack(rect.right() - 9.0,
-                               rect.top() + headerHeight + 1.0, 8.0,
-                               std::max(1.0, tableHeight - headerHeight
-                                   - scrollHeight - 2.0));
-    painter.fillRect(verticalTrack, QColor(248, 248, 248));
-    const double verticalThumb = std::max(24.0, verticalTrack.height() * 0.45);
-    painter.fillRect(QRectF(verticalTrack.left(), verticalTrack.top(),
-                            verticalTrack.width(),
-                            std::min(verticalThumb, verticalTrack.height())),
-                     QColor(205, 205, 205));
-    painter.setPen(QPen(QColor(160, 160, 160), 1.0));
-    painter.drawLine(verticalTrack.topLeft(), verticalTrack.bottomLeft());
 
     if (horizontalScroll) {
         const double cornerWidth = 80.0;
