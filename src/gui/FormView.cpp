@@ -1542,10 +1542,15 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             // Индикатор сортировки, как у списка 1С: по дате/периоду.
             if (i == 0 && (text == QStringLiteral("Дата")
                            || text == QStringLiteral("Период"))) {
-                const QPointF p(cell.right() - 10.0, cell.center().y() + 1.0);
+                const double arrowX = cell.right() - 10.0;
+                const double top = cell.top() + 6.0;
+                const double bottom = cell.bottom() - 6.0;
                 painter.setPen(QPen(FormStyle::secondaryText, 1.2));
-                painter.drawLine(p + QPointF(-3, -2), p + QPointF(0, 1));
-                painter.drawLine(p + QPointF(0, 1), p + QPointF(3, -2));
+                painter.drawLine(QPointF(arrowX, top), QPointF(arrowX, bottom));
+                painter.drawLine(QPointF(arrowX, bottom),
+                                 QPointF(arrowX - 3.0, bottom - 3.5));
+                painter.drawLine(QPointF(arrowX, bottom),
+                                 QPointF(arrowX + 3.0, bottom - 3.5));
                 painter.setPen(FormStyle::text);
             }
             columnX += width;
