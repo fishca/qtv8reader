@@ -336,9 +336,16 @@ private:
             return std::max(40.0, m_metrics.horizontalAdvance(item.synonym) + 10.0);
         case Type::Group: {
             if (item.groupKind == 1) {
+                const ButtonIcon icon = iconForButton(item);
+                const bool iconOnly = icon != ButtonIcon::None
+                    && icon != ButtonIcon::Create
+                    && icon != ButtonIcon::CreateBasedOn
+                    && icon != ButtonIcon::Print;
+                if (iconOnly)
+                    return 34.0;
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
-                return std::max(110.0,
+                return std::max(64.0,
                     m_metrics.horizontalAdvance(title) + 44.0);
             }
             if (item.widthUnits > 0)
@@ -371,10 +378,22 @@ private:
 
     bool isTopCommandBar(const v8reader::FormItem &item) const
     {
-        return item.type == v8reader::FormItem::Type::Group
-            && item.groupKind == 0
+        if (item.type != v8reader::FormItem::Type::Group)
+            return false;
+        if (item.groupKind == 0
             && (item.name.contains(QStringLiteral("КоманднаяПанель"))
-                || item.synonym == QStringLiteral("Командная панель"));
+                || item.synonym == QStringLiteral("Командная панель"))) {
+            return true;
+        }
+        // В форме документа командная панель — группа вида 6 с именем
+        // «ГруппаКнопкиКоманднойПанели»; внешняя группа вида 9 не в счёт.
+        if (item.groupKind == 6
+            && (item.name.contains(QStringLiteral("КоманднойПанели"))
+                || item.synonym.contains(QStringLiteral("командн"),
+                                         Qt::CaseInsensitive))) {
+            return true;
+        }
+        return false;
     }
 
     bool isCommandBar(const v8reader::FormItem &item) const
@@ -573,6 +592,8 @@ private:
     bool stretchable(const v8reader::FormItem &item) const
     {
         using Type = v8reader::FormItem::Type;
+        if (isTopCommandBar(item))
+            return true;
         if (item.horizontalStretch == 0)
             return false;
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
@@ -590,8 +611,15 @@ private:
     {
         QVector<const v8reader::FormItem *> visible;
         for (const v8reader::FormItem *item : items) {
-            if (!item->name.endsWith(QStringLiteral("Использование")))
-                visible.append(item);
+            if (item->name.endsWith(QStringLiteral("Использование")))
+                continue;
+            // Служебный элемент «управление поиском» платформа рисует
+            // маленькой кнопкой-магнитиком; в предпросмотре он не нужен.
+            if (item->type == v8reader::FormItem::Type::Search
+                && item->name.contains(QStringLiteral("УправлениеПоиском"))) {
+                continue;
+            }
+            visible.append(item);
         }
         if (visible.isEmpty())
             return 0.0;
@@ -636,15 +664,19 @@ private:
 
         const QHash<QString, QString> usage = usageLabels(items);
 
-        // 1С добавляет в форму списка документа команды, которых нет в модели.
+        // 1С добавляет в форму команды, которых нет в модели: для формы
+        // списка — «Создать на основании», для любой формы — «Еще» и «?».
+        const bool listBar = runtimeCommands && m_document.runtimeListCommands;
         v8reader::FormItem createBasedOn;
         v8reader::FormItem more;
         v8reader::FormItem help;
-        if (runtimeCommands && m_document.runtimeListCommands) {
-            createBasedOn.type = v8reader::FormItem::Type::Group;
-            createBasedOn.groupKind = 1;
-            createBasedOn.name = QStringLiteral("СоздатьНаОсновании");
-            createBasedOn.synonym = QStringLiteral("Создать на основании");
+        if (runtimeCommands) {
+            if (listBar) {
+                createBasedOn.type = v8reader::FormItem::Type::Group;
+                createBasedOn.groupKind = 1;
+                createBasedOn.name = QStringLiteral("СоздатьНаОсновании");
+                createBasedOn.synonym = QStringLiteral("Создать на основании");
+            }
             more.type = v8reader::FormItem::Type::Group;
             more.groupKind = 1;
             more.name = QStringLiteral("Еще");
@@ -654,25 +686,61 @@ private:
             help.name = QStringLiteral("Справка");
             help.synonym = QStringLiteral("?");
 
-            int insertAt = 0;
-            for (int i = 0; i < visible.size(); ++i) {
-                if (visible.at(i)->name == QStringLiteral("Создать")) {
-                    insertAt = i + 1;
-                    break;
+            if (listBar) {
+                int insertAt = 0;
+                for (int i = 0; i < visible.size(); ++i) {
+                    if (visible.at(i)->name == QStringLiteral("Создать")) {
+                        insertAt = i + 1;
+                        break;
+                    }
                 }
-            }
-            // «Создать на основании» в 1С стоит после кнопок важных команд.
-            for (int i = insertAt; i < visible.size(); ++i) {
-                const v8reader::FormItem *item = visible.at(i);
-                if (item->type == v8reader::FormItem::Type::Group
-                    && item->groupKind == 6) {
-                    insertAt = i + 1;
-                    break;
+                // «Создать на основании» в 1С стоит после кнопок важных команд.
+                for (int i = insertAt; i < visible.size(); ++i) {
+                    const v8reader::FormItem *item = visible.at(i);
+                    if (item->type == v8reader::FormItem::Type::Group
+                        && item->groupKind == 6) {
+                        insertAt = i + 1;
+                        break;
+                    }
                 }
+                visible.insert(insertAt, &createBasedOn);
             }
-            visible.insert(insertAt, &createBasedOn);
             visible.append(&more);
             visible.append(&help);
+        }
+
+        auto estimatedWidth = [&](const v8reader::FormItem *item) {
+            double width = std::max(34.0, preferredWidth(*item));
+            if (dropDownButtons.contains(item))
+                width += 12.0;
+            return width;
+        };
+        auto totalWidth = [&](const QVector<const v8reader::FormItem *> &items) {
+            double total = 0.0;
+            for (const v8reader::FormItem *item : items)
+                total += estimatedWidth(item);
+            if (items.size() > 1)
+                total += 8.0 * (items.size() - 1);
+            return total;
+        };
+
+        // Как и 1С, при нехватке ширины сворачиваем глобальные команды и
+        // служебные кнопки в «Еще», вместо переноса панели на вторую строку.
+        if (runtimeCommands && totalWidth(visible) > rect.width()) {
+            QVector<const v8reader::FormItem *> filtered;
+            for (const v8reader::FormItem *item : visible) {
+                const bool globalGroup = item->type == v8reader::FormItem::Type::Group
+                    && item->groupKind == 6
+                    && item->name.contains(QStringLiteral("ГлобальныеКоманды"));
+                const bool minorButton = item->type == v8reader::FormItem::Type::Button
+                    && (item->name.contains(QStringLiteral("КонтекстныеНовости"))
+                        || item->name.contains(QStringLiteral("ОткрытьНовоеОкно")));
+                if (globalGroup || minorButton)
+                    continue;
+                filtered.append(item);
+            }
+            if (!filtered.isEmpty())
+                visible = filtered;
         }
 
         // Кнопка по умолчанию в 1С подсвечена жёлтым. Она выбирается после
@@ -680,12 +748,8 @@ private:
         // для формы документа.
 
         QVector<double> widths;
-        for (int i = 0; i < visible.size(); ++i) {
-            double width = std::max(34.0, preferredWidth(*visible.at(i)));
-            if (dropDownButtons.contains(visible.at(i)))
-                width += 12.0;
-            widths.append(width);
-        }
+        for (int i = 0; i < visible.size(); ++i)
+            widths.append(estimatedWidth(visible.at(i)));
 
         // В командной панели 1С разделяет группы команд вертикальными линиями.
         QVector<bool> separatorBefore(visible.size(), false);
@@ -760,10 +824,34 @@ private:
                 rowHeight = std::max(rowHeight,
                     naturalHeight(*visible.at(row.at(i)), rowWidths.at(i)));
 
+            // Поиск, «Еще» и «?» в 1С прижаты к правому краю командной панели.
+            int rightStart = -1;
+            if (runtimeCommands) {
+                for (int c = 0; c < row.size(); ++c) {
+                    const v8reader::FormItem *item = visible.at(row.at(c));
+                    const bool search = item->type == v8reader::FormItem::Type::Search
+                        && item->name.contains(QStringLiteral("СтрокаПоиска"));
+                    if (search || item->name == QStringLiteral("Еще")
+                        || item->name == QStringLiteral("Справка")) {
+                        rightStart = c;
+                        break;
+                    }
+                }
+            }
+            double rowUsed = 0.0;
+            for (int c = 0; c < row.size(); ++c)
+                rowUsed += rowWidths.at(c);
+            if (row.size() > 1)
+                rowUsed += 8.0 * (row.size() - 1);
+            const double rightShift = (rightStart > 0 && rowUsed < rect.width())
+                ? rect.width() - rowUsed : 0.0;
+
             double x = rect.left();
             for (int c = 0; c < row.size(); ++c) {
                 const int index = row.at(c);
                 const v8reader::FormItem *item = visible.at(index);
+                if (c == rightStart)
+                    x += rightShift;
                 if (separatorBefore.at(index) && c > 0) {
                     PreviewControl line;
                     line.kind = PreviewControl::Kind::Separator;
@@ -1433,6 +1521,7 @@ public:
     explicit FormPreviewWidget(QWidget *parent = nullptr)
         : QWidget(parent)
     {
+        setObjectName(QStringLiteral("formPreview"));
         setMinimumHeight(260);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setAutoFillBackground(true);
@@ -1537,7 +1626,7 @@ private:
         update();
     }
 
-    static constexpr double kFormWidth = 900.0;
+    static constexpr double kFormWidth = 880.0;
 
     const v8reader::FormDocument *m_document = nullptr;
     QVector<PreviewControl> m_controls;
@@ -1603,7 +1692,9 @@ FormView::FormView(QWidget *parent)
     splitter->addWidget(scroll);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
-    splitter->setSizes({300, 900});
+    // Дереву элементов достаточно узкой колонки: форма должна занимать
+    // основную часть панели, как клиентское окно в 1С.
+    splitter->setSizes({230, 970});
     layout->addWidget(splitter, 1);
     m_tabs->addTab(formPage, QStringLiteral("Форма"));
 

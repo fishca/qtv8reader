@@ -36,6 +36,7 @@ private slots:
     void recentFilesOpenAndMissing();
     void extractionMessages();
     void formViewModuleTab();
+    void formPreviewRenders();
     void highlightSettingsDialog();
     void highlighterUsesCustomColors();
 };
@@ -187,6 +188,46 @@ void TestGuiPanels::formViewModuleTab()
     for (int i = 0; i < tree->topLevelItemCount(); ++i) {
         QVERIFY(tree->topLevelItem(i)->text(0) != QStringLiteral("Модуль формы"));
     }
+}
+
+void TestGuiPanels::formPreviewRenders()
+{
+    FormDocument document;
+    document.name = QStringLiteral("Форма1");
+    document.synonym = QStringLiteral("Форма 1");
+    document.runtimeListCommands = true;
+
+    FormItem bar;
+    bar.type = FormItem::Type::Group;
+    bar.groupKind = 0;
+    bar.name = QStringLiteral("ГруппаКоманднаяПанель");
+    FormItem create;
+    create.type = FormItem::Type::Button;
+    create.name = QStringLiteral("Создать");
+    create.synonym = QStringLiteral("Создать");
+    bar.children.append(create);
+    document.items.append(bar);
+
+    FormItem table;
+    table.type = FormItem::Type::Table;
+    table.name = QStringLiteral("Список");
+    FormItem column;
+    column.type = FormItem::Type::Field;
+    column.name = QStringLiteral("Дата");
+    column.synonym = QStringLiteral("Дата");
+    table.children.append(column);
+    document.items.append(table);
+
+    FormView view;
+    view.resize(1200, 800);
+    view.setDocument(document);
+    view.show();
+    QTest::qWait(20);
+
+    auto *preview = view.findChild<QWidget *>(QStringLiteral("formPreview"));
+    QVERIFY(preview);
+    QVERIFY(preview->width() > 300);
+    QVERIFY(!view.grab().isNull());
 }
 
 void TestGuiPanels::highlightSettingsDialog()
