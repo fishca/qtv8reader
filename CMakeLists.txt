@@ -101,6 +101,8 @@ add_library(qtv8reader_gui STATIC
     src/gui/controls/FormStyle.h
     src/gui/controls/SearchControl.h
     src/gui/controls/SearchControl.cpp
+    src/gui/controls/TableControl.h
+    src/gui/controls/TableControl.cpp
     src/gui/BslHighlighter.h
     src/gui/BslHighlighter.cpp
 )
