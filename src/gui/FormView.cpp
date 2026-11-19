@@ -430,7 +430,7 @@ private:
                 && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn
                 && icon != ButtonIcon::Print;
             if (iconOnly)
-                return 28.0;
+                return 30.0;
             double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
             if (icon != ButtonIcon::None)
                 width += 22.0;
@@ -440,7 +440,7 @@ private:
         }
         case Type::Search:
             if (item.name.contains(QStringLiteral("СтрокаПоиска")))
-                return 180.0;
+                return 200.0;
             if (item.name.contains(QStringLiteral("УправлениеПоиском")))
                 return 40.0;
             return 40.0;
@@ -456,7 +456,7 @@ private:
                     && icon != ButtonIcon::CreateBasedOn
                     && icon != ButtonIcon::Print;
                 if (iconOnly)
-                    return 28.0;
+                    return 30.0;
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
                 if (item.name == QStringLiteral("Еще"))
@@ -894,7 +894,7 @@ private:
             const bool searchOptions = item->type == v8reader::FormItem::Type::Search
                 && item->name.contains(QStringLiteral("УправлениеПоиском"));
             if (!searchOptions)
-                width = std::max(28.0, width);
+                width = std::max(30.0, width);
             if (dropDownButtons.contains(item))
                 width += 12.0;
             return width;
@@ -1615,7 +1615,7 @@ private:
             ? viewportHeight / m_scale : 0.0;
         const double titleBarHeight = 26.0;
         const double targetContentHeight = std::max(0.0,
-            viewportLogical - titleBarHeight - 44.0);
+            viewportLogical - titleBarHeight - 100.0);
 
         LayoutEngine engine(*m_document, contentWidth);
         double contentHeight = 0.0;

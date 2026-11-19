@@ -86,6 +86,20 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     painter.setPen(FormStyle::tableBorder);
     painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(), tableHeight));
 
+    // Вертикальная полоса прокрутки вдоль правого края таблицы.
+    const QRectF verticalTrack(rect.right() - 9.0,
+                               rect.top() + headerHeight + 1.0, 8.0,
+                               std::max(1.0, tableHeight - headerHeight
+                                   - scrollHeight - 2.0));
+    painter.fillRect(verticalTrack, QColor(248, 248, 248));
+    const double verticalThumb = std::max(24.0, verticalTrack.height() * 0.45);
+    painter.fillRect(QRectF(verticalTrack.left(), verticalTrack.top(),
+                            verticalTrack.width(),
+                            std::min(verticalThumb, verticalTrack.height())),
+                     QColor(205, 205, 205));
+    painter.setPen(QPen(QColor(160, 160, 160), 1.0));
+    painter.drawLine(verticalTrack.topLeft(), verticalTrack.bottomLeft());
+
     if (horizontalScroll) {
         const double cornerWidth = 64.0;
         const QRectF track(rect.left() + 1.0,
@@ -102,13 +116,14 @@ void paintTable(QPainter &painter, const TableVisual &visual,
         painter.fillRect(corner, QColor(240, 240, 240));
         painter.setPen(FormStyle::tableBorder);
         painter.drawRect(corner);
-        painter.setBrush(QColor(120, 120, 120));
         for (int i = 0; i < 4; ++i) {
             const QRectF cell(corner.left() + i * 16.0, corner.top(), 16.0, 20.0);
             painter.setPen(FormStyle::tableBorder);
+            painter.setBrush(QColor(240, 240, 240));
             painter.drawRect(cell);
             const QPointF c = cell.center();
             painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(120, 120, 120));
             QPolygonF arrow;
             switch (i) {
             case 0:
@@ -133,8 +148,8 @@ void paintTable(QPainter &painter, const TableVisual &visual,
                 break;
             }
             painter.drawPolygon(arrow);
-            painter.setPen(FormStyle::tableBorder);
         }
+        painter.setBrush(Qt::NoBrush);
     }
 }
 
