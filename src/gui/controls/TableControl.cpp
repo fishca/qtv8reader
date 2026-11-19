@@ -41,6 +41,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     painter.setBrush(Qt::NoBrush);
 
     QFont headerFont = font;
+    headerFont.setPointSizeF(9.0);
     painter.setFont(headerFont);
     painter.setPen(FormStyle::text);
 

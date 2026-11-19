@@ -1760,9 +1760,6 @@ FormView::FormView(QWidget *parent)
 
     auto *scroll = new QScrollArea(m_splitter);
     scroll->setWidgetResizable(false);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setContentsMargins(0, 0, 0, 0);
-    scroll->viewport()->setContentsMargins(0, 0, 0, 0);
     scroll->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_preview = new FormPreviewWidget(scroll);
     scroll->setWidget(m_preview);
