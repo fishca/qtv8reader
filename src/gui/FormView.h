@@ -9,6 +9,8 @@
 class QComboBox;
 class QLabel;
 class QPlainTextEdit;
+class QResizeEvent;
+class QShowEvent;
 class QTabWidget;
 class QTreeWidget;
 class FormPreviewWidget;
@@ -34,6 +36,10 @@ public:
     void setHighlightSettings(const BslHighlightSettings &settings);
     void setDarkMode(bool dark);
     const FormDocument &document() const { return m_document; }
+
+protected:
+    void showEvent(QShowEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     void fillTree();

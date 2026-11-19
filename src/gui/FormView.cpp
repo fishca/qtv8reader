@@ -14,10 +14,13 @@
 #include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QPalette>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QSet>
+#include <QShowEvent>
 #include <QSplitter>
 #include <QTabWidget>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -215,7 +218,8 @@ public:
         }
     }
 
-    void build(QVector<PreviewControl> *controls, double *contentHeight)
+    void build(QVector<PreviewControl> *controls, double *contentHeight,
+               double targetHeight = 0.0)
     {
         m_controls = controls;
         QVector<v8reader::FormItem> localItems = m_document.items;
@@ -271,6 +275,33 @@ public:
                 items.append(&item);
         }
         *contentHeight = layoutVertical(items, QRectF(0.0, 0.0, m_width, 100000.0), 0);
+
+        // В окне 1С таблица забирает свободную высоту, а элементы под ней
+        // (подвал формы) прижимаются к низу. Повторяем это для предпросмотра.
+        if (targetHeight > *contentHeight) {
+            PreviewControl *table = nullptr;
+            double bestArea = 0.0;
+            for (PreviewControl &control : *controls) {
+                if (control.kind != PreviewControl::Kind::Table)
+                    continue;
+                const double area = control.rect.width() * control.rect.height();
+                if (!table || area > bestArea) {
+                    table = &control;
+                    bestArea = area;
+                }
+            }
+            if (table) {
+                const double delta = targetHeight - *contentHeight;
+                const double oldBottom = table->rect.bottom();
+                table->rect.setHeight(table->rect.height() + delta);
+                for (PreviewControl &control : *controls) {
+                    if (&control == table || control.rect.top() < oldBottom - 0.5)
+                        continue;
+                    control.rect.translate(0.0, delta);
+                }
+                *contentHeight = targetHeight;
+            }
+        }
     }
 
 private:
@@ -1604,6 +1635,8 @@ public:
         rebuild();
     }
 
+    void refreshLayout() { rebuild(); }
+
     void clear()
     {
         m_document = nullptr;
@@ -1652,10 +1685,23 @@ private:
 
         const double margin = 8.0;
         const double contentWidth = kFormWidth - margin * 2.0;
+
+        // Высота окна 1С: таблица списка должна занимать всё доступное место,
+        // а не оставлять пустую полосу под собой.
+        double viewportHeight = 0.0;
+        if (QWidget *viewport = parentWidget()) {
+            if (QScrollArea *area = qobject_cast<QScrollArea *>(viewport->parentWidget()))
+                viewportHeight = area->viewport()->height();
+        }
+        const double viewportLogical = viewportHeight > 0.0
+            ? viewportHeight / m_scale : 0.0;
+        const double targetContentHeight = std::max(0.0,
+            viewportLogical - margin * 2.0 - 2.0);
+
         LayoutEngine engine(*m_document, contentWidth);
         double contentHeight = 0.0;
         QVector<PreviewControl> controls;
-        engine.build(&controls, &contentHeight);
+        engine.build(&controls, &contentHeight, targetContentHeight);
 
         // Кнопка по умолчанию (жёлтая) — «Создать» в форме списка и
         // «Провести и закрыть» в форме документа.
@@ -1683,7 +1729,11 @@ private:
             control.rect.translate(margin, margin);
         m_controls = controls;
         m_contentHeight = contentHeight;
-        const double logicalHeight = qBound(280.0, margin * 2.0 + contentHeight, 8000.0);
+        double logicalHeight = qBound(280.0, margin * 2.0 + contentHeight, 8000.0);
+        if (targetContentHeight > 0.0) {
+            logicalHeight = std::max(logicalHeight,
+                margin * 2.0 + targetContentHeight);
+        }
         setFixedSize(int(kFormWidth * m_scale), int(logicalHeight * m_scale));
         update();
     }
@@ -1782,6 +1832,30 @@ FormView::FormView(QWidget *parent)
             });
 
     clear();
+}
+
+void FormView::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    // Размер области просмотра известен только после раскладки: повторяем
+    // макет, чтобы таблица списка заняла всю высоту, как в окне 1С.
+    if (m_preview) {
+        QTimer::singleShot(0, this, [this] {
+            if (m_preview)
+                m_preview->refreshLayout();
+        });
+    }
+}
+
+void FormView::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    if (m_preview) {
+        QTimer::singleShot(50, this, [this] {
+            if (m_preview)
+                m_preview->refreshLayout();
+        });
+    }
 }
 
 void FormView::setDocument(const FormDocument &document)

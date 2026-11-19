@@ -227,6 +227,7 @@ void TestGuiPanels::formPreviewRenders()
     auto *preview = view.findChild<QWidget *>(QStringLiteral("formPreview"));
     QVERIFY(preview);
     QVERIFY(preview->width() > 300);
+    QVERIFY(preview->height() > 300);
     QVERIFY(!view.grab().isNull());
 }
 
