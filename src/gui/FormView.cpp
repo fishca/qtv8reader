@@ -73,7 +73,7 @@ enum class ButtonIcon {
 
 struct PreviewControl
 {
-    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, Separator };
+    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator };
     Kind kind = Kind::Field;
     ButtonIcon icon = ButtonIcon::None;
     bool iconOnly = false;
@@ -360,7 +360,11 @@ private:
             return std::min(240.0, width);
         }
         case Type::Search:
-            return item.name.contains(QStringLiteral("СтрокаПоиска")) ? 220.0 : 40.0;
+            if (item.name.contains(QStringLiteral("СтрокаПоиска")))
+                return 220.0;
+            if (item.name.contains(QStringLiteral("УправлениеПоиском")))
+                return 20.0;
+            return 40.0;
         case Type::Table:
             return 340.0;
         case Type::Decoration:
@@ -644,12 +648,6 @@ private:
         for (const v8reader::FormItem *item : items) {
             if (item->name.endsWith(QStringLiteral("Использование")))
                 continue;
-            // Служебный элемент «управление поиском» платформа рисует
-            // маленькой кнопкой-магнитиком; в предпросмотре он не нужен.
-            if (item->type == v8reader::FormItem::Type::Search
-                && item->name.contains(QStringLiteral("УправлениеПоиском"))) {
-                continue;
-            }
             visible.append(item);
         }
         if (visible.isEmpty())
@@ -741,7 +739,11 @@ private:
         }
 
         auto estimatedWidth = [&](const v8reader::FormItem *item) {
-            double width = std::max(34.0, preferredWidth(*item));
+            double width = preferredWidth(*item);
+            const bool searchOptions = item->type == v8reader::FormItem::Type::Search
+                && item->name.contains(QStringLiteral("УправлениеПоиском"));
+            if (!searchOptions)
+                width = std::max(34.0, width);
             if (dropDownButtons.contains(item))
                 width += 12.0;
             return width;
@@ -925,15 +927,20 @@ private:
                                       FormStyle::buttonHeight), buttonDropDown);
             return;
         case Type::Search:
-            if (!item.name.contains(QStringLiteral("СтрокаПоиска")))
-                return;
-            {
+            if (item.name.contains(QStringLiteral("СтрокаПоиска"))) {
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::Search;
                 control.rect = QRectF(rect.left(), rect.top(),
                                       std::min(rect.width(), 220.0),
                                       FormStyle::buttonHeight);
                 control.title = QStringLiteral("Поиск (Ctrl+F)");
+                m_controls->append(control);
+            } else if (item.name.contains(QStringLiteral("УправлениеПоиском"))) {
+                PreviewControl control;
+                control.kind = PreviewControl::Kind::SearchOptions;
+                control.rect = QRectF(rect.left(), rect.top(),
+                                      std::min(rect.width(), 20.0),
+                                      FormStyle::buttonHeight);
                 m_controls->append(control);
             }
             return;
@@ -1430,18 +1437,22 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setBrush(Qt::NoBrush);
         painter.setPen(QColor(160, 160, 160));
         const double cy = rect.center().y();
-        painter.drawText(rect.adjusted(8, 0, -46, 0),
+        painter.drawText(rect.adjusted(8, 0, -26, 0),
                          Qt::AlignLeft | Qt::AlignVCenter, control.title);
         painter.setPen(QColor(130, 130, 130));
         // Очистка строки поиска.
-        painter.drawLine(QPointF(rect.right() - 34.0, cy - 4.0),
-                         QPointF(rect.right() - 26.0, cy + 4.0));
-        painter.drawLine(QPointF(rect.right() - 34.0, cy + 4.0),
-                         QPointF(rect.right() - 26.0, cy - 4.0));
-        // Кнопка поиска/настроек поиска.
-        painter.drawEllipse(QPointF(rect.right() - 14.0, cy - 1.0), 4.0, 4.0);
-        painter.drawLine(QPointF(rect.right() - 11.0, cy + 2.0),
-                         QPointF(rect.right() - 7.0, cy + 6.0));
+        painter.drawLine(QPointF(rect.right() - 18.0, cy - 4.0),
+                         QPointF(rect.right() - 10.0, cy + 4.0));
+        painter.drawLine(QPointF(rect.right() - 18.0, cy + 4.0),
+                         QPointF(rect.right() - 10.0, cy - 4.0));
+        break;
+    }
+    case PreviewControl::Kind::SearchOptions: {
+        painter.setPen(QColor(120, 120, 120));
+        const double cy = rect.center().y();
+        painter.drawEllipse(QPointF(rect.center().x() - 2.0, cy - 1.0), 4.0, 4.0);
+        painter.drawLine(QPointF(rect.center().x() + 1.0, cy + 2.0),
+                         QPointF(rect.center().x() + 5.0, cy + 6.0));
         painter.drawLine(QPointF(rect.right() - 6.0, cy - 2.0),
                          QPointF(rect.right() - 3.0, cy + 1.0));
         painter.drawLine(QPointF(rect.right() - 3.0, cy + 1.0),
@@ -1683,7 +1694,7 @@ private:
             return;
         }
 
-        const double margin = 8.0;
+        const double margin = 6.0;
         const double contentWidth = kFormWidth - margin * 2.0;
 
         // Высота окна 1С: таблица списка должна занимать всё доступное место,
