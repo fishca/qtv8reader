@@ -1424,10 +1424,12 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         }
         const double headerHeight = FormStyle::tableHeaderHeight;
         const double rowHeight = FormStyle::tableRowHeight;
+        const double verticalScrollWidth = 10.0;
+        const double contentWidth = std::max(1.0, rect.width() - verticalScrollWidth);
         double columnsTotal = 0.0;
         for (double width : widths)
             columnsTotal += width;
-        const bool horizontalScroll = columnsTotal > rect.width() + 0.5;
+        const bool horizontalScroll = columnsTotal > contentWidth + 0.5;
         const double scrollHeight = horizontalScroll ? 10.0 : 0.0;
         const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
         painter.setPen(FormStyle::tableBorder);
@@ -1438,11 +1440,12 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setFont(headerFont);
         painter.setPen(FormStyle::text);
         double columnX = rect.left();
-        for (int i = 0; i < columns.size() && columnX < header.right(); ++i) {
+        for (int i = 0; i < columns.size()
+             && columnX < rect.left() + contentWidth; ++i) {
             const double width = widths.at(i);
             const QRectF cell(columnX, rect.top(), width, headerHeight);
             painter.setPen(FormStyle::gridLine);
-            if (columnX + width < header.right()) {
+            if (columnX + width < rect.left() + contentWidth) {
                 painter.drawLine(cell.topRight(), cell.bottomRight());
             }
             painter.setPen(FormStyle::tableBorder);
@@ -1463,7 +1466,7 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         for (int row = 0; row < rows; ++row) {
             const QRectF rowRect(rect.left(),
                                  rect.top() + headerHeight + row * rowHeight,
-                                 rect.width(), rowHeight);
+                                 contentWidth, rowHeight);
             if (row % 2 == 1) {
                 painter.fillRect(rowRect, FormStyle::alternateRow);
             }
@@ -1481,13 +1484,27 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setPen(FormStyle::tableBorder);
         painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(), tableHeight));
 
+        // Вертикальная полоса прокрутки списка.
+        const QRectF verticalTrack(rect.right() - verticalScrollWidth + 1.0,
+                                   rect.top() + headerHeight + 1.0,
+                                   verticalScrollWidth - 2.0,
+                                   std::max(1.0, tableHeight - headerHeight
+                                       - scrollHeight - 2.0));
+        painter.fillRect(verticalTrack, QColor(241, 241, 241));
+        const double verticalThumb = std::max(24.0,
+            verticalTrack.height() * 0.45);
+        painter.fillRect(QRectF(verticalTrack.left(), verticalTrack.top(),
+                                verticalTrack.width(),
+                                std::min(verticalThumb, verticalTrack.height())),
+                         QColor(193, 193, 193));
+
         if (horizontalScroll) {
             const QRectF track(rect.left() + 1.0,
                                rect.top() + tableHeight - scrollHeight + 1.0,
-                               rect.width() - 2.0, scrollHeight - 2.0);
+                               contentWidth - 2.0, scrollHeight - 2.0);
             painter.fillRect(track, QColor(241, 241, 241));
             const double thumb = std::max(30.0,
-                track.width() * rect.width() / columnsTotal);
+                track.width() * contentWidth / columnsTotal);
             painter.fillRect(QRectF(track.left(), track.top(), thumb, track.height()),
                              QColor(193, 193, 193));
         }
