@@ -1397,19 +1397,24 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setBrush(Qt::white);
         painter.drawRect(rect);
         painter.setBrush(Qt::NoBrush);
-        painter.setPen(QColor(140, 140, 140));
-        const double cy = rect.center().y();
-        painter.drawEllipse(QPointF(rect.left() + 15.0, cy), 5.0, 5.0);
-        painter.drawLine(QPointF(rect.left() + 19.0, cy + 4.0),
-                         QPointF(rect.left() + 24.0, cy + 9.0));
         painter.setPen(QColor(160, 160, 160));
-        painter.drawText(rect.adjusted(30, 0, -22, 0),
+        const double cy = rect.center().y();
+        painter.drawText(rect.adjusted(8, 0, -46, 0),
                          Qt::AlignLeft | Qt::AlignVCenter, control.title);
         painter.setPen(QColor(130, 130, 130));
-        painter.drawLine(QPointF(rect.right() - 18.0, cy - 4.0),
-                         QPointF(rect.right() - 10.0, cy + 4.0));
-        painter.drawLine(QPointF(rect.right() - 18.0, cy + 4.0),
-                         QPointF(rect.right() - 10.0, cy - 4.0));
+        // Очистка строки поиска.
+        painter.drawLine(QPointF(rect.right() - 34.0, cy - 4.0),
+                         QPointF(rect.right() - 26.0, cy + 4.0));
+        painter.drawLine(QPointF(rect.right() - 34.0, cy + 4.0),
+                         QPointF(rect.right() - 26.0, cy - 4.0));
+        // Кнопка поиска/настроек поиска.
+        painter.drawEllipse(QPointF(rect.right() - 14.0, cy - 1.0), 4.0, 4.0);
+        painter.drawLine(QPointF(rect.right() - 11.0, cy + 2.0),
+                         QPointF(rect.right() - 7.0, cy + 6.0));
+        painter.drawLine(QPointF(rect.right() - 6.0, cy - 2.0),
+                         QPointF(rect.right() - 3.0, cy + 1.0));
+        painter.drawLine(QPointF(rect.right() - 3.0, cy + 1.0),
+                         QPointF(rect.right() - 0.5, cy - 2.0));
         break;
     }
     case PreviewControl::Kind::Table: {
