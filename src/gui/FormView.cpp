@@ -88,6 +88,7 @@ struct PreviewControl
     bool dropDown = false;
     bool primary = false;
     bool labelOnly = false;
+    bool calendar = false;
 };
 
 bool looksTechnical(const QString &text)
@@ -1011,6 +1012,9 @@ private:
         control.checkBox = checkBox;
         control.dropDown = dropDown;
         control.labelOnly = item.labelOnly;
+        control.calendar = !item.labelOnly
+            && (item.name.contains(QStringLiteral("Дата"))
+                || item.name.contains(QStringLiteral("Период")));
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
             control.inputWidth = item.widthUnits * 10.0;
         m_controls->append(control);
@@ -1414,6 +1418,21 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             painter.setPen(FormStyle::secondaryText);
             painter.drawLine(p + QPointF(-4, -2), p + QPointF(0, 2));
             painter.drawLine(p + QPointF(0, 2), p + QPointF(4, -2));
+        }
+        if (control.calendar && edit.width() > 44.0) {
+            painter.setPen(FormStyle::secondaryText);
+            painter.drawLine(QPointF(edit.right() - 20.0, edit.top() + 2.0),
+                             QPointF(edit.right() - 20.0, edit.bottom() - 2.0));
+            const QRectF cal(edit.right() - 14.0, edit.center().y() - 5.0, 9.0, 9.0);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(QRectF(cal.left(), cal.top() + 2.0, cal.width(),
+                                    cal.height() - 2.0));
+            painter.drawLine(QPointF(cal.left(), cal.top() + 4.0),
+                             QPointF(cal.right(), cal.top() + 4.0));
+            painter.drawLine(QPointF(cal.left() + 2.0, cal.top()),
+                             QPointF(cal.left() + 2.0, cal.top() + 3.0));
+            painter.drawLine(QPointF(cal.right() - 2.0, cal.top()),
+                             QPointF(cal.right() - 2.0, cal.top() + 3.0));
         }
         break;
     }
