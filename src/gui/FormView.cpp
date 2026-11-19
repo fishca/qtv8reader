@@ -68,7 +68,9 @@ enum class ButtonIcon {
     Envelope,
     Help,
     News,
-    Window
+    Window,
+    Up,
+    Down
 };
 
 struct PreviewControl
@@ -1067,6 +1069,24 @@ private:
             add.bordered = true;
             m_controls->append(add);
 
+            PreviewControl up;
+            up.kind = PreviewControl::Kind::Button;
+            up.rect = QRectF(rect.left() + 92.0, tableTop + 3.0, 26.0,
+                             FormStyle::buttonHeight);
+            up.icon = ButtonIcon::Up;
+            up.iconOnly = true;
+            up.bordered = true;
+            m_controls->append(up);
+
+            PreviewControl down;
+            down.kind = PreviewControl::Kind::Button;
+            down.rect = QRectF(rect.left() + 122.0, tableTop + 3.0, 26.0,
+                               FormStyle::buttonHeight);
+            down.icon = ButtonIcon::Down;
+            down.iconOnly = true;
+            down.bordered = true;
+            m_controls->append(down);
+
             PreviewControl more;
             more.kind = PreviewControl::Kind::Button;
             more.rect = QRectF(rect.right() - 60.0, tableTop + 3.0, 56.0,
@@ -1404,6 +1424,21 @@ void drawButtonIcon(QPainter &painter, ButtonIcon icon, const QRectF &rect)
         painter.setBrush(QColor(230, 230, 230));
         painter.drawRect(QRectF(rect.left() + s * 0.38, rect.top() + s * 0.38,
                                 s * 0.5, s * 0.5));
+        break;
+    }
+    case ButtonIcon::Up:
+    case ButtonIcon::Down: {
+        const bool up = icon == ButtonIcon::Up;
+        painter.setPen(QPen(QColor(125, 125, 125), 1.2));
+        const double y1 = up ? rect.bottom() - s * 0.2 : rect.top() + s * 0.2;
+        const double y2 = up ? rect.top() + s * 0.2 : rect.bottom() - s * 0.2;
+        painter.drawLine(QPointF(c.x(), y1), QPointF(c.x(), y2));
+        const double head = up ? y2 : y1;
+        const double direction = up ? 1.0 : -1.0;
+        painter.drawLine(QPointF(c.x(), head),
+                         QPointF(c.x() - s * 0.14, head + direction * s * 0.16));
+        painter.drawLine(QPointF(c.x(), head),
+                         QPointF(c.x() + s * 0.14, head + direction * s * 0.16));
         break;
     }
     case ButtonIcon::None:
