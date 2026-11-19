@@ -1198,6 +1198,8 @@ private:
             && looksLikeReferenceField(item.name);
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
             control.inputWidth = item.widthUnits * 10.0;
+        else if (checkBox && m_document.runtimeListCommands)
+            control.inputWidth = 325.0;
         m_controls->append(control);
     }
 
