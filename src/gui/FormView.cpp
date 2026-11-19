@@ -89,6 +89,7 @@ struct PreviewControl
     bool primary = false;
     bool labelOnly = false;
     bool calendar = false;
+    bool bordered = false;
 };
 
 bool looksTechnical(const QString &text)
@@ -1054,9 +1055,33 @@ private:
     {
         PreviewControl control;
         control.kind = PreviewControl::Kind::Table;
-        const double tableHeight = m_document.runtimeListCommands ? 470.0 : 360.0;
-        control.rect = QRectF(rect.left(), rect.top(), rect.width(),
-                              std::min(rect.height(), tableHeight));
+        double tableTop = rect.top();
+        double tableHeight = m_document.runtimeListCommands ? 470.0 : 360.0;
+        if (m_document.runtimeDocumentCommands && !m_document.runtimeListCommands) {
+            // Командная панель табличной части документа: «Добавить» и «Еще».
+            PreviewControl add;
+            add.kind = PreviewControl::Kind::Button;
+            add.rect = QRectF(rect.left(), tableTop + 3.0, 84.0,
+                              FormStyle::buttonHeight);
+            add.title = QStringLiteral("Добавить");
+            add.bordered = true;
+            m_controls->append(add);
+
+            PreviewControl more;
+            more.kind = PreviewControl::Kind::Button;
+            more.rect = QRectF(rect.right() - 60.0, tableTop + 3.0, 56.0,
+                               FormStyle::buttonHeight);
+            more.title = QStringLiteral("Еще");
+            more.dropDown = true;
+            more.bordered = true;
+            m_controls->append(more);
+
+            tableTop += 30.0;
+            tableHeight = std::max(80.0, tableHeight - 30.0);
+        }
+        control.rect = QRectF(rect.left(), tableTop, rect.width(),
+                              std::min(std::max(0.0, rect.height() - (tableTop - rect.top())),
+                                       tableHeight));
         QVector<int> widthUnits;
         tableColumns(item, item.name, &control.columns, &widthUnits);
 
@@ -1477,6 +1502,14 @@ void paintControl(QPainter &painter, const PreviewControl &control,
             gradient.setColorAt(0.0, FormStyle::primaryTop);
             gradient.setColorAt(1.0, FormStyle::primaryBottom);
             painter.setPen(FormStyle::primaryBorder);
+            painter.setBrush(gradient);
+            painter.drawRoundedRect(rect, 2.0, 2.0);
+            painter.setBrush(Qt::NoBrush);
+        } else if (control.bordered) {
+            QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
+            gradient.setColorAt(0.0, QColor(247, 247, 247));
+            gradient.setColorAt(1.0, QColor(228, 228, 228));
+            painter.setPen(FormStyle::fieldBorder);
             painter.setBrush(gradient);
             painter.drawRoundedRect(rect, 2.0, 2.0);
             painter.setBrush(Qt::NoBrush);
