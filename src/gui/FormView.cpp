@@ -1045,6 +1045,12 @@ private:
                     title = m_document.titles.value(child.name);
                 if (title.isEmpty())
                     title = humanizeIdentifier(base);
+                // В таблицах 1С служебная колонка номера строки называется
+                // коротко «Номер», а не «Номер строки».
+                if (title.startsWith(QStringLiteral("Номер строки"),
+                                     Qt::CaseInsensitive)) {
+                    title = QStringLiteral("Номер");
+                }
                 columns->append(title);
                 widths->append(child.widthUnits);
             } else if (child.type == v8reader::FormItem::Type::Group) {
