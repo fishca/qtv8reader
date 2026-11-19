@@ -1580,14 +1580,34 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.drawPolygon(downArrow);
 
         if (horizontalScroll) {
+            // Уголок между полосами прокрутки.
+            painter.fillRect(QRectF(rect.right() - verticalScrollWidth + 1.0,
+                                    rect.bottom() - scrollHeight + 1.0,
+                                    verticalScrollWidth - 2.0, scrollHeight - 2.0),
+                             QColor(241, 241, 241));
             const QRectF track(rect.left() + 1.0,
                                rect.top() + tableHeight - scrollHeight + 1.0,
                                contentWidth - 2.0, scrollHeight - 2.0);
             painter.fillRect(track, QColor(241, 241, 241));
-            const double thumb = std::max(30.0,
-                track.width() * contentWidth / columnsTotal);
-            painter.fillRect(QRectF(track.left(), track.top(), thumb, track.height()),
+            const double thumb = std::max(20.0,
+                track.width() * contentWidth / columnsTotal - 20.0);
+            painter.fillRect(QRectF(track.left() + 10.0, track.top(),
+                                    std::min(thumb, track.width() - 20.0),
+                                    track.height()),
                              QColor(193, 193, 193));
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(120, 120, 120));
+            const double arrowY = track.center().y();
+            QPolygonF leftArrow;
+            leftArrow << QPointF(track.left() + 7.0, arrowY - 3.0)
+                      << QPointF(track.left() + 7.0, arrowY + 3.0)
+                      << QPointF(track.left() + 3.0, arrowY);
+            painter.drawPolygon(leftArrow);
+            QPolygonF rightArrow;
+            rightArrow << QPointF(track.right() - 7.0, arrowY - 3.0)
+                       << QPointF(track.right() - 7.0, arrowY + 3.0)
+                       << QPointF(track.right() - 3.0, arrowY);
+            painter.drawPolygon(rightArrow);
         }
         break;
     }
