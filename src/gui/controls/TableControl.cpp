@@ -114,22 +114,25 @@ void paintTable(QPainter &painter, const TableVisual &visual,
                             rect.top() + tableHeight - 20.0,
                             cornerWidth, 20.0);
         painter.fillRect(corner, QColor(240, 240, 240));
-        painter.setPen(FormStyle::tableBorder);
+        painter.setPen(QColor(128, 128, 128));
         painter.drawRect(corner);
         for (int i = 0; i < 4; ++i) {
             const QRectF cell(corner.left() + i * 20.0, corner.top(), 20.0, 20.0);
-            painter.setPen(FormStyle::tableBorder);
-            painter.setBrush(QColor(240, 240, 240));
+            QLinearGradient cellGradient(cell.topLeft(), cell.bottomLeft());
+            cellGradient.setColorAt(0.0, QColor(250, 250, 250));
+            cellGradient.setColorAt(1.0, QColor(232, 232, 232));
+            painter.setPen(QColor(128, 128, 128));
+            painter.setBrush(cellGradient);
             painter.drawRect(cell);
             const QPointF c = cell.center();
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(120, 120, 120));
+            painter.setBrush(QColor(90, 90, 90));
             QPolygonF arrow;
             switch (i) {
             case 0:
-                arrow << QPointF(c.x() - 3.0, c.y() - 3.0)
-                      << QPointF(c.x() - 3.0, c.y() + 3.0)
-                      << QPointF(c.x() + 2.0, c.y());
+                arrow << QPointF(c.x() + 3.0, c.y() - 3.0)
+                      << QPointF(c.x() + 3.0, c.y() + 3.0)
+                      << QPointF(c.x() - 2.0, c.y());
                 break;
             case 1:
                 arrow << QPointF(c.x() - 3.0, c.y() + 2.0)
@@ -142,9 +145,9 @@ void paintTable(QPainter &painter, const TableVisual &visual,
                       << QPointF(c.x(), c.y() + 3.0);
                 break;
             default:
-                arrow << QPointF(c.x() + 3.0, c.y() - 3.0)
-                      << QPointF(c.x() + 3.0, c.y() + 3.0)
-                      << QPointF(c.x() - 2.0, c.y());
+                arrow << QPointF(c.x() - 3.0, c.y() - 3.0)
+                      << QPointF(c.x() - 3.0, c.y() + 3.0)
+                      << QPointF(c.x() + 2.0, c.y());
                 break;
             }
             painter.drawPolygon(arrow);
