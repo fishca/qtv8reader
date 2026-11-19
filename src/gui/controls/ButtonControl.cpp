@@ -316,7 +316,7 @@ void paintButton(QPainter &painter, const ButtonVisual &visual,
     }
     painter.setPen(FormStyle::text);
 
-    const double iconSize = std::min(16.0, rect.height() - 8.0);
+    const double iconSize = std::min(18.0, rect.height() - 6.0);
     double textLeft = rect.left() + 6.0;
     double textRight = rect.right() - (visual.dropDown ? 18.0 : 6.0);
     if (visual.icon != ButtonIcon::None) {
