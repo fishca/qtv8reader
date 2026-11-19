@@ -93,6 +93,10 @@ add_library(qtv8reader_gui STATIC
     src/gui/MxlPrinter.cpp
     src/gui/FormView.h
     src/gui/FormView.cpp
+    src/gui/controls/FormControl.h
+    src/gui/controls/FormStyle.h
+    src/gui/controls/SearchControl.h
+    src/gui/controls/SearchControl.cpp
     src/gui/BslHighlighter.h
     src/gui/BslHighlighter.cpp
 )

@@ -1,5 +1,8 @@
 #include "gui/FormView.h"
 
+#include "controls/FormControl.h"
+#include "controls/FormStyle.h"
+#include "controls/SearchControl.h"
 #include "gui/BslHighlighter.h"
 
 #include <QComboBox>
@@ -28,29 +31,6 @@
 #include <functional>
 
 namespace {
-
-// Палитра и метрики интерфейса 1С:Предприятие 8.3 («Такси»).
-// Форма управляемого приложения рисуется на белом фоне; заголовки таблиц,
-// поля и кнопки имеют собственные цвета платформы.
-namespace FormStyle {
-
-const QColor text(0, 0, 0);
-const QColor secondaryText(90, 90, 90);
-const QColor fieldBorder(160, 160, 160);
-const QColor primaryTop(255, 250, 205);
-const QColor primaryBottom(250, 237, 158);
-const QColor primaryBorder(226, 203, 120);
-const QColor tableBorder(183, 183, 183);
-const QColor gridLine(199, 199, 199);
-const QColor headerBackground(242, 242, 242);
-const QColor alternateRow(250, 250, 250);
-const QColor separator(208, 208, 208);
-
-constexpr double buttonHeight = 24.0;
-constexpr double tableHeaderHeight = 22.0;
-constexpr double tableRowHeight = 20.0;
-
-} // namespace FormStyle
 
 enum class ButtonIcon {
     None,
@@ -1660,40 +1640,11 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         break;
     }
     case PreviewControl::Kind::Search: {
-        painter.setPen(FormStyle::fieldBorder);
-        painter.setBrush(Qt::white);
-        painter.drawRect(rect);
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QColor(160, 160, 160));
-        const double cy = rect.center().y();
-        painter.drawText(rect.adjusted(8, 0, -26, 0),
-                         Qt::AlignLeft | Qt::AlignVCenter, control.title);
-        painter.setPen(QColor(130, 130, 130));
-        // Очистка строки поиска.
-        painter.drawLine(QPointF(rect.right() - 18.0, cy - 4.0),
-                         QPointF(rect.right() - 10.0, cy + 4.0));
-        painter.drawLine(QPointF(rect.right() - 18.0, cy + 4.0),
-                         QPointF(rect.right() - 10.0, cy - 4.0));
+        controls::paintSearch(painter, controls::SearchVisual{rect, control.title});
         break;
     }
     case PreviewControl::Kind::SearchOptions: {
-        QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
-        gradient.setColorAt(0.0, QColor(247, 247, 247));
-        gradient.setColorAt(1.0, QColor(228, 228, 228));
-        painter.setPen(FormStyle::fieldBorder);
-        painter.setBrush(gradient);
-        painter.drawRoundedRect(rect, 2.0, 2.0);
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QColor(110, 110, 110));
-        const double cy = rect.center().y();
-        const double iconX = rect.left() + 13.0;
-        painter.drawEllipse(QPointF(iconX, cy - 1.0), 4.0, 4.0);
-        painter.drawLine(QPointF(iconX + 2.0, cy + 2.0),
-                         QPointF(iconX + 5.0, cy + 5.0));
-        painter.drawLine(QPointF(rect.right() - 9.0, cy - 2.0),
-                         QPointF(rect.right() - 6.0, cy + 1.0));
-        painter.drawLine(QPointF(rect.right() - 6.0, cy + 1.0),
-                         QPointF(rect.right() - 3.0, cy - 2.0));
+        controls::paintSearchOptions(painter, rect);
         break;
     }
     case PreviewControl::Kind::Table: {
