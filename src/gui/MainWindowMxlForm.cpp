@@ -138,14 +138,19 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
     document.synonym = entry.synonym;
     {
         bool hasTable = false;
+        const QString objectName = m_currentObject ? m_currentObject->name : QString();
         std::function<bool(const QVector<FormItem> &)> findTable =
             [&](const QVector<FormItem> &items) -> bool {
                 for (const FormItem &item : items) {
-                    if (item.type == FormItem::Type::Table
-                        && (item.name == QStringLiteral("Список")
-                            || item.synonym == QStringLiteral("Список"))) {
+                    // Основная таблица списка: «Список» или таблица с именем
+                    // самого объекта (например, «Валюты»).
+                    const bool listTable = item.name == QStringLiteral("Список")
+                        || item.synonym == QStringLiteral("Список")
+                        || (!objectName.isEmpty()
+                            && (item.name == objectName
+                                || item.synonym == objectName));
+                    if (item.type == FormItem::Type::Table && listTable)
                         return true;
-                    }
                     if (findTable(item.children))
                         return true;
                 }
@@ -161,6 +166,7 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
         document.runtimeListCommands = isDocument && hasTable;
         document.runtimeDocumentCommands = isDocument && !hasTable;
         document.runtimeCatalogCommands = isCatalog && !hasTable;
+        document.runtimeCatalogListCommands = isCatalog && hasTable;
     }
     if (m_currentObject) {
         QHash<QString, QString> objectTitles;

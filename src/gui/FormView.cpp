@@ -1129,7 +1129,8 @@ private:
         // В списках 1С по умолчанию показывает ключевые колонки, а остальные
         // пользователь добавляет сам. Повторяем типовой набор, чтобы таблица
         // выглядела как список платформы, а не как выгрузка всех полей.
-        if (m_document.runtimeListCommands && control.columns.size() > 6) {
+        if ((m_document.runtimeListCommands || m_document.runtimeCatalogListCommands)
+            && control.columns.size() > 4) {
             const QVector<QStringList> preferred = {
                 {QStringLiteral("Дата"), QStringLiteral("Период")},
                 {QStringLiteral("Номер")},
@@ -1138,7 +1139,11 @@ private:
                 {QStringLiteral("Сумма")},
                 {QStringLiteral("Вид операции"), QStringLiteral("Статус"),
                  QStringLiteral("Состояние")},
-                {QStringLiteral("Комментарий")}
+                {QStringLiteral("Комментарий")},
+                {QStringLiteral("Наименование")},
+                {QStringLiteral("Код")},
+                {QStringLiteral("Курс")},
+                {QStringLiteral("Кратность")}
             };
             QVector<int> picked;
             for (const QStringList &keys : preferred) {
@@ -1181,7 +1186,9 @@ private:
             for (int i = 0; i < control.columns.size(); ++i) {
                 const QString &column = control.columns.at(i);
                 const int units = i < widthUnits.size() ? widthUnits.at(i) : -1;
-                const double minWidth = m_document.runtimeListCommands ? 110.0 : 80.0;
+                const double minWidth =
+                    (m_document.runtimeListCommands
+                     || m_document.runtimeCatalogListCommands) ? 110.0 : 80.0;
                 const double width = std::max(70.0, units > 0
                     ? units * 10.0
                     : std::min(240.0, std::max(minWidth,

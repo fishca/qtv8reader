@@ -76,6 +76,8 @@ struct FormDocument
     bool runtimeDocumentCommands = false;
     // Форма элемента справочника: «Записать и закрыть» и «Записать».
     bool runtimeCatalogCommands = false;
+    // Форма списка справочника: ключевые колонки по умолчанию.
+    bool runtimeCatalogListCommands = false;
 
     int itemCount() const;
     int fieldCount() const;
