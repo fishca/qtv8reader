@@ -57,6 +57,8 @@ void paintField(QPainter &painter, const FieldVisual &visual,
         painter.drawRect(box);
         painter.setBrush(Qt::NoBrush);
         x += 19.0;
+        if (visual.checkboxOnly)
+            return;
     }
     double editWidth = std::max(24.0, rect.right() - x - 4.0);
     if (visual.inputWidth > 0.0)

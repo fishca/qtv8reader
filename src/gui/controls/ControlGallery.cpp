@@ -116,6 +116,13 @@ QPixmap renderControlGallery()
     check.checkBox = true;
     paintField(painter, check, metrics);
 
+    FieldVisual flag;
+    flag.rect = QRectF(600, 180, 220, 28);
+    flag.label = QStringLiteral("Флажок");
+    flag.checkBox = true;
+    flag.checkboxOnly = true;
+    paintField(painter, flag, metrics);
+
     section(QStringLiteral("Поиск"), 218);
     SearchVisual search;
     search.rect = QRectF(24, 240, 300, FormStyle::buttonHeight);

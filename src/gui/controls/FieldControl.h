@@ -16,6 +16,7 @@ struct FieldVisual
     double inputWidth = 0.0;
     bool labelOnly = false;
     bool checkBox = false;
+    bool checkboxOnly = false;
     bool dropDown = false;
     bool calendar = false;
     bool choiceButton = false;

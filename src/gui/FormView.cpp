@@ -55,6 +55,7 @@ struct PreviewControl
     double inputWidth = -1.0;
     bool selectedTab = false;
     bool checkBox = false;
+    bool checkboxOnly = false;
     bool dropDown = false;
     bool primary = false;
     bool labelOnly = false;
@@ -974,12 +975,24 @@ private:
         }
         labelW = std::min(labelW, rect.width() * 0.7);
 
+        bool booleanField = false;
+        if (!checkBox) {
+            for (const v8reader::FormAttribute &attribute : m_document.attributes) {
+                if (attribute.name == item.name
+                    && attribute.typeHint == QStringLiteral("Булево")) {
+                    booleanField = true;
+                    break;
+                }
+            }
+        }
+
         PreviewControl control;
         control.kind = PreviewControl::Kind::Field;
         control.rect = rect;
         control.title = label;
         control.labelWidth = labelW;
-        control.checkBox = checkBox;
+        control.checkBox = checkBox || booleanField;
+        control.checkboxOnly = booleanField;
         control.dropDown = dropDown;
         control.labelOnly = item.labelOnly;
         control.calendar = !item.labelOnly
@@ -1252,6 +1265,7 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         visual.inputWidth = control.inputWidth;
         visual.labelOnly = control.labelOnly;
         visual.checkBox = control.checkBox;
+        visual.checkboxOnly = control.checkboxOnly;
         visual.dropDown = control.dropDown;
         visual.calendar = control.calendar;
         visual.choiceButton = control.choiceButton;
