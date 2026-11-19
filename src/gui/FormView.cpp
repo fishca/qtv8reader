@@ -73,7 +73,7 @@ enum class ButtonIcon {
 
 struct PreviewControl
 {
-    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator };
+    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator, HorizontalLine };
     Kind kind = Kind::Field;
     ButtonIcon icon = ButtonIcon::None;
     bool iconOnly = false;
@@ -916,13 +916,15 @@ private:
         using Type = v8reader::FormItem::Type;
         if (depth > 40)
             return;
+        const double buttonY = rect.top() + std::max(0.0,
+            (rect.height() - FormStyle::buttonHeight) / 2.0);
 
         switch (item.type) {
         case Type::Field:
             layoutField(item, rect, 0.0, usageLabel, usageCheck, usageDropDown);
             return;
         case Type::Button:
-            layoutButton(item, QRectF(rect.left(), rect.top(),
+            layoutButton(item, QRectF(rect.left(), buttonY,
                                       std::min(rect.width(), preferredWidth(item)),
                                       FormStyle::buttonHeight), buttonDropDown);
             return;
@@ -930,7 +932,7 @@ private:
             if (item.name.contains(QStringLiteral("СтрокаПоиска"))) {
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::Search;
-                control.rect = QRectF(rect.left(), rect.top(),
+                control.rect = QRectF(rect.left(), buttonY,
                                       std::min(rect.width(), 220.0),
                                       FormStyle::buttonHeight);
                 control.title = QStringLiteral("Поиск (Ctrl+F)");
@@ -938,7 +940,7 @@ private:
             } else if (item.name.contains(QStringLiteral("УправлениеПоиском"))) {
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::SearchOptions;
-                control.rect = QRectF(rect.left(), rect.top(),
+                control.rect = QRectF(rect.left(), buttonY,
                                       std::min(rect.width(), 20.0),
                                       FormStyle::buttonHeight);
                 m_controls->append(control);
@@ -959,7 +961,7 @@ private:
             return;
         case Type::Group: {
             if (item.groupKind == 1) {
-                layoutButton(item, QRectF(rect.left(), rect.top(),
+                layoutButton(item, QRectF(rect.left(), buttonY,
                                           std::min(rect.width(), preferredWidth(item)),
                                           FormStyle::buttonHeight), true);
                 return;
@@ -1096,6 +1098,7 @@ private:
         visibleChildren(pages, &pageItems);
 
         double x = rect.left();
+        double selectedTabRight = rect.left();
         for (int i = 0; i < pageItems.size(); ++i) {
             const v8reader::FormItem *page = pageItems.at(i);
             if (page->type != v8reader::FormItem::Type::Group)
@@ -1110,7 +1113,16 @@ private:
                 m_metrics.horizontalAdvance(title) + 28.0);
             tab.rect = QRectF(x, rect.top(), width, 24.0);
             m_controls->append(tab);
+            if (tab.selectedTab)
+                selectedTabRight = tab.rect.right();
             x += width + 2.0;
+        }
+        if (selectedTabRight < rect.right()) {
+            PreviewControl line;
+            line.kind = PreviewControl::Kind::HorizontalLine;
+            line.rect = QRectF(selectedTabRight, rect.top() + 24.0,
+                               rect.right() - selectedTabRight, 1.0);
+            m_controls->append(line);
         }
 
         const v8reader::FormItem *firstPage = nullptr;
@@ -1609,6 +1621,12 @@ void paintControl(QPainter &painter, const PreviewControl &control,
     case PreviewControl::Kind::Separator: {
         painter.setPen(QPen(FormStyle::separator, 1.0));
         painter.drawLine(rect.topLeft(), rect.bottomLeft());
+        break;
+    }
+    case PreviewControl::Kind::HorizontalLine: {
+        painter.setPen(QPen(FormStyle::fieldBorder, 1.0));
+        painter.drawLine(QPointF(rect.left(), rect.center().y()),
+                         QPointF(rect.right(), rect.center().y()));
         break;
     }
     }
