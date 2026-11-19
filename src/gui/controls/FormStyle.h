@@ -10,11 +10,11 @@ namespace FormStyle {
 inline const QColor text(0, 0, 0);
 inline const QColor secondaryText(90, 90, 90);
 inline const QColor fieldBorder(160, 160, 160);
-inline const QColor primaryTop(255, 248, 214);
-inline const QColor primaryBottom(247, 233, 192);
-inline const QColor primaryBorder(150, 145, 120);
-inline const QColor tableBorder(183, 183, 183);
-inline const QColor gridLine(199, 199, 199);
+inline const QColor primaryTop(253, 253, 253);
+inline const QColor primaryBottom(238, 238, 238);
+inline const QColor primaryBorder(160, 160, 160);
+inline const QColor tableBorder(160, 160, 160);
+inline const QColor gridLine(204, 204, 204);
 inline const QColor headerBackground(242, 242, 242);
 inline const QColor alternateRow(250, 250, 250);
 inline const QColor separator(208, 208, 208);

@@ -304,8 +304,8 @@ void paintButton(QPainter &painter, const ButtonVisual &visual,
         painter.setBrush(Qt::NoBrush);
     } else if (visual.bordered) {
         QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
-        gradient.setColorAt(0.0, QColor(247, 247, 247));
-        gradient.setColorAt(1.0, QColor(228, 228, 228));
+        gradient.setColorAt(0.0, QColor(252, 252, 252));
+        gradient.setColorAt(1.0, QColor(238, 238, 238));
         painter.setPen(FormStyle::fieldBorder);
         painter.setBrush(gradient);
         painter.drawRoundedRect(rect, 2.0, 2.0);
