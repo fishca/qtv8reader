@@ -390,7 +390,7 @@ private:
             if (item.name.contains(QStringLiteral("СтрокаПоиска")))
                 return 220.0;
             if (item.name.contains(QStringLiteral("УправлениеПоиском")))
-                return 20.0;
+                return 40.0;
             return 40.0;
         case Type::Table:
             return 340.0;
@@ -971,8 +971,9 @@ private:
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::SearchOptions;
                 control.rect = QRectF(rect.left(), buttonY,
-                                      std::min(rect.width(), 20.0),
+                                      std::min(rect.width(), 40.0),
                                       FormStyle::buttonHeight);
+                control.bordered = true;
                 m_controls->append(control);
             }
             return;
@@ -1060,7 +1061,8 @@ private:
             && control.icon != ButtonIcon::CreateBasedOn
             && control.icon != ButtonIcon::Print;
         control.dropDown = dropDown;
-        control.bordered = item.name == QStringLiteral("Еще");
+        control.bordered = item.name == QStringLiteral("Еще")
+            || item.name == QStringLiteral("Справка");
         m_controls->append(control);
     }
 
@@ -1675,15 +1677,23 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         break;
     }
     case PreviewControl::Kind::SearchOptions: {
-        painter.setPen(QColor(120, 120, 120));
+        QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
+        gradient.setColorAt(0.0, QColor(247, 247, 247));
+        gradient.setColorAt(1.0, QColor(228, 228, 228));
+        painter.setPen(FormStyle::fieldBorder);
+        painter.setBrush(gradient);
+        painter.drawRoundedRect(rect, 2.0, 2.0);
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QColor(110, 110, 110));
         const double cy = rect.center().y();
-        painter.drawEllipse(QPointF(rect.center().x() - 2.0, cy - 1.0), 4.0, 4.0);
-        painter.drawLine(QPointF(rect.center().x() + 1.0, cy + 2.0),
-                         QPointF(rect.center().x() + 5.0, cy + 6.0));
-        painter.drawLine(QPointF(rect.right() - 6.0, cy - 2.0),
-                         QPointF(rect.right() - 3.0, cy + 1.0));
-        painter.drawLine(QPointF(rect.right() - 3.0, cy + 1.0),
-                         QPointF(rect.right() - 0.5, cy - 2.0));
+        const double iconX = rect.left() + 13.0;
+        painter.drawEllipse(QPointF(iconX, cy - 1.0), 4.0, 4.0);
+        painter.drawLine(QPointF(iconX + 2.0, cy + 2.0),
+                         QPointF(iconX + 5.0, cy + 5.0));
+        painter.drawLine(QPointF(rect.right() - 9.0, cy - 2.0),
+                         QPointF(rect.right() - 6.0, cy + 1.0));
+        painter.drawLine(QPointF(rect.right() - 6.0, cy + 1.0),
+                         QPointF(rect.right() - 3.0, cy - 2.0));
         break;
     }
     case PreviewControl::Kind::Table: {
