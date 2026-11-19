@@ -73,6 +73,13 @@ bool looksTechnical(const QString &text)
         || text.contains(QLatin1Char('%'));
 }
 
+QFont formFont()
+{
+    QFont font(QStringLiteral("Arial"));
+    font.setPointSizeF(9.5);
+    return font;
+}
+
 // Имена реквизитов, которые в 1С являются ссылочными: у их полей есть
 // кнопка выбора (три точки) справа.
 bool looksLikeReferenceField(const QString &name)
@@ -104,7 +111,7 @@ bool isServiceItem(const v8reader::FormItem &item)
         return true;
     if (!item.visible)
         return true;
-    if (item.name == QStringLiteral("Баннер"))
+    if (item.name.startsWith(QStringLiteral("Баннер")))
         return true;
     if (item.name.contains(QStringLiteral("КонтекстноеМеню"))
         || item.name.endsWith(QStringLiteral("РасширеннаяПодсказка"))
@@ -117,6 +124,28 @@ bool isServiceDecoration(const v8reader::FormItem &item)
 {
     return item.type == v8reader::FormItem::Type::Decoration
         && item.synonym.isEmpty();
+}
+
+// Группа без видимого содержимого не должна занимать высоту: в форме
+// списка такие служебные группы оставляли пустую полосу под панелью.
+bool hasRenderableContent(const v8reader::FormItem &item)
+{
+    using Type = v8reader::FormItem::Type;
+    if (!item.visible)
+        return false;
+    if (item.type == Type::Group) {
+        for (const v8reader::FormItem &child : item.children) {
+            if (isServiceItem(child) || isServiceDecoration(child))
+                continue;
+            if (hasRenderableContent(child))
+                return true;
+        }
+        return false;
+    }
+    if (item.type == Type::Decoration)
+        return !item.synonym.isEmpty();
+    return item.type == Type::Field || item.type == Type::Button
+        || item.type == Type::Table || item.type == Type::Search;
 }
 
 QString humanizeIdentifier(const QString &text)
@@ -217,7 +246,7 @@ class LayoutEngine
 public:
     LayoutEngine(const v8reader::FormDocument &document, double width)
         : m_document(document), m_width(width),
-          m_font(QStringLiteral("Arial"), 9), m_metrics(m_font)
+          m_font(formFont()), m_metrics(m_font)
     {
         for (const v8reader::FormCommand &command : document.commands) {
             if (!command.name.isEmpty() && !command.synonym.isEmpty())
@@ -277,7 +306,7 @@ public:
 
         QVector<const v8reader::FormItem *> items;
         for (const v8reader::FormItem &item : localItems) {
-            if (!isServiceItem(item))
+            if (!isServiceItem(item) && hasRenderableContent(item))
                 items.append(&item);
         }
         *contentHeight = layoutVertical(items, QRectF(0.0, 0.0, m_width, 100000.0), 0);
@@ -299,7 +328,7 @@ public:
             if (table) {
                 const double chipsTop = table->rect.top();
                 const double chipsLeft = table->rect.left();
-                const double chipHeight = 22.0;
+                const double chipHeight = 26.0;
                 const double chipGap = 4.0;
                 for (PreviewControl &control : *controls) {
                     if (control.rect.top() >= chipsTop - 0.1)
@@ -401,19 +430,17 @@ private:
                 && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn
                 && icon != ButtonIcon::Print;
             if (iconOnly)
-                return 32.0;
+                return 28.0;
             double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
             if (icon != ButtonIcon::None)
                 width += 22.0;
-            // У основной кнопки «Создать» есть выпадающий список; оставляем
-            // место, чтобы подпись не превращалась в «Созд…».
             if (item.name == QStringLiteral("Создать"))
-                width += 20.0;
-            return std::min(260.0, width);
+                width += 10.0;
+            return std::min(250.0, width);
         }
         case Type::Search:
             if (item.name.contains(QStringLiteral("СтрокаПоиска")))
-                return 220.0;
+                return 180.0;
             if (item.name.contains(QStringLiteral("УправлениеПоиском")))
                 return 40.0;
             return 40.0;
@@ -429,9 +456,11 @@ private:
                     && icon != ButtonIcon::CreateBasedOn
                     && icon != ButtonIcon::Print;
                 if (iconOnly)
-                    return 34.0;
+                    return 28.0;
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
+                if (item.name == QStringLiteral("Еще"))
+                    return 60.0;
                 return std::max(64.0,
                     m_metrics.horizontalAdvance(title) + 44.0);
             }
@@ -660,7 +689,9 @@ private:
         for (const v8reader::FormItem *item : items) {
             if (item->name.endsWith(QStringLiteral("Использование")))
                 continue;
-            const double height = naturalHeight(*item, rect.width());
+            double height = naturalHeight(*item, rect.width());
+            if (isTopCommandBar(*item))
+                height = FormStyle::buttonHeight + 6.0;
             if (height <= 0.0)
                 continue;
             if (item->type == v8reader::FormItem::Type::Field) {
@@ -863,7 +894,7 @@ private:
             const bool searchOptions = item->type == v8reader::FormItem::Type::Search
                 && item->name.contains(QStringLiteral("УправлениеПоиском"));
             if (!searchOptions)
-                width = std::max(34.0, width);
+                width = std::max(28.0, width);
             if (dropDownButtons.contains(item))
                 width += 12.0;
             return width;
@@ -952,6 +983,26 @@ private:
             for (int i = 0; i < row.size(); ++i)
                 rowHeight = std::max(rowHeight,
                     naturalHeight(*visible.at(row.at(i)), rowWidths.at(i)));
+
+            // Две строки быстрого отбора делят ширину поровну, как в
+            // конфигураторе; иначе первое поле съедает почти всю строку.
+            if (!runtimeCommands && row.size() == 2) {
+                bool bothFilters = true;
+                for (int index : row) {
+                    const v8reader::FormItem *item = visible.at(index);
+                    const QString usageName = item->name + QStringLiteral("Использование");
+                    if (item->type != v8reader::FormItem::Type::Field
+                        || usage.value(usageName).isEmpty()) {
+                        bothFilters = false;
+                        break;
+                    }
+                }
+                if (bothFilters) {
+                    const double each = (rect.width() - 8.0) / 2.0;
+                    rowWidths[0] = each;
+                    rowWidths[1] = each;
+                }
+            }
 
             // Поиск, «Еще» и «?» в 1С прижаты к правому краю командной панели.
             int rightStart = -1;
@@ -1250,23 +1301,23 @@ private:
                 double width = 0.0;
                 if (list) {
                     if (column == QStringLiteral("Дата"))
-                        width = 200.0;
-                    else if (column == QStringLiteral("Номер"))
                         width = 150.0;
+                    else if (column == QStringLiteral("Номер"))
+                        width = 125.0;
                     else if (column == QStringLiteral("Подотчетное лицо"))
-                        width = 190.0;
+                        width = 140.0;
                     else if (column == QStringLiteral("Сумма"))
-                        width = 130.0;
+                        width = 105.0;
                     else if (column == QStringLiteral("Валюта"))
-                        width = 120.0;
+                        width = 100.0;
                     else if (column == QStringLiteral("Склад"))
-                        width = 110.0;
+                        width = 95.0;
                     else if (column == QStringLiteral("Вид операции"))
-                        width = 160.0;
+                        width = 120.0;
                     else if (column == QStringLiteral("Организация"))
-                        width = 200.0;
+                        width = 150.0;
                     else
-                        width = std::max(130.0,
+                        width = std::max(120.0,
                             headerMetrics.horizontalAdvance(column) + 24.0);
                 } else {
                     const double minWidth = 80.0;
@@ -1487,8 +1538,49 @@ protected:
         painter.fillRect(rect(), Qt::white);
         painter.scale(m_scale, m_scale);
 
+        const double logicalW = width() / m_scale;
+        const double logicalH = height() / m_scale;
+        const double titleHeight = 28.0;
+
+        // Рамка и заголовок окна конфигуратора.
+        QLinearGradient titleGradient(0.0, 0.0, 0.0, titleHeight);
+        titleGradient.setColorAt(0.0, QColor(143, 185, 225));
+        titleGradient.setColorAt(1.0, QColor(155, 185, 213));
+        painter.fillRect(QRectF(0.0, 0.0, logicalW, titleHeight), titleGradient);
+        painter.setPen(QColor(255, 255, 255));
+        painter.drawLine(QPointF(0.5, 0.5), QPointF(logicalW - 0.5, 0.5));
+        painter.drawLine(QPointF(0.5, 0.5), QPointF(0.5, logicalH - 0.5));
+        painter.setPen(QColor(0, 16, 38));
+        painter.drawRect(QRectF(0.5, 0.5, logicalW - 1.0, logicalH - 1.0));
+        painter.setPen(QColor(69, 139, 201));
+        painter.drawRect(QRectF(1.5, 1.5, logicalW - 3.0, logicalH - 3.0));
+        painter.setPen(QColor(226, 255, 255));
+        painter.drawRect(QRectF(2.5, 2.5, logicalW - 5.0, logicalH - 5.0));
+
+        QFont windowFont = formFont();
+        windowFont.setBold(true);
+        painter.setFont(windowFont);
+        painter.setPen(QColor(23, 52, 86));
+        const QString windowTitle = !m_document ? QStringLiteral("Форма")
+            : (!m_document->synonym.isEmpty() ? m_document->synonym
+                                              : m_document->name);
+        painter.drawText(QRectF(10.0, 1.0, logicalW - 90.0, titleHeight - 2.0),
+                         Qt::AlignLeft | Qt::AlignVCenter, windowTitle);
+        // Кнопки окна.
+        painter.setPen(QColor(240, 250, 255));
+        const double buttonY = titleHeight / 2.0;
+        painter.drawLine(QPointF(logicalW - 62.0, buttonY + 4.0),
+                         QPointF(logicalW - 52.0, buttonY + 4.0));
+        painter.drawRect(QRectF(logicalW - 42.0, buttonY - 4.0, 8.0, 8.0));
+        painter.drawLine(QPointF(logicalW - 20.0, buttonY - 4.0),
+                         QPointF(logicalW - 12.0, buttonY + 4.0));
+        painter.drawLine(QPointF(logicalW - 20.0, buttonY + 4.0),
+                         QPointF(logicalW - 12.0, buttonY - 4.0));
+        painter.setPen(QColor(120, 150, 180));
+        painter.drawLine(QPointF(0.0, titleHeight), QPointF(logicalW, titleHeight));
+
         const QFont titleFont(QStringLiteral("Arial"), 14, QFont::Bold);
-        const QFont font(QStringLiteral("Arial"), 9);
+        const QFont font = formFont();
         const QFontMetricsF metrics(font);
 
         if (!m_document) {
@@ -1504,12 +1596,10 @@ protected:
         for (const PreviewControl &control : m_controls)
             paintControl(painter, control, font, metrics);
 
-        // Тонкая рамка клиентской области, как у окна конфигуратора.
-        painter.setPen(QPen(QColor(140, 150, 160), 1.0));
+        // Тонкая рамка клиентской области под заголовком.
+        painter.setPen(QPen(QColor(150, 160, 170), 1.0));
         painter.setBrush(Qt::NoBrush);
-        painter.drawRect(QRectF(0.0, 0.0,
-                                width() / m_scale - 1.0,
-                                height() / m_scale - 1.0));
+        painter.drawRect(QRectF(3.0, 28.0, logicalW - 6.0, logicalH - 31.0));
     }
 
 private:
@@ -1523,7 +1613,7 @@ private:
             return;
         }
 
-        const double margin = 6.0;
+        const double margin = 10.0;
         double viewportWidth = 0.0;
         double viewportHeight = 0.0;
         if (QWidget *viewport = parentWidget()) {
@@ -1535,7 +1625,7 @@ private:
         // Ширина формы следует за шириной панели, как окно 1С: при масштабе
         // 75% форма занимает панель целиком, при увеличении — прокручивается.
         const double baseWidth = viewportWidth > 2.0
-            ? (viewportWidth - 1.0) / 0.75 : kFormWidth;
+            ? (viewportWidth - 1.0) / m_scale : kFormWidth;
         const double logicalWidth = std::clamp(baseWidth, 700.0, 1600.0);
         const double contentWidth = logicalWidth - margin * 2.0;
 
@@ -1543,8 +1633,9 @@ private:
         // а не оставлять пустую полосу под собой.
         const double viewportLogical = viewportHeight > 0.0
             ? viewportHeight / m_scale : 0.0;
+        const double titleBarHeight = 28.0;
         const double targetContentHeight = std::max(0.0,
-            viewportLogical - margin * 2.0 - 2.0);
+            viewportLogical - margin * 2.0 - titleBarHeight - 2.0);
 
         LayoutEngine engine(*m_document, contentWidth);
         double contentHeight = 0.0;
@@ -1574,13 +1665,14 @@ private:
         }
 
         for (PreviewControl &control : controls)
-            control.rect.translate(margin, margin);
+            control.rect.translate(margin, margin + titleBarHeight);
         m_controls = controls;
         m_contentHeight = contentHeight;
-        double logicalHeight = qBound(280.0, margin * 2.0 + contentHeight, 8000.0);
+        double logicalHeight = qBound(280.0,
+            margin * 2.0 + contentHeight + titleBarHeight, 8000.0);
         if (targetContentHeight > 0.0) {
             logicalHeight = std::max(logicalHeight,
-                margin * 2.0 + targetContentHeight);
+                margin * 2.0 + targetContentHeight + titleBarHeight);
         }
         setFixedSize(int(logicalWidth * m_scale), int(logicalHeight * m_scale));
         update();
@@ -1591,7 +1683,7 @@ private:
     const v8reader::FormDocument *m_document = nullptr;
     QVector<PreviewControl> m_controls;
     double m_contentHeight = 0.0;
-    double m_scale = 0.75;
+    double m_scale = 1.0;
 };
 
 namespace v8reader {
@@ -1621,7 +1713,7 @@ FormView::FormView(QWidget *parent)
     const QVector<int> scales = {50, 75, 100, 125, 150};
     for (int percent : scales)
         m_scaleCombo->addItem(QStringLiteral("%1%").arg(percent), percent);
-    m_scaleCombo->setCurrentIndex(1);
+    m_scaleCombo->setCurrentIndex(2);
     toolbar->addWidget(m_scaleCombo);
     m_treeToggle = new QToolButton(formPage);
     m_treeToggle->setObjectName(QStringLiteral("formTreeToggle"));

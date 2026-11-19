@@ -31,7 +31,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     for (double width : widths)
         columnsTotal += width;
     const bool horizontalScroll = columnsTotal > contentWidth + 0.5;
-    const double scrollHeight = horizontalScroll ? 10.0 : 0.0;
+    const double scrollHeight = horizontalScroll ? 16.0 : 0.0;
     const double tableHeight = rect.height();
 
     const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
