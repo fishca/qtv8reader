@@ -435,12 +435,12 @@ private:
             if (icon != ButtonIcon::None)
                 width += 22.0;
             if (item.name == QStringLiteral("Создать"))
-                width += 10.0;
+                width += 15.0;
             return std::min(250.0, width);
         }
         case Type::Search:
             if (item.name.contains(QStringLiteral("СтрокаПоиска")))
-                return 200.0;
+                return 190.0;
             if (item.name.contains(QStringLiteral("УправлениеПоиском")))
                 return 40.0;
             return 40.0;
@@ -459,8 +459,10 @@ private:
                     return 30.0;
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
+                if (item.name == QStringLiteral("Создать2"))
+                    return 90.0;
                 if (item.name == QStringLiteral("Еще"))
-                    return 60.0;
+                    return 55.0;
                 return std::max(64.0,
                     m_metrics.horizontalAdvance(title) + 44.0);
             }
@@ -1083,7 +1085,7 @@ private:
                 PreviewControl control;
                 control.kind = PreviewControl::Kind::SearchOptions;
                 control.rect = QRectF(rect.left(), buttonY,
-                                      std::min(rect.width(), 40.0),
+                                      std::min(rect.width(), 30.0),
                                       FormStyle::buttonHeight);
                 control.bordered = true;
                 m_controls->append(control);
