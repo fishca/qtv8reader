@@ -1713,15 +1713,23 @@ private:
         }
 
         const double margin = 6.0;
-        const double contentWidth = kFormWidth - margin * 2.0;
+        double viewportWidth = 0.0;
+        double viewportHeight = 0.0;
+        if (QWidget *viewport = parentWidget()) {
+            if (QScrollArea *area = qobject_cast<QScrollArea *>(viewport->parentWidget())) {
+                viewportWidth = area->viewport()->width();
+                viewportHeight = area->viewport()->height();
+            }
+        }
+        // Ширина формы следует за шириной панели, как окно 1С: при масштабе
+        // 75% форма занимает панель целиком, при увеличении — прокручивается.
+        const double baseWidth = viewportWidth > 2.0
+            ? (viewportWidth - 1.0) / 0.75 : kFormWidth;
+        const double logicalWidth = std::clamp(baseWidth, 700.0, 1600.0);
+        const double contentWidth = logicalWidth - margin * 2.0;
 
         // Высота окна 1С: таблица списка должна занимать всё доступное место,
         // а не оставлять пустую полосу под собой.
-        double viewportHeight = 0.0;
-        if (QWidget *viewport = parentWidget()) {
-            if (QScrollArea *area = qobject_cast<QScrollArea *>(viewport->parentWidget()))
-                viewportHeight = area->viewport()->height();
-        }
         const double viewportLogical = viewportHeight > 0.0
             ? viewportHeight / m_scale : 0.0;
         const double targetContentHeight = std::max(0.0,
@@ -1763,7 +1771,7 @@ private:
             logicalHeight = std::max(logicalHeight,
                 margin * 2.0 + targetContentHeight);
         }
-        setFixedSize(int(kFormWidth * m_scale), int(logicalHeight * m_scale));
+        setFixedSize(int(logicalWidth * m_scale), int(logicalHeight * m_scale));
         update();
     }
 
