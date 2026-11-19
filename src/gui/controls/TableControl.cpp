@@ -74,7 +74,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
         painter.setPen(FormStyle::text);
         const QString text = metrics.elidedText(columns.at(i), Qt::ElideRight,
                                                 int(width) - 8);
-        painter.drawText(cell.adjusted(8, 0, -6, 0),
+        painter.drawText(cell.adjusted(12, 0, -6, 0),
                          Qt::AlignLeft | Qt::AlignVCenter, text);
         columnX += width;
     }

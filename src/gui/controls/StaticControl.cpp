@@ -18,8 +18,8 @@ void paintText(QPainter &painter, const TextVisual &visual,
 void paintFilterChip(QPainter &painter, const ChipVisual &visual)
 {
     const QRectF &rect = visual.rect;
-    painter.setPen(QColor(214, 196, 128));
-    painter.setBrush(QColor(255, 247, 214));
+    painter.setPen(QColor(207, 192, 124));
+    painter.setBrush(QColor(253, 245, 199));
     painter.drawRoundedRect(rect, 3.0, 3.0);
     painter.setBrush(Qt::NoBrush);
     painter.setPen(QColor(90, 74, 0));

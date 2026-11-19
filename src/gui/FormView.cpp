@@ -412,7 +412,7 @@ private:
         const QString label = fieldLabel(item);
         if (label.isEmpty())
             return 0.0;
-        return std::min(210.0, m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0);
+        return std::min(210.0, m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
     }
 
     double preferredWidth(const v8reader::FormItem &item) const
@@ -430,19 +430,19 @@ private:
                 && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn
                 && icon != ButtonIcon::Print;
             if (iconOnly)
-                return 30.0;
+                return 28.0;
             double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
             if (icon != ButtonIcon::None)
                 width += 22.0;
             if (item.name == QStringLiteral("Создать"))
-                width += 35.0;
+                width += 10.0;
             return std::min(250.0, width);
         }
         case Type::Search:
             if (item.name.contains(QStringLiteral("СтрокаПоиска")))
-                return 190.0;
+                return 212.0;
             if (item.name.contains(QStringLiteral("УправлениеПоиском")))
-                return 40.0;
+                return 28.0;
             return 40.0;
         case Type::Table:
             return 340.0;
@@ -456,13 +456,15 @@ private:
                     && icon != ButtonIcon::CreateBasedOn
                     && icon != ButtonIcon::Print;
                 if (iconOnly)
-                    return 30.0;
+                    return 28.0;
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
                 if (item.name == QStringLiteral("Создать2"))
-                    return 100.0;
+                    return 95.0;
+                if (item.name == QStringLiteral("СоздатьНаОсновании"))
+                    return 160.0;
                 if (item.name == QStringLiteral("Еще"))
-                    return 55.0;
+                    return 58.0;
                 return std::max(64.0,
                     m_metrics.horizontalAdvance(title) + 44.0);
             }
@@ -1141,7 +1143,7 @@ private:
         double labelW = forcedLabelWidth;
         if (labelW <= 0.0) {
             labelW = std::min(210.0,
-                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 10.0);
+                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
         }
         labelW = std::min(labelW, rect.width() * 0.7);
 

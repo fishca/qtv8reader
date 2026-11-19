@@ -50,13 +50,13 @@ void paintField(QPainter &painter, const FieldVisual &visual,
         }
     }
     if (visual.checkBox) {
-        const QRectF box(x + 1.0, rect.top() + (rect.height() - 15.0) / 2.0,
-                         15.0, 15.0);
+        const QRectF box(x + 1.0, rect.top() + (rect.height() - 13.0) / 2.0,
+                         13.0, 13.0);
         painter.setPen(FormStyle::fieldBorder);
         painter.setBrush(Qt::white);
         painter.drawRect(box);
         painter.setBrush(Qt::NoBrush);
-        x += 21.0;
+        x += 19.0;
         if (visual.checkboxOnly)
             return;
     }
