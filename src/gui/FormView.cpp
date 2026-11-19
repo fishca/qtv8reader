@@ -75,8 +75,8 @@ bool looksTechnical(const QString &text)
 
 QFont formFont()
 {
-    QFont font(QStringLiteral("Arial"));
-    font.setPointSizeF(9.5);
+    QFont font(QStringLiteral("Tahoma"));
+    font.setPointSizeF(9.0);
     return font;
 }
 
