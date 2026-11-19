@@ -352,7 +352,11 @@ private:
             double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
             if (icon != ButtonIcon::None)
                 width += 22.0;
-            return std::min(240.0, width);
+            // У основной кнопки «Создать» есть выпадающий список; оставляем
+            // место, чтобы подпись не превращалась в «Созд…».
+            if (item.name == QStringLiteral("Создать"))
+                width += 20.0;
+            return std::min(260.0, width);
         }
         case Type::Search:
             if (item.name.contains(QStringLiteral("СтрокаПоиска")))
