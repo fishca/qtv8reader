@@ -1051,7 +1051,7 @@ private:
             // Командная панель табличной части документа: «Добавить» и «Еще».
             PreviewControl add;
             add.kind = PreviewControl::Kind::Button;
-            add.rect = QRectF(rect.left(), tableTop + 3.0, 84.0,
+            add.rect = QRectF(rect.left(), tableTop + 3.0, 74.0,
                               FormStyle::buttonHeight);
             add.title = QStringLiteral("Добавить");
             add.bordered = true;
@@ -1059,7 +1059,7 @@ private:
 
             PreviewControl up;
             up.kind = PreviewControl::Kind::Button;
-            up.rect = QRectF(rect.left() + 92.0, tableTop + 3.0, 26.0,
+            up.rect = QRectF(rect.left() + 82.0, tableTop + 3.0, 24.0,
                              FormStyle::buttonHeight);
             up.icon = ButtonIcon::Up;
             up.iconOnly = true;
@@ -1068,7 +1068,7 @@ private:
 
             PreviewControl down;
             down.kind = PreviewControl::Kind::Button;
-            down.rect = QRectF(rect.left() + 122.0, tableTop + 3.0, 26.0,
+            down.rect = QRectF(rect.left() + 110.0, tableTop + 3.0, 24.0,
                                FormStyle::buttonHeight);
             down.icon = ButtonIcon::Down;
             down.iconOnly = true;
