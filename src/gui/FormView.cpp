@@ -1028,10 +1028,10 @@ private:
                 if (title.isEmpty())
                     title = humanizeIdentifier(base);
                 // В таблицах 1С служебная колонка номера строки называется
-                // коротко «Номер», а не «Номер строки».
+                // коротко «N», а не «Номер строки».
                 if (title.startsWith(QStringLiteral("Номер строки"),
                                      Qt::CaseInsensitive)) {
-                    title = QStringLiteral("Номер");
+                    title = QStringLiteral("N");
                 }
                 columns->append(title);
                 widths->append(child.widthUnits);
