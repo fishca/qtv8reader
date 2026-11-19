@@ -1424,6 +1424,11 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         }
         const double headerHeight = FormStyle::tableHeaderHeight;
         const double rowHeight = FormStyle::tableRowHeight;
+        double columnsTotal = 0.0;
+        for (double width : widths)
+            columnsTotal += width;
+        const bool horizontalScroll = columnsTotal > rect.width() + 0.5;
+        const double scrollHeight = horizontalScroll ? 10.0 : 0.0;
         const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
         painter.setPen(FormStyle::tableBorder);
         painter.setBrush(FormStyle::headerBackground);
@@ -1453,7 +1458,8 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setPen(FormStyle::tableBorder);
         painter.drawRect(header);
 
-        const int rows = std::max(1, int((rect.height() - headerHeight) / rowHeight));
+        const int rows = std::max(1,
+            int((rect.height() - headerHeight - scrollHeight) / rowHeight));
         for (int row = 0; row < rows; ++row) {
             const QRectF rowRect(rect.left(),
                                  rect.top() + headerHeight + row * rowHeight,
@@ -1470,9 +1476,21 @@ void paintControl(QPainter &painter, const PreviewControl &control,
                 x += widths.at(i);
             }
         }
+        const double tableHeight = std::min(rect.height(),
+            headerHeight + rows * rowHeight + scrollHeight);
         painter.setPen(FormStyle::tableBorder);
-        painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(),
-                                headerHeight + rows * rowHeight));
+        painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(), tableHeight));
+
+        if (horizontalScroll) {
+            const QRectF track(rect.left() + 1.0,
+                               rect.top() + tableHeight - scrollHeight + 1.0,
+                               rect.width() - 2.0, scrollHeight - 2.0);
+            painter.fillRect(track, QColor(241, 241, 241));
+            const double thumb = std::max(30.0,
+                track.width() * rect.width() / columnsTotal);
+            painter.fillRect(QRectF(track.left(), track.top(), thumb, track.height()),
+                             QColor(193, 193, 193));
+        }
         break;
     }
     case PreviewControl::Kind::PageTab: {
