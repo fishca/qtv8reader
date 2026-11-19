@@ -576,7 +576,7 @@ private:
             return item.heightUnits > 0 ? item.heightUnits * 10.0 : 19.0;
         case Type::Table:
             // В форме списка таблица занимает основную часть формы.
-            return m_document.runtimeListCommands ? 470.0 : 360.0;
+            return m_document.runtimeListCommands ? 492.0 : 360.0;
         case Type::Group: {
             if (item.groupKind == 1)
                 return 27.0;
@@ -1269,7 +1269,7 @@ private:
         control.actionColumn = m_document.runtimeListCommands
             || m_document.runtimeCatalogListCommands;
         double tableTop = rect.top();
-        double tableHeight = m_document.runtimeListCommands ? 470.0 : 360.0;
+        double tableHeight = m_document.runtimeListCommands ? 492.0 : 360.0;
         if (m_document.runtimeDocumentCommands && !m_document.runtimeListCommands) {
             // Командная панель табличной части документа: «Добавить» и «Еще».
             PreviewControl add;
@@ -1652,7 +1652,7 @@ private:
             ? viewportHeight / m_scale : 0.0;
         const double titleBarHeight = 26.0;
         const double targetContentHeight = std::max(0.0,
-            viewportLogical - titleBarHeight - 100.0);
+            viewportLogical - titleBarHeight - 87.0);
 
         LayoutEngine engine(*m_document, contentWidth);
         double contentHeight = 0.0;
