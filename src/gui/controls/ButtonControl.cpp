@@ -45,15 +45,34 @@ void drawButtonIcon(QPainter &painter, ButtonIcon icon, const QRectF &rect)
         break;
     }
     case ButtonIcon::Copy: {
-        const QRectF back(rect.left() + s * 0.10, rect.top() + s * 0.25,
-                          s * 0.58, s * 0.58);
-        painter.setPen(QPen(QColor(100, 100, 100), stroke));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(back, 1.5, 1.5);
-        const QRectF front(rect.left() + s * 0.28, rect.top() + s * 0.08,
-                           s * 0.58, s * 0.58);
+        // Документ с зелёным плюсом, как у команды «Скопировать» в 1С.
+        const QRectF sheet(rect.left() + s * 0.18, rect.top() + s * 0.08,
+                           s * 0.5, s * 0.62);
+        painter.setPen(QPen(QColor(90, 110, 130), stroke));
         painter.setBrush(Qt::white);
-        painter.drawRoundedRect(front, 1.5, 1.5);
+        painter.drawRect(sheet);
+        QPolygonF fold;
+        fold << QPointF(sheet.right(), sheet.top())
+             << QPointF(sheet.right(), sheet.top() + s * 0.16)
+             << QPointF(sheet.right() - s * 0.16, sheet.top());
+        painter.setBrush(QColor(205, 215, 225));
+        painter.drawPolygon(fold);
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(QColor(160, 160, 160), std::max(0.8, stroke * 0.7)));
+        for (int i = 0; i < 3; ++i) {
+            const double y = sheet.top() + s * (0.24 + i * 0.12);
+            painter.drawLine(QPointF(sheet.left() + s * 0.08, y),
+                             QPointF(sheet.right() - s * 0.12, y));
+        }
+        const QPointF plus(rect.right() - s * 0.24, rect.bottom() - s * 0.24);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(76, 175, 80));
+        painter.drawEllipse(plus, s * 0.25, s * 0.25);
+        painter.setPen(QPen(Qt::white, stroke, Qt::SolidLine, Qt::RoundCap));
+        painter.drawLine(QPointF(plus.x() - s * 0.12, plus.y()),
+                         QPointF(plus.x() + s * 0.12, plus.y()));
+        painter.drawLine(QPointF(plus.x(), plus.y() - s * 0.12),
+                         QPointF(plus.x(), plus.y() + s * 0.12));
         painter.setBrush(Qt::NoBrush);
         break;
     }
