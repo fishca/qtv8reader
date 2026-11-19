@@ -1560,38 +1560,42 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         painter.setBrush(Qt::white);
         painter.drawRect(edit);
         painter.setBrush(Qt::NoBrush);
-        if (control.dropDown) {
-            const QPointF p(edit.right() - 12.0, edit.center().y());
-            painter.setPen(FormStyle::secondaryText);
-            painter.drawLine(p + QPointF(-4, -2), p + QPointF(0, 2));
-            painter.drawLine(p + QPointF(0, 2), p + QPointF(4, -2));
-        }
-        if (control.calendar && edit.width() > 44.0) {
-            painter.setPen(FormStyle::secondaryText);
-            painter.drawLine(QPointF(edit.right() - 20.0, edit.top() + 2.0),
-                             QPointF(edit.right() - 20.0, edit.bottom() - 2.0));
-            const QRectF cal(edit.right() - 14.0, edit.center().y() - 5.0, 9.0, 9.0);
+        const bool fieldButton = control.dropDown || control.calendar
+            || control.choiceButton;
+        if (fieldButton && edit.width() > 44.0) {
+            const double buttonWidth = 15.0;
+            const QRectF button(edit.right() - buttonWidth, edit.top() + 1.0,
+                                buttonWidth - 1.0, edit.height() - 2.0);
+            QLinearGradient gradient(button.topLeft(), button.bottomLeft());
+            gradient.setColorAt(0.0, QColor(251, 251, 247));
+            gradient.setColorAt(1.0, QColor(236, 231, 216));
+            painter.setPen(QColor(165, 165, 165));
+            painter.setBrush(gradient);
+            painter.drawRect(button);
             painter.setBrush(Qt::NoBrush);
-            painter.drawRect(QRectF(cal.left(), cal.top() + 2.0, cal.width(),
-                                    cal.height() - 2.0));
-            painter.drawLine(QPointF(cal.left(), cal.top() + 4.0),
-                             QPointF(cal.right(), cal.top() + 4.0));
-            painter.drawLine(QPointF(cal.left() + 2.0, cal.top()),
-                             QPointF(cal.left() + 2.0, cal.top() + 3.0));
-            painter.drawLine(QPointF(cal.right() - 2.0, cal.top()),
-                             QPointF(cal.right() - 2.0, cal.top() + 3.0));
-        }
-        if (control.choiceButton && edit.width() > 44.0) {
-            painter.setPen(FormStyle::secondaryText);
-            painter.drawLine(QPointF(edit.right() - 20.0, edit.top() + 2.0),
-                             QPointF(edit.right() - 20.0, edit.bottom() - 2.0));
-            const double dotsY = edit.center().y();
-            for (int i = 0; i < 3; ++i) {
-                painter.setBrush(FormStyle::secondaryText);
-                painter.drawEllipse(QPointF(edit.right() - 14.0 + i * 4.0, dotsY),
-                                    1.2, 1.2);
+            painter.setPen(QColor(80, 80, 80));
+            const QPointF center = button.center();
+            if (control.dropDown) {
+                painter.drawLine(center + QPointF(-4, -2), center + QPointF(0, 2));
+                painter.drawLine(center + QPointF(0, 2), center + QPointF(4, -2));
+            } else if (control.calendar) {
+                const QRectF cal(center.x() - 4.5, center.y() - 4.5, 9.0, 9.0);
+                painter.drawRect(QRectF(cal.left(), cal.top() + 2.0,
+                                        cal.width(), cal.height() - 2.0));
+                painter.drawLine(QPointF(cal.left(), cal.top() + 4.0),
+                                 QPointF(cal.right(), cal.top() + 4.0));
+                painter.drawLine(QPointF(cal.left() + 2.0, cal.top()),
+                                 QPointF(cal.left() + 2.0, cal.top() + 3.0));
+                painter.drawLine(QPointF(cal.right() - 2.0, cal.top()),
+                                 QPointF(cal.right() - 2.0, cal.top() + 3.0));
+            } else {
+                painter.setBrush(QColor(80, 80, 80));
+                for (int i = 0; i < 3; ++i) {
+                    painter.drawEllipse(QPointF(center.x() - 4.0 + i * 4.0,
+                                               center.y()), 1.2, 1.2);
+                }
+                painter.setBrush(Qt::NoBrush);
             }
-            painter.setBrush(Qt::NoBrush);
         }
         break;
     }
