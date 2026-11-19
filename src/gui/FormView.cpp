@@ -590,21 +590,6 @@ private:
     {
         const QHash<QString, QString> usage = usageLabels(items);
 
-        double commonLabel = 0.0;
-        for (const v8reader::FormItem *item : items) {
-            if (item->type != v8reader::FormItem::Type::Field)
-                continue;
-            if (item->name.endsWith(QStringLiteral("Использование")))
-                continue;
-            const QString usageLabel = usage.value(item->name + QStringLiteral("Использование"));
-            commonLabel = std::max(commonLabel,
-                usageLabel.isEmpty()
-                    ? labelWidth(*item)
-                    : std::min(210.0,
-                          m_metrics.horizontalAdvance(usageLabel + QStringLiteral(":"))
-                              + 10.0));
-        }
-
         double y = rect.top();
         for (const v8reader::FormItem *item : items) {
             if (item->name.endsWith(QStringLiteral("Использование")))
@@ -616,7 +601,7 @@ private:
                 const QString usageName = item->name + QStringLiteral("Использование");
                 const QString usageLabel = usage.value(usageName);
                 layoutField(*item, QRectF(rect.left(), y, rect.width(), 27.0),
-                            commonLabel, usageLabel, !usageLabel.isEmpty(), !usageLabel.isEmpty());
+                            0.0, usageLabel, !usageLabel.isEmpty(), !usageLabel.isEmpty());
                 y += 27.0 + 5.0;
             } else {
                 layoutNode(*item, QRectF(rect.left(), y, rect.width(), height), depth + 1);
@@ -1391,7 +1376,7 @@ void paintControl(QPainter &painter, const PreviewControl &control,
                 x = labelRect.right() + 2.0;
             } else {
                 painter.drawText(labelRect.adjusted(0, 0, -4, 0),
-                                 Qt::AlignRight | Qt::AlignVCenter,
+                                 Qt::AlignLeft | Qt::AlignVCenter,
                                  label + QStringLiteral(":"));
                 x = labelRect.right() + 3.0;
             }
