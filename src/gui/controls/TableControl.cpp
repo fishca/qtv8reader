@@ -1,9 +1,9 @@
 #include "TableControl.h"
 
 #include "FormStyle.h"
+#include "ScrollBarControl.h"
 
 #include <QPen>
-#include <QPolygonF>
 
 #include <algorithm>
 
@@ -104,26 +104,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
                                    verticalScrollWidth - 2.0,
                                    std::max(1.0, tableHeight - headerHeight
                                        - scrollHeight - 2.0));
-        painter.fillRect(verticalTrack, QColor(241, 241, 241));
-        const double verticalThumb = std::max(24.0,
-            verticalTrack.height() * 0.45);
-        painter.fillRect(QRectF(verticalTrack.left(), verticalTrack.top(),
-                                verticalTrack.width(),
-                                std::min(verticalThumb, verticalTrack.height())),
-                         QColor(193, 193, 193));
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(120, 120, 120));
-        const double arrowCenterX = verticalTrack.center().x();
-        QPolygonF upArrow;
-        upArrow << QPointF(arrowCenterX - 2.5, verticalTrack.top() + 4.0)
-                << QPointF(arrowCenterX + 2.5, verticalTrack.top() + 4.0)
-                << QPointF(arrowCenterX, verticalTrack.top() + 7.0);
-        painter.drawPolygon(upArrow);
-        QPolygonF downArrow;
-        downArrow << QPointF(arrowCenterX - 2.5, verticalTrack.bottom() - 4.0)
-                  << QPointF(arrowCenterX + 2.5, verticalTrack.bottom() - 4.0)
-                  << QPointF(arrowCenterX, verticalTrack.bottom() - 7.0);
-        painter.drawPolygon(downArrow);
+        paintVerticalScrollBar(painter, verticalTrack);
 
         if (horizontalScroll) {
             // Уголок между полосами прокрутки.
@@ -134,26 +115,7 @@ void paintTable(QPainter &painter, const TableVisual &visual,
             const QRectF track(rect.left() + 1.0,
                                rect.top() + tableHeight - scrollHeight + 1.0,
                                contentWidth - 2.0, scrollHeight - 2.0);
-            painter.fillRect(track, QColor(241, 241, 241));
-            const double thumb = std::max(20.0,
-                track.width() * contentWidth / columnsTotal - 20.0);
-            painter.fillRect(QRectF(track.left() + 10.0, track.top(),
-                                    std::min(thumb, track.width() - 20.0),
-                                    track.height()),
-                             QColor(193, 193, 193));
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(120, 120, 120));
-            const double arrowY = track.center().y();
-            QPolygonF leftArrow;
-            leftArrow << QPointF(track.left() + 7.0, arrowY - 3.0)
-                      << QPointF(track.left() + 7.0, arrowY + 3.0)
-                      << QPointF(track.left() + 3.0, arrowY);
-            painter.drawPolygon(leftArrow);
-            QPolygonF rightArrow;
-            rightArrow << QPointF(track.right() - 7.0, arrowY - 3.0)
-                       << QPointF(track.right() - 7.0, arrowY + 3.0)
-                       << QPointF(track.right() - 3.0, arrowY);
-            painter.drawPolygon(rightArrow);
+            paintHorizontalScrollBar(painter, track, contentWidth / columnsTotal);
         }
 }
 

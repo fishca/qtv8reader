@@ -19,6 +19,8 @@
 - `src/gui/controls/TableControl.h/.cpp` — таблица: шапка, строки с сеткой,
   колонки и полосы прокрутки.
 - `src/gui/controls/TabControl.h/.cpp` — закладка страницы формы.
+- `src/gui/controls/ScrollBarControl.h/.cpp` — вертикальная и горизонтальная
+  полосы прокрутки.
 
 `FormView.cpp` использует эти контролы для отрисовки полей, таблиц,
 закладок, поиска и кнопок; остальные элементы пока рисуются прежним кодом.
@@ -38,8 +40,7 @@
    выбора/календаря.
 3. `TableControl` — сделано: шапка, строки, сетка, колонки, скроллбары.
 4. `CommandBarControl` — раскладка команд, «Еще», поиск, «?».
-5. `TabBarControl` — сделано: закладки страниц; остались `ScrollBarControl`
-   и `GroupControl`.
+5. `TabBarControl` и `ScrollBarControl` — сделано; остался `GroupControl`.
 6. `FormSurface` — собирает дерево контролов, рисует и обрабатывает
    hover/focus; `LayoutEngine` продолжает вычислять координаты.
 
