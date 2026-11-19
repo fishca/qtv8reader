@@ -130,9 +130,9 @@ void paintTable(QPainter &painter, const TableVisual &visual,
             QPolygonF arrow;
             switch (i) {
             case 0:
-                arrow << QPointF(c.x() + 3.0, c.y() - 3.0)
-                      << QPointF(c.x() + 3.0, c.y() + 3.0)
-                      << QPointF(c.x() - 2.0, c.y());
+                arrow << QPointF(c.x() - 3.0, c.y() + 2.0)
+                      << QPointF(c.x() + 3.0, c.y() + 2.0)
+                      << QPointF(c.x(), c.y() - 3.0);
                 break;
             case 1:
                 arrow << QPointF(c.x() - 3.0, c.y() + 2.0)
@@ -145,12 +145,18 @@ void paintTable(QPainter &painter, const TableVisual &visual,
                       << QPointF(c.x(), c.y() + 3.0);
                 break;
             default:
-                arrow << QPointF(c.x() - 3.0, c.y() - 3.0)
-                      << QPointF(c.x() - 3.0, c.y() + 3.0)
-                      << QPointF(c.x() + 2.0, c.y());
+                arrow << QPointF(c.x() - 3.0, c.y() - 2.0)
+                      << QPointF(c.x() + 3.0, c.y() - 2.0)
+                      << QPointF(c.x(), c.y() + 3.0);
                 break;
             }
             painter.drawPolygon(arrow);
+            if (i == 0 || i == 3) {
+                painter.setPen(QPen(QColor(90, 90, 90), 1.2));
+                const double barY = i == 0 ? c.y() - 4.5 : c.y() + 4.5;
+                painter.drawLine(QPointF(c.x() - 4.5, barY),
+                                 QPointF(c.x() + 4.5, barY));
+            }
         }
         painter.setBrush(Qt::NoBrush);
     }
