@@ -1455,6 +1455,15 @@ void paintControl(QPainter &painter, const PreviewControl &control,
                                                     int(width) - 8);
             painter.drawText(cell.adjusted(5, 0, -4, 0),
                              Qt::AlignLeft | Qt::AlignVCenter, text);
+            // Индикатор сортировки, как у списка 1С: по дате/периоду.
+            if (i == 0 && (text == QStringLiteral("Дата")
+                           || text == QStringLiteral("Период"))) {
+                const QPointF p(cell.right() - 10.0, cell.center().y() + 1.0);
+                painter.setPen(QPen(FormStyle::secondaryText, 1.2));
+                painter.drawLine(p + QPointF(-3, -2), p + QPointF(0, 1));
+                painter.drawLine(p + QPointF(0, 1), p + QPointF(3, -2));
+                painter.setPen(FormStyle::text);
+            }
             columnX += width;
         }
         painter.setFont(font);
@@ -1497,6 +1506,19 @@ void paintControl(QPainter &painter, const PreviewControl &control,
                                 verticalTrack.width(),
                                 std::min(verticalThumb, verticalTrack.height())),
                          QColor(193, 193, 193));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(120, 120, 120));
+        const double arrowCenterX = verticalTrack.center().x();
+        QPolygonF upArrow;
+        upArrow << QPointF(arrowCenterX - 2.5, verticalTrack.top() + 4.0)
+                << QPointF(arrowCenterX + 2.5, verticalTrack.top() + 4.0)
+                << QPointF(arrowCenterX, verticalTrack.top() + 7.0);
+        painter.drawPolygon(upArrow);
+        QPolygonF downArrow;
+        downArrow << QPointF(arrowCenterX - 2.5, verticalTrack.bottom() - 4.0)
+                  << QPointF(arrowCenterX + 2.5, verticalTrack.bottom() - 4.0)
+                  << QPointF(arrowCenterX, verticalTrack.bottom() - 7.0);
+        painter.drawPolygon(downArrow);
 
         if (horizontalScroll) {
             const QRectF track(rect.left() + 1.0,
