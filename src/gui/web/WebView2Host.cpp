@@ -823,6 +823,8 @@ void WebView2Host::hideEvent(QHideEvent *event)
 class WebView2Host::Impl
 {
 public:
+    explicit Impl(WebView2Host *host) { Q_UNUSED(host); }
+
     WebView2Host::ResourceProvider provider;
 };
 
@@ -836,6 +838,23 @@ WebView2Host::~WebView2Host()
 {
     delete m_impl;
     m_impl = nullptr;
+}
+
+// События объявлены в заголовке всегда, поэтому заглушки нужны и без Windows:
+// иначе таблица виртуальных функций остаётся с неразрешёнными символами.
+void WebView2Host::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+}
+
+void WebView2Host::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+}
+
+void WebView2Host::hideEvent(QHideEvent *event)
+{
+    QWidget::hideEvent(event);
 }
 
 bool WebView2Host::isSupported(QString *reason)
