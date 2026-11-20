@@ -24,7 +24,9 @@ void paintTable(QPainter &painter, const TableVisual &visual,
             widths.append(rect.width() / columns.size());
     }
     const double headerHeight = FormStyle::tableHeaderHeight;
-    const double verticalScrollWidth = 0.0;
+    // Таблица конфигуратора показывает вертикальную прокрутку справа.
+    const double verticalScrollWidth = rect.height() > headerHeight + 80.0
+        ? 14.0 : 0.0;
     const double actionWidth = visual.actionColumn ? 37.0 : 0.0;
     const double contentWidth = std::max(1.0, rect.width() - verticalScrollWidth);
     double columnsTotal = actionWidth;
@@ -35,13 +37,21 @@ void paintTable(QPainter &painter, const TableVisual &visual,
     const double tableHeight = rect.height();
 
     const QRectF header(rect.left(), rect.top(), rect.width(), headerHeight);
-    painter.setPen(FormStyle::tableBorder);
-    painter.setBrush(FormStyle::headerBackground);
-    painter.drawRect(header);
-    painter.setBrush(Qt::NoBrush);
+    // Шапка таблицы 8.3: светло-серая с белой внутренней подсветкой сверху и
+    // слева, снизу — разделитель #ccc.
+    painter.fillRect(header, FormStyle::headerBackground);
+    painter.setPen(FormStyle::headerHighlight);
+    painter.drawLine(QPointF(header.left() + 1.0, header.top() + 0.5),
+                     QPointF(header.right() - 1.0, header.top() + 0.5));
+    painter.drawLine(QPointF(header.left() + 0.5, header.top() + 1.0),
+                     QPointF(header.left() + 0.5, header.bottom() - 1.0));
+    painter.setPen(QColor(204, 204, 204));
+    painter.drawLine(QPointF(header.left(), header.bottom() - 0.5),
+                     QPointF(header.right(), header.bottom() - 0.5));
 
     QFont headerFont = font;
     headerFont.setPointSizeF(9.0);
+    headerFont.setBold(false);
     painter.setFont(headerFont);
     painter.setPen(FormStyle::text);
 
@@ -50,8 +60,6 @@ void paintTable(QPainter &painter, const TableVisual &visual,
         const QRectF cell(columnX, rect.top(), actionWidth, headerHeight);
         painter.setPen(FormStyle::gridLine);
         painter.drawLine(cell.topRight(), cell.bottomRight());
-        painter.setPen(FormStyle::tableBorder);
-        painter.drawLine(cell.bottomLeft(), cell.bottomRight());
         // Карандаш — команда редактирования строки в таблице конфигуратора.
         painter.setPen(QPen(QColor(110, 110, 110), 1.3));
         painter.drawLine(QPointF(cell.left() + 13.0, cell.bottom() - 8.0),
@@ -70,20 +78,19 @@ void paintTable(QPainter &painter, const TableVisual &visual,
         painter.setPen(FormStyle::gridLine);
         if (columnX + width < rect.left() + contentWidth)
             painter.drawLine(cell.topRight(), cell.bottomRight());
-        painter.setPen(FormStyle::tableBorder);
-        painter.drawLine(cell.bottomLeft(), cell.bottomRight());
         painter.setPen(FormStyle::text);
         const QString text = metrics.elidedText(columns.at(i), Qt::ElideRight,
                                                 int(width) - 8);
-        painter.drawText(cell.adjusted(12, -2, -6, 0),
+        painter.drawText(cell.adjusted(6, 0, -6, 0),
                          Qt::AlignLeft | Qt::AlignVCenter, text);
         columnX += width;
     }
     painter.setFont(font);
-    painter.setPen(FormStyle::tableBorder);
-    painter.drawRect(header);
 
     // Пустая таблица конфигуратора — белое поле без строк.
+    painter.fillRect(QRectF(rect.left(), rect.top() + headerHeight,
+                            rect.width(), tableHeight - headerHeight),
+                     Qt::white);
     painter.setPen(FormStyle::tableBorder);
     painter.drawRect(QRectF(rect.left(), rect.top(), rect.width(), tableHeight));
 
@@ -146,6 +153,16 @@ void paintTable(QPainter &painter, const TableVisual &visual,
             }
         }
         painter.setBrush(Qt::NoBrush);
+    }
+
+    if (verticalScrollWidth > 0.0) {
+        const double bottomInset = horizontalScroll ? 16.0 : 0.0;
+        const QRectF track(rect.right() - verticalScrollWidth + 1.0,
+                           rect.top() + headerHeight + 1.0,
+                           verticalScrollWidth - 2.0,
+                           std::max(20.0, tableHeight - headerHeight
+                                              - bottomInset - 2.0));
+        paintVerticalScrollBar(painter, track);
     }
 }
 

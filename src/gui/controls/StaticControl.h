@@ -13,6 +13,9 @@ struct TextVisual
 {
     QRectF rect;
     QString text;
+    // Плашка-баннер 1С (жёлтый фон) и её крестик закрытия.
+    bool banner = false;
+    bool closeGlyph = false;
 };
 
 struct ChipVisual

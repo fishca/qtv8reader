@@ -24,6 +24,9 @@ qtv8reader_autogen/
 *.o
 *.pdb
 
+# Исключение: загрузчик SDK WebView2 нужен при сборке и кладётся в поставку
+!3rdparty/webview2/x64/WebView2Loader.dll
+
 # Логи и временные данные
 *.log
 *.tmp

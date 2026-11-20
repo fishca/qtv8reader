@@ -220,24 +220,19 @@ void drawButtonIcon(QPainter &painter, ButtonIcon icon, const QRectF &rect)
         break;
     }
     case ButtonIcon::AtKt: {
-        const QRectF doc(rect.left() + s * 0.2, rect.top() + s * 0.06,
-                         s * 0.6, s * 0.86);
-        painter.setPen(QPen(QColor(90, 110, 130), stroke));
-        painter.setBrush(Qt::white);
-        painter.drawRect(doc);
-        painter.setBrush(Qt::NoBrush);
+        // Кнопка движений документа: две строки «Дт» / «Кт», без рамки.
         QFont font = painter.font();
-        font.setPixelSize(std::max(4, int(s * 0.3)));
+        font.setPixelSize(std::max(5, int(s * 0.42)));
         font.setBold(true);
         painter.setFont(font);
-        painter.setPen(QColor(60, 150, 90));
-        painter.drawText(QRectF(doc.left(), doc.top() + s * 0.05,
-                                doc.width(), doc.height() / 2.0),
-                         Qt::AlignCenter, QStringLiteral("Ат"));
+        painter.setPen(QColor(60, 110, 180));
+        painter.drawText(QRectF(rect.left(), rect.top() + s * 0.04,
+                                rect.width(), rect.height() / 2.0),
+                         Qt::AlignCenter, QStringLiteral("Дт"));
         painter.setPen(QColor(180, 70, 70));
-        painter.drawText(QRectF(doc.left(), doc.center().y(),
-                                doc.width(), doc.height() / 2.0),
-                         Qt::AlignCenter, QStringLiteral("КТ"));
+        painter.drawText(QRectF(rect.left(), rect.center().y() - s * 0.04,
+                                rect.width(), rect.height() / 2.0),
+                         Qt::AlignCenter, QStringLiteral("Кт"));
         break;
     }
     case ButtonIcon::ListSettings: {
@@ -294,39 +289,48 @@ void paintButton(QPainter &painter, const ButtonVisual &visual,
                  const QFontMetricsF &metrics)
 {
     const QRectF &rect = visual.rect;
+    // Кнопка 8.3: выпуклый белый градиент, рамка #b2b2b2 с более тёмной нижней
+    // кромкой #9b9b9b и тенью в один пиксель. Кнопка по умолчанию — жёлтая,
+    // с полужирной подписью.
+    QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
     if (visual.primary) {
-        QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
         gradient.setColorAt(0.0, FormStyle::primaryTop);
+        gradient.setColorAt(0.46, FormStyle::primaryMiddle);
         gradient.setColorAt(1.0, FormStyle::primaryBottom);
-        painter.setPen(FormStyle::primaryBorder);
-        painter.setBrush(gradient);
-        painter.drawRoundedRect(rect, 2.0, 2.0);
-        painter.setBrush(Qt::NoBrush);
-    } else if (visual.bordered) {
-        QLinearGradient gradient(rect.topLeft(), rect.bottomLeft());
-        gradient.setColorAt(0.0, QColor(252, 252, 252));
-        gradient.setColorAt(1.0, QColor(238, 238, 238));
-        painter.setPen(FormStyle::fieldBorder);
-        painter.setBrush(gradient);
-        painter.drawRoundedRect(rect, 2.0, 2.0);
-        painter.setBrush(Qt::NoBrush);
     } else {
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(Qt::NoBrush);
+        gradient.setColorAt(0.0, FormStyle::buttonTop);
+        gradient.setColorAt(0.46, FormStyle::buttonMiddle);
+        gradient.setColorAt(1.0, FormStyle::buttonBottom);
     }
-    painter.setPen(FormStyle::text);
+    painter.setPen(visual.primary ? FormStyle::primaryBorder
+                                  : FormStyle::buttonBorder);
+    painter.setBrush(gradient);
+    painter.drawRoundedRect(rect, 2.6, 2.6);
+    painter.setBrush(Qt::NoBrush);
 
-    const double iconSize = std::min(18.0, rect.height() - 6.0);
-    double textLeft = rect.left() + 6.0;
-    double textRight = rect.right() - (visual.dropDown ? 18.0 : 6.0);
+    // Нижняя кромка и тень — так кнопка читается «выпуклой», как в 1С.
+    painter.setPen(visual.primary ? FormStyle::primaryBorderBottom
+                                  : FormStyle::buttonBorderBottom);
+    painter.drawLine(QPointF(rect.left() + 2.0, rect.bottom() - 0.5),
+                     QPointF(rect.right() - 2.0, rect.bottom() - 0.5));
+    painter.setPen(QColor(0, 0, 0, 45));
+    painter.drawLine(QPointF(rect.left() + 2.0, rect.bottom() + 0.5),
+                     QPointF(rect.right() - 2.0, rect.bottom() + 0.5));
+
+    painter.setPen(visual.primary ? FormStyle::primaryText : FormStyle::text);
+
+    const double iconSize = 16.0;
+    const bool iconOnly = visual.iconOnly;
+    double textLeft = rect.left() + (iconOnly ? 0.0 : 12.0);
+    double textRight = rect.right() - (visual.dropDown ? 18.0 : 12.0);
     if (visual.icon != ButtonIcon::None) {
         QRectF iconRect;
-        if (visual.iconOnly) {
+        if (iconOnly) {
             iconRect = QRectF(rect.center().x() - iconSize / 2.0,
                               rect.center().y() - iconSize / 2.0,
                               iconSize, iconSize);
         } else {
-            iconRect = QRectF(rect.left() + 5.0,
+            iconRect = QRectF(rect.left() + 7.0,
                               rect.center().y() - iconSize / 2.0,
                               iconSize, iconSize);
             textLeft = iconRect.right() + 4.0;
@@ -334,9 +338,15 @@ void paintButton(QPainter &painter, const ButtonVisual &visual,
         drawButtonIcon(painter, visual.icon, iconRect);
     }
     if (!visual.iconOnly) {
-        const QString text = metrics.elidedText(visual.text, Qt::ElideRight,
-                                                int(std::max(10.0, textRight - textLeft)));
-        painter.setPen(FormStyle::text);
+        QFont font = painter.font();
+        if (visual.primary)
+            font.setBold(true);   // кнопка по умолчанию в 1С — полужирная
+        painter.setFont(font);
+        const QFontMetricsF textMetrics(font);
+        const QString text = textMetrics.elidedText(
+            visual.text, Qt::ElideRight,
+            int(std::max(10.0, textRight - textLeft)));
+        painter.setPen(visual.primary ? FormStyle::primaryText : FormStyle::text);
         painter.drawText(QRectF(textLeft, rect.top(), textRight - textLeft,
                                 rect.height()),
                          Qt::AlignLeft | Qt::AlignVCenter, text);

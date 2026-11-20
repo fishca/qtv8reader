@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.6.1
+    VERSION 0.7.0
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -51,6 +51,10 @@ add_library(qtv8reader_core STATIC
     src/core/MxlReader.cpp
     src/core/FormDocument.h
     src/core/FormDocument.cpp
+    src/core/FormWebModel.h
+    src/core/FormWebModel.cpp
+    src/core/FormBindings.h
+    src/core/FormBindings.cpp
     src/core/FormReader.h
     src/core/FormReader.cpp
 )
@@ -93,6 +97,8 @@ add_library(qtv8reader_gui STATIC
     src/gui/MxlPrinter.cpp
     src/gui/FormView.h
     src/gui/FormView.cpp
+    src/gui/web/WebView2Host.h
+    src/gui/web/WebView2Host.cpp
     src/gui/controls/ButtonControl.h
     src/gui/controls/ButtonControl.cpp
     src/gui/controls/CommandBarControl.h
@@ -119,6 +125,17 @@ add_library(qtv8reader_gui STATIC
 
 target_link_libraries(qtv8reader_gui PUBLIC qtv8reader_core Qt6::Widgets Qt6::PrintSupport)
 
+if (WIN32)
+    # Точный вид формы: Microsoft Edge WebView2 (Chromium).
+    # Заголовки SDK нужны только на этапе сборки, WebView2Loader.dll —
+    # источник функции CreateCoreWebView2EnvironmentWithOptions; интерфейсы
+    # COM вызываются напрямую через виртуальные таблицы, поэтому SDK-библиотека
+    # не линкуется.
+    target_include_directories(qtv8reader_gui PRIVATE 3rdparty/webview2/include)
+    target_compile_definitions(qtv8reader_gui PRIVATE QTV8READER_WEBVIEW2=1)
+    target_link_libraries(qtv8reader_gui PUBLIC shlwapi ole32 oleaut32)
+endif()
+
 qt_add_executable(qtv8reader WIN32
     resources/resources.qrc
     src/gui/main.cpp
@@ -126,6 +143,14 @@ qt_add_executable(qtv8reader WIN32
 
 target_link_libraries(qtv8reader PRIVATE qtv8reader_gui)
 target_compile_definitions(qtv8reader PRIVATE QTV8READER_VERSION="${PROJECT_VERSION}")
+
+if (WIN32)
+    add_custom_command(TARGET qtv8reader POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/webview2/x64/WebView2Loader.dll"
+            "$<TARGET_FILE_DIR:qtv8reader>/WebView2Loader.dll"
+        COMMENT "Копирование WebView2Loader.dll")
+endif()
 
 add_library(qtv8reader_cli_lib STATIC
     src/cli/CliApplication.h
@@ -144,6 +169,7 @@ add_library(qtv8reader_cli_lib STATIC
     src/cli/MetadataCommand.cpp
     src/cli/ModulesCommand.cpp
     src/cli/CompositionCommand.cpp
+    src/cli/FormModelCommand.cpp
     src/cli/MxlCommand.cpp
     src/cli/ExtractCommand.cpp
     src/cli/ExtractAllCommand.cpp

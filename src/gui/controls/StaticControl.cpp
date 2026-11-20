@@ -9,8 +9,28 @@ namespace controls {
 void paintText(QPainter &painter, const TextVisual &visual,
                const QFontMetricsF &metrics)
 {
+    if (visual.closeGlyph) {
+        const QPointF center = visual.rect.center();
+        painter.setPen(QPen(QColor(120, 120, 120), 1.2));
+        painter.drawLine(center + QPointF(-3.5, -3.5), center + QPointF(3.5, 3.5));
+        painter.drawLine(center + QPointF(-3.5, 3.5), center + QPointF(3.5, -3.5));
+        return;
+    }
+    if (visual.banner) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(252, 245, 198));
+        painter.drawRoundedRect(visual.rect, 2.0, 2.0);
+        painter.setBrush(Qt::NoBrush);
+    }
     painter.setPen(FormStyle::text);
-    painter.drawText(visual.rect, Qt::AlignLeft | Qt::AlignVCenter,
+    // Текст баннера 1С не обрезает многоточием — он обязан быть виден целиком.
+    if (visual.banner) {
+        painter.drawText(visual.rect.adjusted(4, 0, -4, 0),
+                         Qt::AlignLeft | Qt::AlignVCenter, visual.text);
+        return;
+    }
+    painter.drawText(visual.rect.adjusted(2, 0, -2, 0),
+                     Qt::AlignLeft | Qt::AlignVCenter,
                      metrics.elidedText(visual.text, Qt::ElideRight,
                                         int(visual.rect.width())));
 }

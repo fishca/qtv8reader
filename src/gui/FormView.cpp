@@ -10,8 +10,11 @@
 #include "controls/TabControl.h"
 #include "controls/TableControl.h"
 #include "gui/BslHighlighter.h"
+#include "gui/web/WebView2Host.h"
 
 #include <QComboBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QHBoxLayout>
@@ -27,11 +30,17 @@
 #include <QScrollArea>
 #include <QSet>
 #include <QShowEvent>
+#include <QSignalBlocker>
 #include <QSplitter>
+#include <QStackedWidget>
+#include <QStandardItem>
+#include <QStandardItemModel>
 #include <QTabWidget>
+#include <QTextStream>
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -44,7 +53,7 @@ using controls::ButtonIcon;
 
 struct PreviewControl
 {
-    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator, HorizontalLine, FilterChip };
+    enum class Kind { Field, Button, Table, PageTab, Decoration, Search, SearchOptions, Separator, HorizontalLine, FilterChip, GroupTitle };
     Kind kind = Kind::Field;
     ButtonIcon icon = ButtonIcon::None;
     bool iconOnly = false;
@@ -54,16 +63,24 @@ struct PreviewControl
     QVector<double> columnWidths;
     double labelWidth = 0.0;
     double inputWidth = -1.0;
+    int labelPlacement = 0;   // 0 — слева, 1 — сверху, 2 — справа, 3 — снизу
     bool selectedTab = false;
     bool actionColumn = false;
     bool checkBox = false;
     bool checkboxOnly = false;
+    bool checkBoxLeading = false;
     bool dropDown = false;
     bool primary = false;
     bool labelOnly = false;
     bool calendar = false;
     bool bordered = false;
     bool choiceButton = false;
+    bool banner = false;
+    bool closeGlyph = false;
+    // Заголовок группы-секции: режим выделения и способ раскрытия.
+    int groupRepresentation = 0;
+    bool groupCollapsible = false;
+    bool groupPopup = false;
 };
 
 bool looksTechnical(const QString &text)
@@ -111,8 +128,13 @@ bool isServiceItem(const v8reader::FormItem &item)
         return true;
     if (!item.visible)
         return true;
-    if (item.name.startsWith(QStringLiteral("Баннер")))
+    // Баннеры платформа показывает по условию (сканер, чеки, билеты).
+    // В статическом просмотре оставляем только «билеты» — он есть на форме.
+    if (item.type == Type::Group
+        && item.name.contains(QStringLiteral("Баннер"))
+        && !item.name.contains(QStringLiteral("УчетБилетов"))) {
         return true;
+    }
     if (item.name.contains(QStringLiteral("КонтекстноеМеню"))
         || item.name.endsWith(QStringLiteral("РасширеннаяПодсказка"))
         || item.name.endsWith(QStringLiteral("ExtendedTooltip")))
@@ -199,8 +221,9 @@ ButtonIcon iconForButton(const v8reader::FormItem &item)
         return ButtonIcon::Pencil;
     if (has(QStringLiteral("Печать")))
         return ButtonIcon::Print;
-    if (has(QStringLiteral("ПоказатьДвижения"))
-        || has(QStringLiteral("СтруктураПодчиненности")))
+    if (has(QStringLiteral("ПоказатьДвижения")))
+        return ButtonIcon::AtKt;
+    if (has(QStringLiteral("СтруктураПодчиненности")))
         return ButtonIcon::Hierarchy;
     if (has(QStringLiteral("ПрисоединенныеФайлы")))
         return ButtonIcon::Paperclip;
@@ -304,6 +327,29 @@ public:
             }
         }
 
+        // Платформа прячет подменю и новости командной панели в «Еще»:
+        // вычищаем их из дерева, иначе они занимают место на панели.
+        if (m_document.runtimeDocumentCommands && !m_document.runtimeListCommands) {
+            std::function<void(v8reader::FormItem &)> prune = [&](v8reader::FormItem &item) {
+                QVector<v8reader::FormItem> kept;
+                for (const v8reader::FormItem &child : item.children) {
+                    const bool submenu = child.type == v8reader::FormItem::Type::Group
+                        && child.groupKind == 1
+                        && child.name != QStringLiteral("СоздатьНаОсновании");
+                    const bool news = child.name.contains(
+                        QStringLiteral("КонтекстныеНовости"));
+                    if (submenu || news)
+                        continue;
+                    kept.append(child);
+                }
+                item.children = kept;
+                for (v8reader::FormItem &child : item.children)
+                    prune(child);
+            };
+            for (v8reader::FormItem &root : localItems)
+                prune(root);
+        }
+
         QVector<const v8reader::FormItem *> items;
         for (const v8reader::FormItem &item : localItems) {
             if (!isServiceItem(item) && hasRenderableContent(item))
@@ -384,6 +430,16 @@ public:
 private:
     QString fieldLabel(const v8reader::FormItem &item) const
     {
+        // Заголовок поля, заданный в самой форме, важнее синонима реквизита:
+        // «НазначениеАванса» в форме подписано «Назначение», а не
+        // «Назначение аванса».
+        if (!item.synonym.isEmpty() && !looksTechnical(item.synonym)) {
+            return item.synonym;
+        }
+        // Путь к данным расшифрован по метаданным: заголовок реквизита
+        // совпадает с конфигуратором («Код / артикул», «Ставка НДС»).
+        if (!item.dataTitle.isEmpty())
+            return item.dataTitle;
         QString title = m_document.titles.value(item.name);
         if (title.isEmpty()) {
             const QString synonym = item.synonym;
@@ -405,14 +461,73 @@ private:
         return humanizeCommand(item.name);
     }
 
+    // Заголовок группы-секции: «Расходы сотрудника», «Цены» и т. п.
+    QString groupTitle(const v8reader::FormItem &item) const
+    {
+        if (!item.synonym.isEmpty() && !looksTechnical(item.synonym))
+            return item.synonym;
+        return QString();
+    }
+
+    int titlePlacement(const v8reader::FormItem &item) const
+    {
+        switch (item.titleLocation) {
+        case v8reader::FormTitleLocation::Top:
+            return 1;
+        case v8reader::FormTitleLocation::Right:
+            return 2;
+        case v8reader::FormTitleLocation::Bottom:
+            return 3;
+        default:
+            return 0;
+        }
+    }
+
+    bool stackedTitle(const v8reader::FormItem &item) const
+    {
+        return item.type == v8reader::FormItem::Type::Field
+            && item.showTitle && (titlePlacement(item) == 1 || titlePlacement(item) == 3);
+    }
+
+    // Группа рисует заголовок, только если задано выделение или особое
+    // поведение: у обычных групп без выделения заголовка на форме нет.
+    bool groupHasHeader(const v8reader::FormItem &item) const
+    {
+        using Type = v8reader::FormItem::Type;
+        if (item.type != Type::Group)
+            return false;
+        if (item.groupKind == 1 || item.groupKind == 3 || item.groupKind == 6
+            || item.groupKind == 9)
+            return false;
+        if (!item.showTitle || groupTitle(item).isEmpty())
+            return false;
+        return item.representation != v8reader::FormGroupRepresentation::None
+            || item.behavior != v8reader::FormGroupBehavior::Usual;
+    }
+
+    double groupHeaderHeight(const v8reader::FormItem &item) const
+    {
+        if (!groupHasHeader(item))
+            return 0.0;
+        if (item.behavior == v8reader::FormGroupBehavior::PopUp)
+            return FormStyle::buttonHeight + 4.0;
+        if (item.representation == v8reader::FormGroupRepresentation::Strong)
+            return 30.0;
+        return 24.0;
+    }
+
     double labelWidth(const v8reader::FormItem &item) const
     {
         if (!item.showTitle)
             return 0.0;
+        // Заголовок сверху/снизу не занимает горизонтальную колонку.
+        if (stackedTitle(item))
+            return 0.0;
         const QString label = fieldLabel(item);
         if (label.isEmpty())
             return 0.0;
-        return std::min(210.0, m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
+        return std::min(112.0,
+            m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
     }
 
     double preferredWidth(const v8reader::FormItem &item) const
@@ -422,6 +537,9 @@ private:
         case Type::Field: {
             if (item.widthUnits > 0 && item.horizontalStretch != 1)
                 return labelWidth(item) + item.widthUnits * 10.0 + 8.0;
+            // Ширина по типу реквизита: 8 px на символ плюс поле ввода.
+            if (item.valueChars > 0 && item.horizontalStretch == 0)
+                return labelWidth(item) + item.valueChars * 8.0 + 26.0;
             return std::max(170.0, labelWidth(item) + 160.0);
         }
         case Type::Button: {
@@ -430,10 +548,20 @@ private:
                 && icon != ButtonIcon::Create && icon != ButtonIcon::CreateBasedOn
                 && icon != ButtonIcon::Print;
             if (iconOnly)
-                return 28.0;
-            double width = m_metrics.horizontalAdvance(buttonTitle(item)) + 16.0;
+                return 30.0;
+            // Кнопка по умолчанию рисуется полужирным — ширина считается по
+            // полужирным метрикам, иначе подпись обрезается.
+            const QString title = buttonTitle(item);
+            QFont bold = m_font;
+            bold.setBold(true);
+            const QFontMetricsF boldMetrics(bold);
+            const bool primaryLike = title.startsWith(QStringLiteral("Провести и закрыть"))
+                || title == QStringLiteral("Создать");
+            // Отступы кнопки 8.3: по 12 px с каждой стороны плюс рамка.
+            double width = (primaryLike ? boldMetrics.horizontalAdvance(title)
+                                        : m_metrics.horizontalAdvance(title)) + 26.0;
             if (icon != ButtonIcon::None)
-                width += 22.0;
+                width += 21.0;
             if (item.name == QStringLiteral("Создать"))
                 width += 16.0;
             return std::min(250.0, width);
@@ -456,7 +584,7 @@ private:
                     && icon != ButtonIcon::CreateBasedOn
                     && icon != ButtonIcon::Print;
                 if (iconOnly)
-                    return 28.0;
+                    return 30.0;
                 const QString title = item.synonym.isEmpty()
                     ? humanizeCommand(item.name) : item.synonym;
                 if (item.name == QStringLiteral("Создать2"))
@@ -466,7 +594,7 @@ private:
                 if (item.name == QStringLiteral("Еще"))
                     return 58.0;
                 return std::max(64.0,
-                    m_metrics.horizontalAdvance(title) + 44.0);
+                    m_metrics.horizontalAdvance(title) + 26.0);
             }
             if (item.widthUnits > 0)
                 return item.widthUnits * 10.0;
@@ -494,6 +622,23 @@ private:
         default:
             return 80.0;
         }
+    }
+
+    // Высота командной панели с учётом переноса кнопок на вторую строку:
+    // в форме «Варианты отчетов» кнопок больше, чем помещается в ширину.
+    double commandBarHeight(const v8reader::FormItem &item, double width) const
+    {
+        QVector<double> widths;
+        for (const v8reader::FormItem &child : item.children) {
+            if (isServiceItem(child))
+                continue;
+            widths.append(std::max(30.0, preferredWidth(child)));
+        }
+        if (widths.isEmpty())
+            return FormStyle::buttonHeight + 6.0;
+        const QVector<QVector<int>> rows = controls::commandBarRows(widths, width, true);
+        const int rowCount = static_cast<int>(std::max<qsizetype>(1, rows.size()));
+        return rowCount * (FormStyle::buttonHeight + 6.0);
     }
 
     bool isTopCommandBar(const v8reader::FormItem &item) const
@@ -569,6 +714,8 @@ private:
         case Type::Field:
         case Type::Button:
         case Type::Search:
+            if (item.type == Type::Field && stackedTitle(item))
+                return 42.0;
             return 27.0;
         case Type::Decoration:
             if (item.synonym.isEmpty())
@@ -582,19 +729,20 @@ private:
                 return 27.0;
             if (isPages(item))
                 return 26.0 + pageContentHeight(item, width);
+            const double header = groupHeaderHeight(item);
             QVector<const v8reader::FormItem *> children;
             visibleChildren(item, &children);
             if (children.isEmpty())
-                return 0.0;
+                return header;
             if (isHorizontal(item))
-                return horizontalHeight(children, width, isCommandBar(item));
+                return header + horizontalHeight(children, width, isCommandBar(item));
             double height = 0.0;
             for (const v8reader::FormItem *child : children) {
                 if (child->name.endsWith(QStringLiteral("Использование")))
                     continue;
                 height += naturalHeight(*child, width) + 5.0;
             }
-            return height;
+            return header + height;
         }
         default:
             return 0.0;
@@ -689,21 +837,43 @@ private:
     {
         const QHash<QString, QString> usage = usageLabels(items);
 
+        // В конфигураторе подписи полей вертикальной группы выровнены по
+        // общей колонке: значения начинаются на одной вертикали.
+        double sharedLabel = 0.0;
+        for (const v8reader::FormItem *item : items) {
+            if (item->type != v8reader::FormItem::Type::Field)
+                continue;
+            if (isServiceItem(*item) || isServiceDecoration(*item) || !item->showTitle)
+                continue;
+            if (titlePlacement(*item) != 0)
+                continue;
+            if (item->name.endsWith(QStringLiteral("Использование")))
+                continue;
+            const QString label = fieldLabel(*item);
+            if (label.isEmpty())
+                continue;
+            sharedLabel = std::max(sharedLabel,
+                std::min(112.0,
+                    m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0));
+        }
+
         double y = rect.top();
         for (const v8reader::FormItem *item : items) {
             if (item->name.endsWith(QStringLiteral("Использование")))
                 continue;
             double height = naturalHeight(*item, rect.width());
             if (isTopCommandBar(*item))
-                height = FormStyle::buttonHeight + 6.0;
+                height = commandBarHeight(*item, rect.width());
             if (height <= 0.0)
                 continue;
             if (item->type == v8reader::FormItem::Type::Field) {
                 const QString usageName = item->name + QStringLiteral("Использование");
                 const QString usageLabel = usage.value(usageName);
-                layoutField(*item, QRectF(rect.left(), y, rect.width(), 27.0),
-                            0.0, usageLabel, !usageLabel.isEmpty(), !usageLabel.isEmpty());
-                y += 27.0 + 5.0;
+                const double fieldHeight = naturalHeight(*item, rect.width());
+                layoutField(*item, QRectF(rect.left(), y, rect.width(), fieldHeight),
+                            usageLabel.isEmpty() ? sharedLabel : 0.0,
+                            usageLabel, !usageLabel.isEmpty(), !usageLabel.isEmpty());
+                y += fieldHeight + 5.0;
             } else {
                 layoutNode(*item, QRectF(rect.left(), y, rect.width(), height), depth + 1);
                 y += height + 5.0;
@@ -740,6 +910,36 @@ private:
         }
         if (visible.isEmpty())
             return 0.0;
+
+        // Кнопки с LocationInCommandBar «только в подменю» платформа
+        // на панель не выводит — они живут в «Еще».
+        if (allowWrap) {
+            QVector<const v8reader::FormItem *> onBar;
+            for (const v8reader::FormItem *item : visible) {
+                if (item->type == v8reader::FormItem::Type::Button
+                    && !item->onCommandBar) {
+                    continue;
+                }
+                onBar.append(item);
+            }
+            if (!onBar.isEmpty())
+                visible = onBar;
+        }
+
+        // Внутри командной панели подменю (Печать, Заполнить, Отчеты, ЭДО)
+        // 1С в панель не выводит — они живут в «Еще».
+        if (allowWrap && !runtimeCommands) {
+            QVector<const v8reader::FormItem *> filtered;
+            for (const v8reader::FormItem *item : visible) {
+                if (item->type == v8reader::FormItem::Type::Group
+                    && item->groupKind == 1) {
+                    continue;
+                }
+                filtered.append(item);
+            }
+            if (!filtered.isEmpty())
+                visible = filtered;
+        }
 
         // 1С не показывает подменю отдельной кнопкой: если рядом есть кнопка
         // с тем же именем («ПодменюСоздать» и «Создать»), подменю становится
@@ -825,7 +1025,36 @@ private:
                 visible.insert(insertAt, &createBasedOn);
             }
             visible.append(&more);
-            visible.append(&help);
+            // Если в форме уже есть кнопка «Справка» (?), вторую не добавляем.
+            bool hasHelp = false;
+            for (const v8reader::FormItem *item : visible) {
+                if (item->type == v8reader::FormItem::Type::Button
+                    && (item->name.contains(QStringLiteral("Справка"))
+                        || item->synonym == QStringLiteral("?"))) {
+                    hasHelp = true;
+                    break;
+                }
+            }
+            if (!hasHelp)
+                visible.append(&help);
+        }
+
+        // В форме документа подменю (Печать, Заполнить, Отчеты, ЭДО) и новости
+        // платформа прячет в «Еще»: на панели остаются только кнопки.
+        if (documentBar) {
+            QVector<const v8reader::FormItem *> filtered;
+            for (const v8reader::FormItem *item : visible) {
+                const bool submenu = item->type == v8reader::FormItem::Type::Group
+                    && item->groupKind == 1
+                    && item->name != QStringLiteral("СоздатьНаОсновании")
+                    && item->name != QStringLiteral("Еще");
+                if (submenu)
+                    continue;
+                if (item->name.contains(QStringLiteral("КонтекстныеНовости")))
+                    continue;
+                filtered.append(item);
+            }
+            visible = filtered;
         }
 
         // В конфигураторе у формы списка своя панель: две «Создать»,
@@ -990,8 +1219,15 @@ private:
             if (!allowWrap && total > rect.width()) {
                 const double available = rect.width() - 8.0 * (row.size() - 1);
                 const double scale = available / (total - 8.0 * (row.size() - 1));
-                for (int i = 0; i < rowWidths.size(); ++i)
+                for (int i = 0; i < rowWidths.size(); ++i) {
+                    const v8reader::FormItem *item = visible.at(row.at(i));
+                    // Баннер не сжимаем: иначе текст на плашке обрезается.
+                    if (item->name.contains(QStringLiteral("ТекстБаннера"))
+                        || item->name.contains(QStringLiteral("УчетБилетов"))) {
+                        continue;
+                    }
                     rowWidths[i] = std::max(34.0, rowWidths.at(i) * scale);
+                }
             } else if (total < rect.width()) {
                 int count = 0;
                 for (int index : row) {
@@ -1055,6 +1291,9 @@ private:
                 const v8reader::FormItem *item = visible.at(index);
                 if (c == rightStart)
                     x += rightShift;
+                // В 1С «Создать на основании» отделено от кнопок заметным отступом.
+                if (item == &createBasedOn)
+                    x += 30.0;
                 if (separatorBefore.at(index) && c > 0) {
                     PreviewControl line;
                     line.kind = PreviewControl::Kind::Separator;
@@ -1065,8 +1304,13 @@ private:
                 const QString usageName = item->name + QStringLiteral("Использование");
                 const QString usageLabel = usage.value(usageName);
                 if (item->type == v8reader::FormItem::Type::Field) {
-                    layoutField(*item, QRectF(x, y, rowWidths.at(c), 27.0), 0.0,
-                                usageLabel, !usageLabel.isEmpty(), !usageLabel.isEmpty());
+                    // Поля с заголовком сверху выше остальных: в строке их
+                    // поля ввода выравниваются по нижнему краю, как в 1С.
+                    const double fieldHeight = naturalHeight(*item, rowWidths.at(c));
+                    const double fieldTop = y + std::max(0.0, rowHeight - fieldHeight);
+                    layoutField(*item, QRectF(x, fieldTop, rowWidths.at(c), fieldHeight),
+                                0.0, usageLabel, !usageLabel.isEmpty(),
+                                !usageLabel.isEmpty());
                 } else {
                     layoutNode(*item, QRectF(x, y, rowWidths.at(c), rowHeight), depth + 1,
                                QString(), false, false,
@@ -1127,10 +1371,23 @@ private:
                 const double height = item.heightUnits > 0 ? item.heightUnits * 10.0 : 19.0;
                 control.rect = QRectF(rect.left(), rect.top(), rect.width(), height);
                 control.title = item.synonym;
+                control.banner = item.name.contains(QStringLiteral("ТекстБаннера"));
+                control.closeGlyph = item.synonym == QStringLiteral("Х");
                 m_controls->append(control);
             }
             return;
         case Type::Group: {
+            // Внешняя группа командной панели (вид 9) в 1С содержит внутреннюю
+            // панель кнопок и служебные кнопки, которые платформа прячет в «Еще».
+            if (item.groupKind == 9) {
+                for (const v8reader::FormItem &child : item.children) {
+                    if (child.type == v8reader::FormItem::Type::Group
+                        && isTopCommandBar(child)) {
+                        layoutNode(child, rect, depth + 1);
+                        return;
+                    }
+                }
+            }
             if (item.groupKind == 1) {
                 layoutButton(item, QRectF(rect.left(), buttonY,
                                           std::min(rect.width(), preferredWidth(item)),
@@ -1143,13 +1400,25 @@ private:
             }
             QVector<const v8reader::FormItem *> children;
             visibleChildren(item, &children);
+            const double header = groupHeaderHeight(item);
+            if (header > 0.0) {
+                PreviewControl title;
+                title.kind = PreviewControl::Kind::GroupTitle;
+                title.rect = QRectF(rect.left(), rect.top(), rect.width(), header);
+                title.title = groupTitle(item);
+                title.groupRepresentation = static_cast<int>(item.representation);
+                title.groupCollapsible = item.behavior == v8reader::FormGroupBehavior::Collapsible;
+                title.groupPopup = item.behavior == v8reader::FormGroupBehavior::PopUp;
+                m_controls->append(title);
+            }
             if (children.isEmpty())
                 return;
+            const QRectF inner = rect.adjusted(0.0, header, 0.0, 0.0);
             if (isHorizontal(item))
-                layoutHorizontal(children, rect, depth, isCommandBar(item),
+                layoutHorizontal(children, inner, depth, isCommandBar(item),
                                  isTopCommandBar(item));
             else
-                layoutVertical(children, rect, depth);
+                layoutVertical(children, inner, depth);
             return;
         }
         default:
@@ -1164,15 +1433,9 @@ private:
         const QString label = !labelOverride.isEmpty()
             ? labelOverride
             : (item.showTitle ? fieldLabel(item) : QString());
-        double labelW = forcedLabelWidth;
-        if (labelW <= 0.0) {
-            labelW = std::min(210.0,
-                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
-        }
-        labelW = std::min(labelW, rect.width() * 0.7);
 
-        bool booleanField = false;
-        if (!checkBox) {
+        bool booleanField = item.valueKind == v8reader::FormValueKind::Boolean;
+        if (!checkBox && !booleanField) {
             for (const v8reader::FormAttribute &attribute : m_document.attributes) {
                 if (attribute.name == item.name
                     && attribute.typeHint == QStringLiteral("Булево")) {
@@ -1182,24 +1445,56 @@ private:
             }
         }
 
+        // Положение заголовка из формы: 1 — сверху, 2 — справа, 3 — снизу.
+        // У флажков и полей-надписей подпись всегда стоит рядом.
+        const int placement = (checkBox || booleanField || item.labelOnly)
+            ? 0 : titlePlacement(item);
+        double labelW = forcedLabelWidth;
+        if (placement == 1 || placement == 3) {
+            labelW = 0.0;
+        } else if (placement == 2) {
+            // Подпись справа — своя ширина, общая колонка подписей не нужна.
+            labelW = std::min(112.0,
+                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
+        } else if (labelW <= 0.0) {
+            labelW = std::min(112.0,
+                m_metrics.horizontalAdvance(label + QStringLiteral(":")) + 8.0);
+        }
+        labelW = std::min(labelW, rect.width() * 0.7);
+
+        // Тип реквизита из метаданных: ссылка — кнопка выбора, дата —
+        // календарь, булево — флажок. Неизвестный тип остаётся на прежних
+        // эвристиках по имени поля.
+        const bool knownKind = item.valueKind != v8reader::FormValueKind::Unknown;
+        const bool referenceField = item.valueKind == v8reader::FormValueKind::Reference
+            || item.valueKind == v8reader::FormValueKind::Enum
+            || item.valueKind == v8reader::FormValueKind::Composite;
+
         PreviewControl control;
         control.kind = PreviewControl::Kind::Field;
         control.rect = rect;
         control.title = label;
         control.labelWidth = labelW;
+        control.labelPlacement = placement;
         control.checkBox = checkBox || booleanField;
         control.checkboxOnly = booleanField;
+        control.checkBoxLeading = booleanField;
         control.dropDown = dropDown;
-        control.labelOnly = item.labelOnly;
+        control.labelOnly = item.labelOnly && !booleanField;
         control.calendar = !item.labelOnly
-            && (item.name.contains(QStringLiteral("Дата"))
-                || item.name.contains(QStringLiteral("Период")));
+            && (knownKind
+                    ? item.valueKind == v8reader::FormValueKind::Date
+                    : (item.name.contains(QStringLiteral("Дата"))
+                       || item.name.contains(QStringLiteral("Период"))));
         control.choiceButton = !item.labelOnly && !control.calendar && !dropDown
-            && looksLikeReferenceField(item.name);
+            && !booleanField
+            && (knownKind ? referenceField : looksLikeReferenceField(item.name));
         if (item.widthUnits > 0 && item.horizontalStretch != 1)
             control.inputWidth = item.widthUnits * 10.0;
-        else if (checkBox && m_document.runtimeListCommands)
+        else if (!knownKind && checkBox && m_document.runtimeListCommands)
             control.inputWidth = 325.0;
+        else if (item.valueChars > 0 && item.horizontalStretch == 0)
+            control.inputWidth = item.valueChars * 8.0 + 18.0;
         m_controls->append(control);
     }
 
@@ -1215,6 +1510,13 @@ private:
             && control.icon != ButtonIcon::CreateBasedOn
             && control.icon != ButtonIcon::Print;
         control.dropDown = dropDown;
+        // Кнопка «Справка» в 1С — обычная кнопка с «?», а не иконка.
+        if (item.name == QStringLiteral("Справка")) {
+            control.icon = ButtonIcon::None;
+            control.iconOnly = false;
+            control.title = QStringLiteral("?");
+            control.bordered = true;
+        }
         control.bordered = item.name == QStringLiteral("Еще")
             || item.name == QStringLiteral("Справка")
             || item.name == QStringLiteral("Создать2")
@@ -1229,12 +1531,16 @@ private:
     }
 
     void tableColumns(const v8reader::FormItem &item, const QString &tableName,
-                      QStringList *columns, QVector<int> *widths) const
+                      QStringList *columns, QVector<int> *widths,
+                      QVector<int> *chars) const
     {
         for (const v8reader::FormItem &child : item.children) {
             if (isServiceItem(child) || isServiceDecoration(child))
                 continue;
             if (child.type == v8reader::FormItem::Type::Field) {
+                // Скрытые в форме колонки (в т.ч. «Валюта») 1С не показывает.
+                if (!child.visible)
+                    continue;
                 // Служебные колонки, которые платформа не показывает в списке.
                 if (child.name == QStringLiteral("ЕстьФайлы")
                     || child.name == QStringLiteral("Ссылка")) {
@@ -1245,11 +1551,23 @@ private:
                     && base.size() > tableName.size()) {
                     base = base.mid(tableName.size());
                 }
-                QString title = m_document.titles.value(base);
+                // Заголовок колонки — прежде всего синоним самого поля формы
+                // («Аванс», «Зачтено (руб.)»), затем синоним реквизита из
+                // метаданных, и только потом имя.
+                QString title;
+                if (!child.synonym.isEmpty() && !looksTechnical(child.synonym))
+                    title = child.synonym;
+                if (title.isEmpty())
+                    title = child.dataTitle;
+                if (title.isEmpty())
+                    title = m_document.titles.value(base);
                 if (title.isEmpty())
                     title = m_document.titles.value(child.name);
                 if (title.isEmpty())
                     title = humanizeIdentifier(base);
+                // Колонка-отступ без заголовка: ячейка остаётся пустой.
+                if (!child.showTitle)
+                    title.clear();
                 // В таблицах 1С служебная колонка номера строки называется
                 // коротко «N», а не «Номер строки».
                 if (title.startsWith(QStringLiteral("Номер строки"),
@@ -1258,8 +1576,9 @@ private:
                 }
                 columns->append(title);
                 widths->append(child.widthUnits);
+                chars->append(child.valueChars);
             } else if (child.type == v8reader::FormItem::Type::Group) {
-                tableColumns(child, tableName, columns, widths);
+                tableColumns(child, tableName, columns, widths, chars);
             }
         }
     }
@@ -1319,7 +1638,8 @@ private:
                               std::min(std::max(0.0, rect.height() - (tableTop - rect.top())),
                                        tableHeight));
         QVector<int> widthUnits;
-        tableColumns(item, item.name, &control.columns, &widthUnits);
+        QVector<int> valueChars;
+        tableColumns(item, item.name, &control.columns, &widthUnits, &valueChars);
 
         if (!control.columns.isEmpty()) {
             QFont headerFont = m_font;
@@ -1329,35 +1649,24 @@ private:
             for (int i = 0; i < control.columns.size(); ++i) {
                 const QString &column = control.columns.at(i);
                 const int units = i < widthUnits.size() ? widthUnits.at(i) : -1;
-                const bool list = m_document.runtimeListCommands
-                    || m_document.runtimeCatalogListCommands;
+                const int chars = i < valueChars.size() ? valueChars.at(i) : 0;
                 double width = 0.0;
-                if (list) {
-                    if (column == QStringLiteral("Дата"))
-                        width = 137.0;
-                    else if (column == QStringLiteral("Номер"))
-                        width = 127.0;
-                    else if (column == QStringLiteral("Подотчетное лицо"))
-                        width = 125.0;
-                    else if (column == QStringLiteral("Сумма"))
-                        width = 117.0;
-                    else if (column == QStringLiteral("Валюта"))
-                        width = 88.0;
-                    else if (column == QStringLiteral("Склад"))
-                        width = 125.0;
-                    else if (column == QStringLiteral("Вид операции"))
-                        width = 125.0;
-                    else if (column == QStringLiteral("Организация"))
-                        width = 97.0;
-                    else
-                        width = std::max(120.0,
-                            headerMetrics.horizontalAdvance(column) + 24.0);
+                if (column.isEmpty()) {
+                    width = 40.0;
+                } else if (column == QStringLiteral("N")) {
+                    // Служебная колонка номера строки узкая.
+                    width = 44.0;
                 } else {
-                    const double minWidth = 80.0;
-                    width = std::max(70.0, units > 0
-                        ? units * 10.0
-                        : std::min(240.0, std::max(minWidth,
-                            headerMetrics.horizontalAdvance(column) + 24.0)));
+                    // Как в конфигураторе: ширина по типу реквизита
+                    // (10 px на символ + 17 px на ячейку), но не уже
+                    // заголовка колонки.
+                    const double dataWidth = chars > 0 ? chars * 10.0 + 17.0 : 0.0;
+                    const double headerWidth =
+                        headerMetrics.horizontalAdvance(column) + 24.0;
+                    width = std::max(90.0, std::max(headerWidth, dataWidth));
+                    if (units > 0)
+                        width = std::max(width, units * 10.0);
+                    width = std::min(width, 340.0);
                 }
                 control.columnWidths.append(width);
                 total += width;
@@ -1454,9 +1763,11 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         visual.label = control.title;
         visual.labelWidth = control.labelWidth;
         visual.inputWidth = control.inputWidth;
+        visual.labelPlacement = control.labelPlacement;
         visual.labelOnly = control.labelOnly;
         visual.checkBox = control.checkBox;
         visual.checkboxOnly = control.checkboxOnly;
+        visual.checkBoxLeading = control.checkBoxLeading;
         visual.dropDown = control.dropDown;
         visual.calendar = control.calendar;
         visual.choiceButton = control.choiceButton;
@@ -1505,8 +1816,70 @@ void paintControl(QPainter &painter, const PreviewControl &control,
         break;
     }
     case PreviewControl::Kind::Decoration: {
-        controls::paintText(painter, controls::TextVisual{rect, control.title},
-                            metrics);
+        controls::TextVisual visual{rect, control.title};
+        visual.banner = control.banner;
+        visual.closeGlyph = control.closeGlyph;
+        controls::paintText(painter, visual, metrics);
+        break;
+    }
+    case PreviewControl::Kind::GroupTitle: {
+        // Подпись секции: обычное выделение — жирный заголовок, сильное —
+        // крупный обычный, раскрываемая группа — треугольник, всплывающая —
+        // кнопка-заголовок.
+        QFont titleFont = font;
+        switch (control.groupRepresentation) {
+        case 1: // Strong
+            titleFont.setPointSizeF(font.pointSizeF() + 3.0);
+            break;
+        case 3: // Normal
+            titleFont.setPointSizeF(font.pointSizeF() + 1.5);
+            titleFont.setBold(true);
+            break;
+        default: // Weak
+            titleFont.setPointSizeF(font.pointSizeF() + 0.5);
+            titleFont.setBold(true);
+            break;
+        }
+        painter.setFont(titleFont);
+        const QFontMetricsF titleMetrics(titleFont);
+        if (control.groupPopup) {
+            QRectF button(rect.left(), rect.top() + 1.0, rect.width(),
+                          std::max(20.0, rect.height() - 4.0));
+            QLinearGradient gradient(button.topLeft(), button.bottomLeft());
+            gradient.setColorAt(0.0, QColor(252, 252, 252));
+            gradient.setColorAt(1.0, QColor(238, 238, 238));
+            painter.setPen(FormStyle::fieldBorder);
+            painter.setBrush(gradient);
+            painter.drawRect(button);
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(FormStyle::text);
+            painter.drawText(button.adjusted(8.0, 0.0, -18.0, 0.0),
+                             Qt::AlignLeft | Qt::AlignVCenter, control.title);
+            const QPointF center(button.right() - 10.0, button.center().y());
+            painter.setPen(QColor(80, 80, 80));
+            painter.drawLine(center + QPointF(-3.0, -1.5),
+                             center + QPointF(0.0, 1.5));
+            painter.drawLine(center + QPointF(0.0, 1.5),
+                             center + QPointF(3.0, -1.5));
+            break;
+        }
+        double textLeft = rect.left();
+        if (control.groupCollapsible) {
+            const QPointF center(rect.left() + 6.0, rect.center().y());
+            QPainterPath arrow;
+            arrow.moveTo(center + QPointF(-4.0, -2.5));
+            arrow.lineTo(center + QPointF(4.0, -2.5));
+            arrow.lineTo(center + QPointF(0.0, 2.5));
+            arrow.closeSubpath();
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(80, 80, 80));
+            painter.drawPath(arrow);
+            painter.setBrush(Qt::NoBrush);
+            textLeft += 14.0;
+        }
+        painter.setPen(FormStyle::text);
+        painter.drawText(QRectF(textLeft, rect.top(), rect.right() - textLeft, rect.height()),
+                         Qt::AlignLeft | Qt::AlignVCenter, control.title);
         break;
     }
     case PreviewControl::Kind::Separator: {
@@ -1573,12 +1946,12 @@ protected:
 
         const double logicalW = width() / m_scale;
         const double logicalH = height() / m_scale;
-        const double titleHeight = 26.0;
+        const double titleHeight = 18.0;
 
-        // Рамка и пустая синяя полоса заголовка окна конфигуратора.
+        // Рамка и полоса заголовка окна формы, как у окна конфигуратора.
         QLinearGradient titleGradient(0.0, 0.0, 0.0, titleHeight);
-        titleGradient.setColorAt(0.0, QColor(143, 185, 225));
-        titleGradient.setColorAt(1.0, QColor(155, 185, 213));
+        titleGradient.setColorAt(0.0, QColor(163, 196, 228));
+        titleGradient.setColorAt(1.0, QColor(141, 176, 208));
         painter.fillRect(QRectF(0.0, 0.0, logicalW, titleHeight), titleGradient);
         painter.setPen(QColor(255, 255, 255));
         painter.drawLine(QPointF(0.5, 0.5), QPointF(logicalW - 0.5, 0.5));
@@ -1591,6 +1964,29 @@ protected:
         painter.drawRect(QRectF(2.5, 2.5, logicalW - 5.0, logicalH - 5.0));
         painter.setPen(QColor(120, 150, 180));
         painter.drawLine(QPointF(0.0, titleHeight), QPointF(logicalW, titleHeight));
+
+        // Заголовок окна формы: «Документ.АвансовыйОтчет.ФормаДокумента».
+        if (m_document) {
+            QString caption = m_document->name;
+            if (!m_document->ownerTitle.isEmpty()) {
+                caption = QStringLiteral("%1.%2")
+                              .arg(m_document->ownerTitle, m_document->name);
+            }
+            if (!caption.isEmpty()) {
+                QFont captionFont(QStringLiteral("Arial"), 8, QFont::Bold);
+                painter.setFont(captionFont);
+                painter.setPen(QColor(16, 32, 52));
+                painter.drawText(QRectF(6.0, 0.0, logicalW - 12.0, titleHeight),
+                                 Qt::AlignLeft | Qt::AlignVCenter, caption);
+                painter.setFont(formFont());
+            }
+        }
+
+        // Клиентская область окна 1С — светло-серая (#f2f2f2), как в Такси;
+        // поля и таблица рисуются поверх белым.
+        painter.fillRect(QRectF(3.0, titleHeight + 1.0, logicalW - 6.0,
+                                logicalH - titleHeight - 4.0),
+                         FormStyle::formBackground);
 
         const QFont titleFont(QStringLiteral("Arial"), 14, QFont::Bold);
         const QFont font = formFont();
@@ -1612,7 +2008,8 @@ protected:
         // Тонкая рамка клиентской области под заголовком.
         painter.setPen(QPen(QColor(150, 160, 170), 1.0));
         painter.setBrush(Qt::NoBrush);
-        painter.drawRect(QRectF(3.0, 26.0, logicalW - 6.0, logicalH - 29.0));
+        painter.drawRect(QRectF(3.0, titleHeight, logicalW - 6.0,
+                                logicalH - titleHeight - 3.0));
 
         // Белая внешняя кромка окна.
         painter.setPen(Qt::NoPen);
@@ -1647,14 +2044,14 @@ private:
         // 75% форма занимает панель целиком, при увеличении — прокручивается.
         const double baseWidth = viewportWidth > 2.0
             ? (viewportWidth - 1.0) / m_scale : kFormWidth;
-        const double logicalWidth = std::clamp(baseWidth, 700.0, 1600.0);
+        const double logicalWidth = std::clamp(baseWidth, 700.0, 1000.0);
         const double contentWidth = logicalWidth - margin * 2.0;
 
         // Высота окна 1С: таблица списка должна занимать всё доступное место,
         // а не оставлять пустую полосу под собой.
         const double viewportLogical = viewportHeight > 0.0
             ? viewportHeight / m_scale : 0.0;
-        const double titleBarHeight = 26.0;
+        const double titleBarHeight = 18.0;
         const double targetContentHeight = std::max(0.0,
             viewportLogical - titleBarHeight - 87.0);
 
@@ -1686,7 +2083,29 @@ private:
         }
 
         for (PreviewControl &control : controls)
-            control.rect.translate(margin, titleBarHeight + 14.0);
+            control.rect.translate(margin, titleBarHeight + 6.0);
+        // Отладочный дамп контролов: QTV8READER_DEBUG_FORM=<путь к файлу>.
+        const QString debugPath = qEnvironmentVariable("QTV8READER_DEBUG_FORM");
+        if (!debugPath.isEmpty()) {
+            QFile file(debugPath);
+            if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                QTextStream stream(&file);
+                for (const PreviewControl &control : controls) {
+                    stream << int(control.kind) << '\t' << control.title
+                           << '\t' << control.rect.left() << ',' << control.rect.top()
+                           << ' ' << control.rect.width() << 'x' << control.rect.height()
+                           << "\ticonOnly=" << control.iconOnly
+                           << " bordered=" << control.bordered
+                           << " icon=" << int(control.icon)
+                           << " cb=" << control.checkBox
+                           << " cal=" << control.calendar
+                           << " choice=" << control.choiceButton
+                           << " labelOnly=" << control.labelOnly
+                           << " inputW=" << control.inputWidth
+                           << " labelW=" << control.labelWidth << '\n';
+                }
+            }
+        }
         m_controls = controls;
         m_contentHeight = contentHeight;
         double logicalHeight = qBound(280.0,
@@ -1738,6 +2157,15 @@ FormView::FormView(QWidget *parent)
         m_scaleCombo->addItem(QStringLiteral("%1%").arg(percent), percent);
     m_scaleCombo->setCurrentIndex(2);
     toolbar->addWidget(m_scaleCombo);
+    toolbar->addWidget(new QLabel(QStringLiteral("Вид:"), formPage));
+    m_modeCombo = new QComboBox(formPage);
+    m_modeCombo->setObjectName(QStringLiteral("formViewMode"));
+    m_modeCombo->addItem(QStringLiteral("Упрощённый"), false);
+    m_modeCombo->addItem(QStringLiteral("Точный (как в 1С)"), true);
+    m_modeCombo->setToolTip(QStringLiteral(
+        "Упрощённый вид — собственный рендерер; точный вид — рендерер "
+        "конфигуратора 1С поверх Microsoft Edge WebView2"));
+    toolbar->addWidget(m_modeCombo);
     m_treeToggle = new QToolButton(formPage);
     m_treeToggle->setObjectName(QStringLiteral("formTreeToggle"));
     m_treeToggle->setText(QStringLiteral("Дерево"));
@@ -1770,8 +2198,33 @@ FormView::FormView(QWidget *parent)
     m_preview = new FormPreviewWidget(scroll);
     scroll->setWidget(m_preview);
 
+    m_views = new QStackedWidget(m_splitter);
+    m_views->setObjectName(QStringLiteral("formViews"));
+    m_views->addWidget(scroll);
+
+    m_exactPage = new QWidget(m_views);
+    auto *exactLayout = new QVBoxLayout(m_exactPage);
+    exactLayout->setContentsMargins(0, 0, 0, 0);
+    m_exactHost = new WebView2Host(m_exactPage);
+    m_exactHost->setObjectName(QStringLiteral("formExactView"));
+    m_exactHost->setResourceProvider(
+        [this](const QString &path, QByteArray *data, QString *mime) {
+            return provideExactResource(path, data, mime);
+        });
+    m_exactHost->setStartUrl(exactStartUrl());
+    connect(m_exactHost, &WebView2Host::loadFailed, this,
+            [this](const QString &reason) { showExactViewMessage(reason); });
+    exactLayout->addWidget(m_exactHost, 1);
+    m_exactMessage = new QLabel(m_exactPage);
+    m_exactMessage->setObjectName(QStringLiteral("formExactMessage"));
+    m_exactMessage->setWordWrap(true);
+    m_exactMessage->setContentsMargins(12, 8, 12, 8);
+    m_exactMessage->hide();
+    exactLayout->addWidget(m_exactMessage);
+    m_views->addWidget(m_exactPage);
+
     m_splitter->addWidget(m_tree);
-    m_splitter->addWidget(scroll);
+    m_splitter->addWidget(m_views);
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 1);
     // По умолчанию форма занимает всю ширину вкладки, как в конфигураторе;
@@ -1807,11 +2260,21 @@ FormView::FormView(QWidget *parent)
 
     connect(m_scaleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int index) {
-                if (!m_preview)
-                    return;
                 const int percent = m_scaleCombo->itemData(index).toInt();
-                m_preview->setScale(percent / 100.0);
+                if (m_preview)
+                    m_preview->setScale(percent / 100.0);
+                if (m_exactHost)
+                    m_exactHost->setZoomFactor(percent / 100.0);
             });
+    connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+                setExactViewEnabled(m_modeCombo->itemData(index).toBool());
+                Q_EMIT exactViewModeChanged(m_exactEnabled);
+            });
+
+    QString exactReason;
+    const bool exactAvailable = WebView2Host::isSupported(&exactReason);
+    setExactViewAvailability(exactAvailable, exactReason);
 
     clear();
 }
@@ -1899,6 +2362,8 @@ void FormView::setMessage(const QString &message)
 {
     m_document = FormDocument();
     m_hasDocument = false;
+    m_exactModel.clear();
+    m_exactCaption.clear();
     m_hint->setText(message);
     m_tree->clear();
     m_preview->clear();
@@ -1982,6 +2447,153 @@ void FormView::fillTree()
             node->setText(3, command.synonym);
         }
     }
+}
+
+void FormView::setExactViewAvailability(bool available, const QString &reason)
+{
+    m_exactAvailable = available;
+    m_exactUnavailableReason = reason;
+    if (m_modeCombo) {
+        const int index = m_modeCombo->findData(true);
+        if (index >= 0) {
+            auto *model = qobject_cast<QStandardItemModel *>(m_modeCombo->model());
+            if (model) {
+                if (QStandardItem *item = model->item(index))
+                    item->setEnabled(available);
+            }
+        }
+        if (!available && m_modeCombo->currentIndex() == index)
+            m_modeCombo->setCurrentIndex(0);
+    }
+    if (!available && m_exactEnabled) {
+        m_exactEnabled = false;
+        applyExactViewState();
+    }
+}
+
+void FormView::setExactViewEnabled(bool enabled)
+{
+    const bool effective = enabled && m_exactAvailable;
+    if (m_modeCombo) {
+        const int index = m_modeCombo->findData(effective);
+        if (index >= 0 && m_modeCombo->currentIndex() != index) {
+            QSignalBlocker blocker(m_modeCombo);
+            m_modeCombo->setCurrentIndex(index);
+        }
+    }
+    if (m_exactEnabled == effective) {
+        applyExactViewState();
+        return;
+    }
+    m_exactEnabled = effective;
+    applyExactViewState();
+}
+
+void FormView::applyExactViewState()
+{
+    if (m_views)
+        m_views->setCurrentIndex(m_exactEnabled ? 1 : 0);
+    if (m_exactEnabled) {
+        if (!m_exactAvailable) {
+            showExactViewMessage(
+                m_exactUnavailableReason.isEmpty()
+                    ? QStringLiteral("Точный вид недоступен на этой платформе.")
+                    : m_exactUnavailableReason);
+            return;
+        }
+        if (!m_hasDocument) {
+            showExactViewMessage(QStringLiteral(
+                "Выберите форму в дереве метаданных, чтобы увидеть её точный вид."));
+            return;
+        }
+        if (m_exactModel.isEmpty()) {
+            showExactViewMessage(QStringLiteral(
+                "Точный вид для этой формы не подготовлен."));
+            return;
+        }
+        if (m_exactMessage)
+            m_exactMessage->hide();
+        if (m_exactHost) {
+            m_exactHost->setZoomFactor(
+                m_scaleCombo ? m_scaleCombo->currentData().toInt() / 100.0 : 1.0);
+            m_exactHost->load();
+        }
+    }
+}
+
+void FormView::setExactFormModel(const QByteArray &modelJson, const QString &caption)
+{
+    m_exactModel = modelJson;
+    m_exactCaption = caption;
+    if (m_exactHost) {
+        m_exactHost->setStartUrl(exactStartUrl());
+        if (m_exactEnabled)
+            m_exactHost->load();
+    }
+    applyExactViewState();
+}
+
+void FormView::showExactViewMessage(const QString &message)
+{
+    if (!m_exactMessage)
+        return;
+    m_exactMessage->setText(message);
+    m_exactMessage->show();
+}
+
+QString FormView::exactStartUrl() const
+{
+    // Страница рендерера конфигуратора 1С; модель формы она забирает из
+    // model.json, который отдаёт приложение.
+    return QStringLiteral("https://qv8.local/model.html");
+}
+
+bool FormView::provideExactResource(const QString &path, QByteArray *data,
+                                    QString *mime) const
+{
+    if (!data)
+        return false;
+    if (path == QLatin1String("model.json")) {
+        if (m_exactModel.isEmpty())
+            return false;
+        *data = m_exactModel;
+        if (mime)
+            *mime = QStringLiteral("application/json; charset=utf-8");
+        return true;
+    }
+
+    QString clean = path;
+    while (clean.startsWith(QLatin1Char('/')))
+        clean.remove(0, 1);
+    if (clean.isEmpty())
+        clean = QStringLiteral("index.html");
+    // Страница точного вида и её ресурсы лежат в qrc под /formpreview.
+    QFile file(QStringLiteral(":/formpreview/") + clean);
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    *data = file.readAll();
+    if (mime) {
+        const QString suffix = QFileInfo(clean).suffix().toLower();
+        if (suffix == QLatin1String("html") || suffix == QLatin1String("htm"))
+            *mime = QStringLiteral("text/html; charset=utf-8");
+        else if (suffix == QLatin1String("js") || suffix == QLatin1String("mjs"))
+            *mime = QStringLiteral("text/javascript; charset=utf-8");
+        else if (suffix == QLatin1String("css"))
+            *mime = QStringLiteral("text/css; charset=utf-8");
+        else if (suffix == QLatin1String("json"))
+            *mime = QStringLiteral("application/json; charset=utf-8");
+        else if (suffix == QLatin1String("svg"))
+            *mime = QStringLiteral("image/svg+xml");
+        else if (suffix == QLatin1String("png"))
+            *mime = QStringLiteral("image/png");
+        else if (suffix == QLatin1String("gif"))
+            *mime = QStringLiteral("image/gif");
+        else if (suffix == QLatin1String("woff2"))
+            *mime = QStringLiteral("font/woff2");
+        else
+            *mime = QStringLiteral("application/octet-stream");
+    }
+    return true;
 }
 
 } // namespace v8reader

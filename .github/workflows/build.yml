@@ -106,6 +106,8 @@ jobs:
         run: |
           mkdir -p dist
           cp build/qtv8reader.exe build/v8reader_cli.exe dist/
+          # загрузчик WebView2 для режима «точный вид» формы
+          cp build/WebView2Loader.dll dist/
           WINDEPLOYQT=""
           for candidate in windeployqt6 windeployqt; do
             if command -v "$candidate" >/dev/null 2>&1; then

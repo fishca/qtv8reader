@@ -9,61 +9,15 @@
 
 namespace controls {
 
-void paintField(QPainter &painter, const FieldVisual &visual,
-                const QFontMetricsF &metrics)
-{
-    const QRectF &rect = visual.rect;
-    const QString &label = visual.label;
-    if (visual.labelOnly) {
-        if (label.isEmpty())
-            return;
-        const bool link = label.contains(QStringLiteral("Цен"), Qt::CaseInsensitive)
-            || label.contains(QStringLiteral("НДС"), Qt::CaseInsensitive)
-            || label.contains(QStringLiteral("Настрой"), Qt::CaseInsensitive)
-            || label.contains(QStringLiteral("Изменить"), Qt::CaseInsensitive);
-        painter.setPen(link ? QColor(0, 102, 204) : FormStyle::text);
-        painter.drawText(rect.adjusted(2, 0, -2, 0),
-                         Qt::AlignLeft | Qt::AlignVCenter, label);
-        return;
-    }
+namespace {
 
-    double x = rect.left();
-    if (!label.isEmpty()) {
-        const double labelWidth = std::min(visual.labelWidth > 0.0
-                ? visual.labelWidth
-                : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":"))
-                    + 6.0),
-            rect.width() * 0.7);
-        const QRectF labelRect(rect.left(), rect.top(),
-                               std::max(0.0, labelWidth), rect.height());
-        painter.setPen(FormStyle::text);
-        if (visual.checkBox) {
-            painter.drawText(labelRect.adjusted(0, 0, -2, 0),
-                             Qt::AlignLeft | Qt::AlignVCenter,
-                             label + QStringLiteral(":"));
-            x = labelRect.right() + 2.0;
-        } else {
-            painter.drawText(labelRect.adjusted(0, 0, -4, 0),
-                             Qt::AlignLeft | Qt::AlignVCenter,
-                             label + QStringLiteral(":"));
-            x = labelRect.right() + 3.0;
-        }
-    }
-    if (visual.checkBox) {
-        const QRectF box(x + 1.0, rect.top() + (rect.height() - 13.0) / 2.0,
-                         13.0, 13.0);
-        painter.setPen(FormStyle::fieldBorder);
-        painter.setBrush(Qt::white);
-        painter.drawRect(box);
-        painter.setBrush(Qt::NoBrush);
-        x += 19.0;
-        if (visual.checkboxOnly)
-            return;
-    }
-    double editWidth = std::max(24.0, rect.right() - x - 4.0);
+// Поле ввода: рамка, белый фон и кнопка выбора/календаря справа.
+void drawInput(QPainter &painter, const QRectF &rect, const FieldVisual &visual)
+{
+    double width = std::max(24.0, rect.width());
     if (visual.inputWidth > 0.0)
-        editWidth = std::min(editWidth, visual.inputWidth);
-    const QRectF edit(x, rect.top() + 2.0, editWidth, rect.height() - 4.0);
+        width = std::min(width, visual.inputWidth);
+    const QRectF edit(rect.left(), rect.top(), width, rect.height());
     painter.setPen(FormStyle::fieldBorder);
     painter.setBrush(Qt::white);
     painter.drawRect(edit);
@@ -111,6 +65,142 @@ void paintField(QPainter &painter, const FieldVisual &visual,
             painter.setBrush(Qt::NoBrush);
         }
     }
+}
+
+} // namespace
+
+void paintField(QPainter &painter, const FieldVisual &visual,
+                const QFontMetricsF &metrics)
+{
+    const QRectF &rect = visual.rect;
+    const QString &label = visual.label;
+    if (visual.labelOnly) {
+        if (label.isEmpty())
+            return;
+        const bool link = label.contains(QStringLiteral("Цен"), Qt::CaseInsensitive)
+            || label.contains(QStringLiteral("НДС"), Qt::CaseInsensitive)
+            || label.contains(QStringLiteral("Настрой"), Qt::CaseInsensitive)
+            || label.contains(QStringLiteral("Изменить"), Qt::CaseInsensitive);
+        if (link) {
+            QFont font = painter.font();
+            font.setUnderline(true);
+            painter.setFont(font);
+        }
+        painter.setPen(link ? FormStyle::link : FormStyle::text);
+        painter.drawText(rect.adjusted(2, 0, -2, 0),
+                         Qt::AlignLeft | Qt::AlignVCenter, label);
+        return;
+    }
+
+    double x = rect.left();
+    // Флажок перед подписью: 1С рисует булево поле как «[ ] Заголовок».
+    if (visual.checkBox && visual.checkBoxLeading) {
+        const QRectF box(x + 1.0,
+                         rect.top() + (rect.height() - FormStyle::checkBoxSize) / 2.0,
+                         FormStyle::checkBoxSize, FormStyle::checkBoxSize);
+        painter.setPen(FormStyle::fieldBorder);
+        painter.setBrush(Qt::white);
+        painter.drawRect(box);
+        painter.setBrush(Qt::NoBrush);
+        x += FormStyle::checkBoxSize + 6.0;
+        if (!label.isEmpty()) {
+            painter.setPen(FormStyle::text);
+            painter.drawText(QRectF(x, rect.top(), rect.right() - x, rect.height()),
+                             Qt::AlignLeft | Qt::AlignVCenter, label);
+        }
+        return;
+    }
+
+    const int placement = visual.labelPlacement;
+    const bool stacked = placement == 1 || placement == 3;
+
+    QRectF labelRect;
+    double labelColumn = 0.0;
+    if (!stacked && !label.isEmpty()) {
+        labelColumn = std::min(visual.labelWidth > 0.0
+                ? visual.labelWidth
+                : std::max(40.0, metrics.horizontalAdvance(label + QStringLiteral(":"))
+                    + 6.0),
+            rect.width() * 0.7);
+    }
+
+    if (placement == 1) {
+        // Заголовок сверху: подпись во всю ширину, поле под ней.
+        const double labelHeight = std::min(17.0, rect.height() * 0.45);
+        labelRect = QRectF(rect.left(), rect.top(), rect.width(), labelHeight);
+        x = rect.left();
+        const double top = rect.top() + labelHeight + 1.0;
+        painter.setPen(FormStyle::text);
+        painter.drawText(labelRect.adjusted(0, 0, -2, 0),
+                         Qt::AlignLeft | Qt::AlignBottom, label);
+        drawInput(painter, QRectF(rect.left(), top,
+                                  std::max(24.0, rect.width()), rect.bottom() - top),
+                  visual);
+        return;
+    }
+    if (placement == 3) {
+        const double labelHeight = std::min(17.0, rect.height() * 0.45);
+        const double bottom = rect.bottom() - labelHeight - 1.0;
+        painter.setPen(FormStyle::text);
+        painter.drawText(QRectF(rect.left(), bottom + 1.0, rect.width(), labelHeight),
+                         Qt::AlignLeft | Qt::AlignTop, label);
+        drawInput(painter, QRectF(rect.left(), rect.top(),
+                                  std::max(24.0, rect.width()), bottom - rect.top()),
+                  visual);
+        return;
+    }
+    if (placement == 2) {
+        // Заголовок справа от поля ввода.
+        labelRect = QRectF(rect.right() - labelColumn, rect.top(),
+                           labelColumn, rect.height());
+        painter.setPen(FormStyle::text);
+        painter.drawText(labelRect.adjusted(3, 0, -2, 0),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         label + QStringLiteral(":"));
+        drawInput(painter, QRectF(rect.left(), rect.top() + 2.0,
+                                  std::max(24.0, rect.width() - labelColumn - 3.0),
+                                  rect.height() - 4.0),
+                  visual);
+        return;
+    }
+
+    if (!label.isEmpty() || visual.checkBox) {
+        const QRectF labelBox(rect.left(), rect.top(),
+                              std::max(0.0, labelColumn), rect.height());
+        if (!label.isEmpty()) {
+            const QString text = label + QStringLiteral(":");
+            const QRectF textRect = labelBox.adjusted(
+                0, 0, visual.checkBox ? -2 : -4, 0);
+            painter.setPen(FormStyle::text);
+            // В 8.3 подпись поля выровнена по правому краю колонки: двоеточия
+            // всех полей колонки стоят на одной вертикали.
+            if (metrics.horizontalAdvance(text) > textRect.width() + 0.5) {
+                painter.drawText(textRect.adjusted(0, 0, -2, 0),
+                                 Qt::AlignRight | Qt::AlignVCenter | Qt::TextWordWrap,
+                                 text);
+            } else {
+                painter.drawText(textRect.adjusted(0, 0, -2, 0),
+                                 Qt::AlignRight | Qt::AlignVCenter, text);
+            }
+        }
+        x = labelBox.right() + (visual.checkBox ? 2.0 : 3.0);
+    }
+    if (visual.checkBox) {
+        const QRectF box(x + 1.0,
+                         rect.top() + (rect.height() - FormStyle::checkBoxSize) / 2.0,
+                         FormStyle::checkBoxSize, FormStyle::checkBoxSize);
+        painter.setPen(FormStyle::fieldBorder);
+        painter.setBrush(Qt::white);
+        painter.drawRect(box);
+        painter.setBrush(Qt::NoBrush);
+        x += FormStyle::checkBoxSize + 6.0;
+        if (visual.checkboxOnly)
+            return;
+    }
+    drawInput(painter, QRectF(x, rect.top() + 2.0,
+                              std::max(24.0, rect.right() - x - 4.0),
+                              rect.height() - 4.0),
+              visual);
 }
 
 } // namespace controls

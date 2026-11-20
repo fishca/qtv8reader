@@ -16,7 +16,11 @@ public:
         QString path;
         QString argument;
         QString output;
+        // Имя или синоним формы для команды form-model.
+        QString form;
         bool raw = false;
+        // Только дерево элементов формы (отладка разбора).
+        bool items = false;
     };
 
     int run(const Options &options, QTextStream &out, QTextStream &err);

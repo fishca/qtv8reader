@@ -31,4 +31,19 @@ libxcb, libxkbcommon и другие библиотеки
   лицензий находятся в пакетах соответствующих библиотек и в их исходных
   репозиториях.
 
+Microsoft Edge WebView2 SDK (3rdparty/webview2)
+  Copyright (C) Microsoft Corporation.
+  В поставку входят заголовок WebView2.h и WebView2Loader.dll; условия —
+  файлы 3rdparty/webview2/LICENSE.txt и 3rdparty/webview2/NOTICE.txt.
+  Сам браузерный рантайм Microsoft Edge WebView2 Runtime в поставку НЕ
+  входит: он устанавливается отдельно и входит в Windows 10/11; при его
+  отсутствии приложение работает без режима «точный вид».
+
+Рендерер управляемых форм BslEdit (packages/1c-preview-core)
+  https://github.com/alonehobo/BslEdit
+  Copyright (C) BslEdit contributors.
+  Лицензия: MIT. В поставку входят статические ресурсы рендерера
+  (resources/formpreview: form-preview.js, css, картинки) для режима
+  «точный вид». Текст лицензии — resources/formpreview/LICENSE-BslEdit-MIT.txt.
+
 Проект qtv8reader: https://github.com/fishca/qtv8reader

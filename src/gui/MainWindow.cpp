@@ -109,6 +109,8 @@ MainWindow::MainWindow(QWidget *parent)
             settings.value(settingsKey(QStringLiteral("moduleHighlight")), true).toBool();
     }
     m_highlightEnabled = m_highlightSettings.enabled;
+    m_exactFormView =
+        settings.value(settingsKey(QStringLiteral("exactFormView")), false).toBool();
 
     setupUi();
     setupMenus();
@@ -296,6 +298,16 @@ void MainWindow::setupMenus()
     connect(configureHighlight, &QAction::triggered, this,
             &MainWindow::configureHighlighting);
 
+    m_exactFormAction = viewMenu->addAction(
+        QStringLiteral("Точный вид форм (как в конфигураторе)"));
+    m_exactFormAction->setCheckable(true);
+    m_exactFormAction->setChecked(m_exactFormView);
+    m_exactFormAction->setToolTip(QStringLiteral(
+        "Показывать управляемые формы браузерным рендерером конфигуратора 1С "
+        "(Microsoft Edge WebView2)"));
+    connect(m_exactFormAction, &QAction::toggled, this,
+            [this](bool enabled) { setExactFormView(enabled); });
+
     QMenu *themeMenu = viewMenu->addMenu(QStringLiteral("Тема"));
     auto *themeGroup = new QActionGroup(this);
     themeGroup->setExclusive(true);
@@ -409,6 +421,9 @@ void MainWindow::setupTabs()
     m_formView = new FormView(m_formPage);
     m_formView->setObjectName(QStringLiteral("formView"));
     m_formView->setModuleHighlightEnabled(m_highlightEnabled);
+    connect(m_formView, &FormView::exactViewModeChanged, this,
+            &MainWindow::setExactFormView);
+    m_formView->setExactViewEnabled(m_exactFormView);
     formLayout->addWidget(m_formView, 1);
     m_tabs->addTab(m_formPage, QStringLiteral("Форма"));
 
@@ -931,6 +946,26 @@ void MainWindow::setModuleHighlighting(bool enabled)
     QSettings settings;
     m_highlightSettings.save(settings);
     settings.setValue(settingsKey(QStringLiteral("moduleHighlight")), enabled);
+}
+
+void MainWindow::setExactFormView(bool enabled)
+{
+    setExactFormViewEnabled(enabled);
+}
+
+void MainWindow::setExactFormViewEnabled(bool enabled, bool persist)
+{
+    m_exactFormView = enabled;
+    if (persist) {
+        QSettings settings;
+        settings.setValue(settingsKey(QStringLiteral("exactFormView")), enabled);
+    }
+    if (m_exactFormAction && m_exactFormAction->isChecked() != enabled) {
+        const QSignalBlocker blocker(m_exactFormAction);
+        m_exactFormAction->setChecked(enabled);
+    }
+    if (m_formView)
+        m_formView->setExactViewEnabled(enabled);
 }
 
 void MainWindow::configureHighlighting()

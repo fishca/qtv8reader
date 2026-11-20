@@ -7,6 +7,61 @@
 
 namespace v8reader {
 
+// Положение заголовка элемента формы (TitleLocation в Form.xml).
+// Числовые значения совпадают с сериализацией управляемой формы.
+enum class FormTitleLocation {
+    None = 0,
+    Auto = 1,
+    Left = 2,
+    Top = 3,
+    Right = 4,
+    Bottom = 5
+};
+
+// Выделение группы (Representation в Form.xml): рамка-секция вокруг
+// содержимого. Числовые значения сверены с Form.xml.
+enum class FormGroupRepresentation {
+    None = 0,
+    Strong = 1,
+    Weak = 2,
+    Normal = 3
+};
+
+// Поведение группы (Behavior в Form.xml): обычная, раскрываемая
+// с треугольником или всплывающая кнопка-заголовок.
+enum class FormGroupBehavior {
+    Usual = 0,
+    Collapsible = 1,
+    PopUp = 2
+};
+
+// Вид значения поля формы, выведенный из типа реквизита.
+enum class FormValueKind {
+    Unknown,
+    String,
+    Number,
+    Boolean,
+    Date,
+    Reference,
+    Enum,
+    Composite,
+    Picture
+};
+
+// Один сегмент пути к данным (DataPath) элемента формы. В бинарной форме
+// путь записан не текстом, а ссылками на реквизиты метаданных:
+// {длина, {индекс реквизита формы}, сегменты...}. Сегмент — это либо GUID
+// реквизита объекта/табличной части, либо код стандартного реквизита
+// (отрицательное число), либо индекс поля динамического списка.
+struct FormPathSegment
+{
+    enum class Kind { Index, Attribute, StandardAttribute };
+
+    Kind kind = Kind::Index;
+    QString guid;   // Kind::Attribute
+    int code = 0;   // Kind::StandardAttribute (отрицательный) или Kind::Index
+};
+
 // Элемент управляемой формы 1С (поле, группа, кнопка, таблица и т. д.).
 struct FormItem
 {
@@ -34,11 +89,34 @@ struct FormItem
     bool visible = true;
     bool showTitle = true;      // TitleLocation != None
     bool labelOnly = false;     // LabelField/PictureField без поля ввода
+    // Положение заголовка поля: в конфигураторе подпись может стоять слева,
+    // сверху, справа или снизу от поля ввода.
+    FormTitleLocation titleLocation = FormTitleLocation::Auto;
+    // Режим группы: выделение рамкой и поведение заголовка.
+    FormGroupRepresentation representation = FormGroupRepresentation::None;
+    FormGroupBehavior behavior = FormGroupBehavior::Usual;
 
     QString guid;
     QString name;
     QString synonym;
+    // Кнопка выводится на командную панель (LocationInCommandBar); иначе
+    // она живёт только в подменю «Еще».
+    bool onCommandBar = true;
     QVector<FormItem> children;
+
+    // Путь к данным (DataPath) и его расшифровка по метаданным.
+    QVector<FormPathSegment> dataPath;
+    QString dataPathText;      // «Объект.Билеты.Сумма» — для панели свойств
+    QString dataTitle;         // заголовок реквизита из метаданных
+    QString typeText;          // «Строка(50)», «СправочникСсылка.Организации»
+    FormValueKind valueKind = FormValueKind::Unknown;
+    int valueChars = 0;        // ширина поля в символах, выведенная из типа
+
+    // Заголовок элемента из самой формы; если пуст — берётся dataTitle.
+    QString titleText() const
+    {
+        return synonym.isEmpty() ? dataTitle : synonym;
+    }
 
     QString title() const { return synonym.isEmpty() ? name : synonym; }
     QString typeTitle() const;
@@ -62,6 +140,10 @@ struct FormDocument
     bool valid = false;
     QString name;     // имя формы из метаданных
     QString synonym;  // синоним формы из метаданных
+    // Владелец формы для заголовка окна: «Документ.АвансовыйОтчет».
+    QString ownerTitle;
+    // Синоним владельца: в окне 1С заголовок — «Авансовый отчет».
+    QString ownerSynonym;
     QString moduleText;
     QVector<FormItem> items;
     QVector<FormAttribute> attributes;

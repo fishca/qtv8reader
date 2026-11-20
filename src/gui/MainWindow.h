@@ -68,6 +68,8 @@ public:
                              const QString &formQuery = QString());
     bool hasFormDocument() const { return m_formDocumentValid; }
     void setFormScale(int percent);
+    // Включить «точный вид» форм (используется меню и ключом командной строки).
+    void setExactFormViewEnabled(bool enabled, bool persist = true);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -88,6 +90,7 @@ private slots:
     void printMxl();
     void exportMxlPdf();
     void setModuleHighlighting(bool enabled);
+    void setExactFormView(bool enabled);
     void configureHighlighting();
     void applyTheme(const QString &theme, bool persist = true);
 
@@ -179,8 +182,11 @@ private:
     QTreeWidget *m_containerTree = nullptr;
     bool m_containerTreeDirty = false;
     bool m_highlightEnabled = true;
+    // «Точный вид» форм: браузерный рендерер (WebView2) вместо собственного.
+    bool m_exactFormView = false;
     BslHighlightSettings m_highlightSettings;
     QAction *m_highlightAction = nullptr;
+    QAction *m_exactFormAction = nullptr;
     QString m_theme = QStringLiteral("light");
     QAction *m_lightThemeAction = nullptr;
     QAction *m_darkThemeAction = nullptr;

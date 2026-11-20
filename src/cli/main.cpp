@@ -38,9 +38,16 @@ int main(int argc, char **argv)
         QStringLiteral("Каталог или файл для сохранения"), QStringLiteral("путь")));
     parser.addOption(QCommandLineOption(
         QStringLiteral("raw"), QStringLiteral("Не распаковывать данные элемента")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("form"),
+        QStringLiteral("Имя или синоним формы (для form-model)"), QStringLiteral("имя")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("items"),
+        QStringLiteral("Показать дерево элементов формы (для form-model)")));
     parser.addPositionalArgument(QStringLiteral("команда"),
                                  QStringLiteral("Команда: info, list, tree, dump, metadata, "
-                                                "modules, composition, mxl, extract, extract-all"));
+                                                "modules, composition, form-model, mxl, "
+                                                "extract, extract-all"));
     parser.addPositionalArgument(QStringLiteral("файл"),
                                  QStringLiteral("Файл .cf, .cfe, .epf или .erf"));
     parser.addPositionalArgument(QStringLiteral("объект"),
@@ -60,6 +67,8 @@ int main(int argc, char **argv)
         options.argument = positional.at(2);
     options.output = parser.value(QStringLiteral("output"));
     options.raw = parser.isSet(QStringLiteral("raw"));
+    options.form = parser.value(QStringLiteral("form"));
+    options.items = parser.isSet(QStringLiteral("items"));
 
     v8reader::CliApplication application;
     return application.run(options, out, err);

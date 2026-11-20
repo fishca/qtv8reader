@@ -1,0 +1,94 @@
+﻿# Точный вид управляемых форм
+
+В просмотрщике две реализации отображения управляемой формы:
+
+| Режим | Где работает | Что рисует |
+|---|---|---|
+| **Упрощённый** (по умолчанию) | везде, где есть Qt | собственный рендерер на QPainter (`src/gui/FormView.cpp`) |
+| **Точный (как в 1С)** | только Windows | HTML/CSS-рендерер конфигуратора 1С из проекта [BslEdit](https://github.com/alonehobo/BslEdit) внутри Microsoft Edge WebView2 |
+
+Режим переключается в меню **Вид → Точный вид форм (как в конфигураторе)**
+или в самом просмотре формы (список **Вид: Упрощённый / Точный**). Выбор
+запоминается в настройках (`MainWindow/exactFormView`). Для точного вида нужен
+установленный **Microsoft Edge WebView2 Runtime** (Evergreen); он есть на
+большинстве Windows 10/11. Если рантайма нет, режим остаётся доступным в
+меню, но вместо страницы выводится пояснение, а форма показывается
+упрощённо.
+
+## Как это устроено
+
+```
+контейнер .cf/.epf
+      │  V8Container + FormReader        (наш разбор скобочного формата 1С)
+      ▼
+FormDocument  ──►  FormWebModel          (src/core/FormWebModel.cpp)
+      │                 │ JSON-модель формы в терминах XCF (Form/UsualGroup/
+      │                 │ InputField/Table/Button/…, свойства Title, DataPath,
+      │                 │ Width, Group, Representation, objectMeta, commands)
+      ▼                 ▼
+MainWindow ──► FormView ──► WebView2Host  (src/gui/web/WebView2Host.*)
+                              │  виртуальный хост https://qv8.local/:
+                              │  все запросы обслуживает приложение,
+                              │  сеть не используется
+                              ▼
+                     /model.html + /js/form-preview.js (рендерер BslEdit)
+                     + /css/*.css + /std-pictures/*.png  (из qrc)
+```
+
+Ключевая особенность: **XML-файлы конфигурации не используются**. В
+контейнере 1С форма и метаданные хранятся во внутреннем скобочном формате,
+поэтому единственный источник данных — наш `FormReader`, а модель
+сериализуется в ту структуру JSON, которую ожидает рендерер BslEdit
+(`FormPreview.render(model, host, options)`). Никакие временные файлы на
+диск не пишутся: `WebView2Host` перехватывает запросы виртуального хоста
+`https://qv8.local/` и отдаёт байты из qrc или из памяти.
+
+### Компоненты
+
+- `src/gui/web/WebView2Host.h`, `.cpp` — элемент управления WebView2.
+  Загрузчик (`WebView2Loader.dll`) подгружается через `LoadLibrary`, COM-интерфейсы
+  вызываются через виртуальные таблицы, поэтому SDK-библиотека не линкуется,
+  а при отсутствии рантайма приложение просто остаётся работоспособным.
+  Отладочный журнал включается переменной окружения `QTV8_WEBVIEW2_LOG=<файл>`.
+- `src/core/FormWebModel.h`, `.cpp` — сериализация `FormDocument` в JSON-модель
+  формы (теги XCF, свойства, командная панель со стандартными командами
+  `_stdWrite`/`_stdPostAndClose`, метаданные владельца `objectMeta`).
+- `resources/formpreview/` — статические ресурсы рендерера (HTML/CSS/JS и
+  картинки), попадают в qrc-префикс `/formpreview`.
+- `3rdparty/webview2/` — заголовок SDK и `WebView2Loader.dll` (кладутся рядом
+  с exe при сборке).
+
+### Командная строка
+
+Модель можно получить и без GUI — это удобно для отладки рендера:
+
+```sh
+v8reader_cli form-model <файл> <объект> [--form <имя формы>] [-o model.json]
+v8reader_cli form-model <файл> <объект> --items     # дерево элементов формы
+```
+
+## Ограничения текущей реализации
+
+- Данные в контейнере беднее, чем в выгрузке в XML (`v8unpack -PARSE`):
+  часть свойств элементов (картинки, подсказки, `FixingInTable`, группы
+  колонок, расширенные настройки) не разбирается, поэтому вид близок к
+  конфигуратору, но не бит-в-бит. Заголовки кнопок общих команд выводятся
+  из имени команды (`Показать движения документа`), пока описание общей
+  команды недоступно.
+- Только Windows: WebView2 отсутствует на Linux. На Linux точный вид
+  недоступен, работает упрощённый рендерер.
+- Масштаб формы передаётся как `ZoomFactor` страницы: 50–150 %.
+
+## Обновление ресурсов рендерера
+
+1. Взять архив BslEdit (MIT), скопировать из `packages/1c-preview-core/browser`
+   файлы `form-preview.js`, `form-preview-85.css`, `xml-util.js`,
+   `std-pictures/*`, `platform-*.png`; из `web` — `viewer.css`.
+2. Собрать страницу-хост `model.html` (в ней подключаются `xml-util.js`,
+   `form-preview.js`, `model-app.js`).
+3. Заменить файлы в `resources/formpreview/`, обновить блок
+   `<qresource prefix="/formpreview">` в `resources/resources.qrc`.
+4. Пересобрать: ресурсы попадают в exe через qrc (AUTORCC).
+
+Лицензия BslEdit — MIT, текст лежит в `resources/formpreview/LICENSE-BslEdit-MIT.txt`
+и дублируется в `packaging/THIRD-PARTY-NOTICES.txt`.

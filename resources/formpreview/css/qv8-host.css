@@ -1,0 +1,45 @@
+/* Host page chrome only.  Everything inside #host is styled by viewer.css and
+ * form-preview-85.css, exactly as in the BslEdit viewer. */
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #f2f2f2;
+    overflow: hidden;
+}
+
+#host {
+    width: 100%;
+    height: 100vh;
+}
+
+#qv8-error {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    margin: 0;
+    padding: 24px;
+    overflow: auto;
+    background: #fff;
+    color: #b00020;
+    font: 13px/1.45 Consolas, 'Courier New', monospace;
+    white-space: pre-wrap;
+}
+
+#qv8-debug {
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    z-index: 999;
+    max-width: 46vw;
+    max-height: 40vh;
+    margin: 0;
+    padding: 10px 12px;
+    overflow: auto;
+    border: 1px solid #b8b8b8;
+    background: rgba(255, 255, 255, .94);
+    color: #222;
+    font: 11px/1.4 Consolas, 'Courier New', monospace;
+    white-space: pre-wrap;
+}

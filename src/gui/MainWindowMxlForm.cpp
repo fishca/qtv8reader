@@ -6,7 +6,9 @@
 #include "gui/MxlView.h"
 #include "gui/PreviewDialog.h"
 #include "core/ConfigurationReader.h"
+#include "core/FormBindings.h"
 #include "core/FormReader.h"
+#include "core/FormWebModel.h"
 #include "core/MxlReader.h"
 #include "core/V8Text.h"
 
@@ -127,7 +129,11 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
     }
 
     FormDocument document;
-    if (!FormReader::parseBytes(payload, &document, &error)) {
+    FormBindingResolver resolver;
+    if (m_currentObject)
+        resolver.addObject(*m_currentObject);
+    if (!FormReader::parseBytes(payload, &document, &error,
+                                resolver.isEmpty() ? nullptr : &resolver)) {
         m_formView->setMessage(
             QStringLiteral("Не удалось разобрать форму «%1»: %2")
                 .arg(entry.displayName(), error));
@@ -136,6 +142,14 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
 
     document.name = entry.name;
     document.synonym = entry.synonym;
+    if (m_currentObject && !m_currentObject->name.isEmpty()) {
+        // Заголовок окна формы, как в конфигураторе: «Документ.АвансовыйОтчет».
+        document.ownerTitle = m_currentObject->typeTitle.isEmpty()
+            ? m_currentObject->name
+            : QStringLiteral("%1.%2").arg(m_currentObject->typeTitle,
+                                          m_currentObject->name);
+        document.ownerSynonym = m_currentObject->synonym;
+    }
     {
         bool hasTable = false;
         const QString objectName = m_currentObject ? m_currentObject->name : QString();
@@ -186,6 +200,8 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
     m_formDocument = document;
     m_formDocumentValid = true;
     m_formView->setDocument(document);
+    // «Точный вид»: браузерный рендерер получает модель формы в JSON.
+    m_formView->setExactFormModel(formWebModelJson(document), document.name);
 
     const int index = m_tabs->indexOf(m_formPage);
     if (index >= 0) {

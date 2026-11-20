@@ -35,6 +35,7 @@ int main(int argc, char *argv[])
     QString selectForm;
     int formScale = 0;
     bool showAreas = false;
+    bool exactFormView = false;
     QString filePath;
     const QStringList arguments = QCoreApplication::arguments();
     for (int i = 1; i < arguments.size(); ++i) {
@@ -90,6 +91,10 @@ int main(int argc, char *argv[])
             formScale = arguments.at(++i).toInt();
             continue;
         }
+        if (argument == QStringLiteral("--exact-form-view")) {
+            exactFormView = true;
+            continue;
+        }
         if (filePath.isEmpty() && !argument.startsWith(QLatin1Char('-')))
             filePath = argument;
     }
@@ -124,6 +129,9 @@ int main(int argc, char *argv[])
         if (formScale > 0)
             window.setFormScale(formScale);
     }
+
+    if (exactFormView)
+        window.setExactFormViewEnabled(true, false);
 
     if (expandCommon)
         window.expandCommonBranch();

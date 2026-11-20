@@ -1,9 +1,12 @@
 #include "core/FormReader.h"
 
+#include "core/FormBindings.h"
 #include "core/V8Text.h"
 
 #include <QFile>
 #include <QFileInfo>
+
+#include <algorithm>
 
 namespace v8reader {
 
@@ -84,6 +87,94 @@ int integerChild(const V8TextNode &node, int index)
     if (!child || !child->isInteger())
         return -1;
     return static_cast<int>(child->toInteger());
+}
+
+// Узел макета группы {29, ...}: в нём лежат ориентация (1), выделение
+// (3), показ заголовка (4) и поведение (10–12). Значения сверены
+// с Form.xml на формах БП.
+const V8TextNode *findLayoutNode(const V8TextNode &node)
+{
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList() || child.children.isEmpty())
+            continue;
+        const V8TextNode *first = child.child(0);
+        if (!first)
+            continue;
+        const bool isLayout = (first->isInteger() && first->toInteger() == 29)
+            || (first->isScalar() && first->scalar() == QLatin1String("29"));
+        if (isLayout)
+            return &child;
+    }
+    return nullptr;
+}
+
+int layoutInteger(const V8TextNode &layout, int index)
+{
+    const V8TextNode *child = layout.child(index);
+    if (!child || !child->isInteger())
+        return -1;
+    return static_cast<int>(child->toInteger());
+}
+
+// Сегмент пути к данным: {индекс}, {код} или {0, guid}.
+bool isPathSegment(const V8TextNode &node)
+{
+    if (!node.isList() || node.children.isEmpty() || node.children.size() > 2)
+        return false;
+    const V8TextNode *first = node.child(0);
+    if (!first || !first->isInteger())
+        return false;
+    if (node.children.size() == 2) {
+        const V8TextNode *second = node.child(1);
+        if (!second || !second->isGuid())
+            return false;
+    }
+    return true;
+}
+
+// Описание пути к данным (DataPath) поля: {длина, сегменты...}.
+// В бинарной форме путь хранится ссылками на реквизиты метаданных,
+// а не текстом: {2,{1},{-3}} — «Объект.Дата», {3,{1},{0,guid},{-2}} —
+// «Объект.ТабличнаяЧасть.Колонка».
+bool isPathDescriptor(const V8TextNode &node)
+{
+    if (!node.isList() || node.children.size() < 2)
+        return false;
+    const V8TextNode *count = node.child(0);
+    if (!count || !count->isInteger())
+        return false;
+    const qint64 length = count->toInteger();
+    if (length < 1 || length > 8 || node.children.size() != length + 1)
+        return false;
+    for (int i = 1; i < node.children.size(); ++i) {
+        if (!isPathSegment(*node.child(i)))
+            return false;
+    }
+    return true;
+}
+
+QVector<FormPathSegment> parsePathDescriptor(const V8TextNode &node)
+{
+    QVector<FormPathSegment> segments;
+    for (int i = 1; i < node.children.size(); ++i) {
+        const V8TextNode *child = node.child(i);
+        if (!child || !child->isList() || child->children.isEmpty())
+            continue;
+        FormPathSegment segment;
+        if (child->children.size() == 2 && child->child(1)->isGuid()) {
+            segment.kind = FormPathSegment::Kind::Attribute;
+            segment.guid = child->child(1)->normalizedGuid();
+        } else if (child->child(0)->isInteger()) {
+            const int code = static_cast<int>(child->child(0)->toInteger());
+            segment.code = code;
+            segment.kind = code < 0 ? FormPathSegment::Kind::StandardAttribute
+                                    : FormPathSegment::Kind::Index;
+        } else {
+            continue;
+        }
+        segments.append(segment);
+    }
+    return segments;
 }
 
 QString typeHintFromAttributes(const V8TextNode &node)
@@ -217,12 +308,18 @@ FormItem parseItem(const V8TextNode &node)
         item.groupKind = integerChild(node, nameIndex - 1);
     item.synonym = localizedText(node);
 
-    // Поля: сразу после имени — TitleLocation (1 — показывать, 0 — None),
-    // через 37 полей — Visible (1/0). Сверено с Form.xml по id.
+    // Поля: сразу после имени — TitleLocation (0 — None, 1 — Auto,
+    // 2 — Left, 3 — Top, 4 — Right, 5 — Bottom), через 37 полей — Visible.
+    // Сверено с Form.xml по id (значение Top проверено на форме справочника
+    // «Варианты отчетов»).
     if (item.typeCode == 37 && nameIndex >= 0) {
         const V8TextNode *title = node.child(nameIndex + 1);
-        if (title && title->isInteger())
-            item.showTitle = title->toInteger() != 0;
+        if (title && title->isInteger()) {
+            const int location = static_cast<int>(title->toInteger());
+            if (location >= 0 && location <= 5)
+                item.titleLocation = static_cast<FormTitleLocation>(location);
+            item.showTitle = item.titleLocation != FormTitleLocation::None;
+        }
         const V8TextNode *visible = node.child(nameIndex + 37);
         if (visible && visible->isInteger())
             item.visible = visible->toInteger() != 0;
@@ -268,6 +365,51 @@ FormItem parseItem(const V8TextNode &node)
 
     readGeometry(node, nameIndex, &item);
 
+    // Группа: в узле макета {29,...} лежат выделение (3), показ заголовка (4)
+    // и поведение (10–12). Обычные группы БП дают 0/1, раскрываемые — 1/1/1,
+    // всплывающие — 1/0/0; сверено с Form.xml на четырёх справочниках.
+    if (item.type == FormItem::Type::Group) {
+        if (const V8TextNode *layout = findLayoutNode(node)) {
+            const int representation = layoutInteger(*layout, 3);
+            if (representation >= 0 && representation <= 3)
+                item.representation = static_cast<FormGroupRepresentation>(representation);
+            const int showTitle = layoutInteger(*layout, 4);
+            if (showTitle >= 0)
+                item.showTitle = showTitle != 0;
+            const int behaviorFlag = layoutInteger(*layout, 10);
+            const int collapsible = layoutInteger(*layout, 11);
+            const int collapsibleSecond = layoutInteger(*layout, 12);
+            if (behaviorFlag == 1) {
+                item.behavior = (collapsible == 1 && collapsibleSecond == 1)
+                    ? FormGroupBehavior::Collapsible
+                    : FormGroupBehavior::PopUp;
+            }
+        }
+    }
+
+    // Кнопка: через 10 полей после имени — LocationInCommandBar
+    // (0 — только в подменю «Еще», 1 — на панели). Сверено с Form.xml
+    // на 30 кнопках пяти объектов БП.
+    if (item.typeCode == 31 && nameIndex >= 0) {
+        const V8TextNode *onBar = node.child(nameIndex + 10);
+        if (onBar && onBar->isInteger())
+            item.onCommandBar = onBar->toInteger() != 0;
+    }
+
+    // Путь к данным поля: в бинарной форме он записан ссылками на реквизиты
+    // метаданных и всегда лежит в нескольких полях после имени элемента.
+    if (item.typeCode == 37 && nameIndex >= 0) {
+        const int last = std::min<int>(node.children.size() - 1, nameIndex + 8);
+        for (int j = nameIndex + 3; j <= last; ++j) {
+            const V8TextNode *candidate = node.child(j);
+            if (!candidate || !isPathDescriptor(*candidate))
+                continue;
+            item.dataPath = parsePathDescriptor(*candidate);
+            if (!item.dataPath.isEmpty())
+                break;
+        }
+    }
+
     for (const V8TextNode &child : node.children) {
         if (isItemNode(child))
             item.children.append(parseItem(child));
@@ -299,7 +441,7 @@ bool FormReader::looksLikeForm(const QByteArray &data)
 }
 
 bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
-                            QString *error)
+                            QString *error, const FormBindingResolver *resolver)
 {
     if (!document) {
         if (error)
@@ -409,11 +551,13 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             *error = QStringLiteral("Форма не содержит элементов.");
         return false;
     }
+    if (resolver && !resolver->isEmpty())
+        resolver->applyToDocument(document);
     return true;
 }
 
 bool FormReader::parseFile(const QString &path, FormDocument *document,
-                           QString *error)
+                           QString *error, const FormBindingResolver *resolver)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -422,7 +566,7 @@ bool FormReader::parseFile(const QString &path, FormDocument *document,
                          .arg(QFileInfo(path).fileName(), file.errorString());
         return false;
     }
-    return parseBytes(file.readAll(), document, error);
+    return parseBytes(file.readAll(), document, error, resolver);
 }
 
 } // namespace v8reader
