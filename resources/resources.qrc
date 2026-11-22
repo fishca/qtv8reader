@@ -238,6 +238,7 @@
     <file alias="std-pictures/Dokument.png">formpreview/std-pictures/Dokument.png</file>
     <file alias="std-pictures/Dokumentatsiya.png">formpreview/std-pictures/Dokumentatsiya.png</file>
     <file alias="std-pictures/DokumentObekt.png">formpreview/std-pictures/DokumentObekt.png</file>
+    <file alias="std-pictures/DopolnitelnyeSvedeniya.png">formpreview/std-pictures/DopolnitelnyeSvedeniya.png</file>
     <file alias="std-pictures/DostupnyePolyaKomponovkiDannykh.png">formpreview/std-pictures/DostupnyePolyaKomponovkiDannykh.png</file>
     <file alias="std-pictures/Element.png">formpreview/std-pictures/Element.png</file>
     <file alias="std-pictures/Forma.png">formpreview/std-pictures/Forma.png</file>
@@ -519,6 +520,7 @@
     <file alias="std-pictures/StrelkaVpravo.png">formpreview/std-pictures/StrelkaVpravo.png</file>
     <file alias="std-pictures/StrelkaVverkh.png">formpreview/std-pictures/StrelkaVverkh.png</file>
     <file alias="std-pictures/Struktura.png">formpreview/std-pictures/Struktura.png</file>
+    <file alias="std-pictures/StrukturaPodchinennosti.png">formpreview/std-pictures/StrukturaPodchinennosti.png</file>
     <file alias="std-pictures/SUMMA.png">formpreview/std-pictures/SUMMA.png</file>
     <file alias="std-pictures/SVERNUT.png">formpreview/std-pictures/SVERNUT.png</file>
     <file alias="std-pictures/SvernutVse.png">formpreview/std-pictures/SvernutVse.png</file>

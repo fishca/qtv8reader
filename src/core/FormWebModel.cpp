@@ -153,6 +153,46 @@ QString commandNameForButton(const FormItem &item, const FormDocument &document)
     return QString();
 }
 
+// Пиктограмма платформенной команды, которую 1С выводит на командную панель
+// одной картинкой: заголовок становится подсказкой, поэтому он же служит
+// текстом пункта в «Ещё».
+struct StandardBarCommand
+{
+    QString name;    // имя общей команды без префикса CommonCommand.
+    QString title;   // заголовок и подсказка кнопки
+    QString picture; // картинка платформенной библиотеки (std-pictures/)
+};
+
+const StandardBarCommand *standardBarCommand(const QString &commandName)
+{
+    static const QString prefix = QStringLiteral("CommonCommand.");
+    static const QVector<StandardBarCommand> commands = {
+        {QStringLiteral("ПоказатьДвиженияДокумента"),
+         QStringLiteral("Движения документа"),
+         QStringLiteral("StdPicture.ДебетКредит")},
+        {QStringLiteral("СтруктураПодчиненности"),
+         QStringLiteral("Структура подчинённости"),
+         QStringLiteral("StdPicture.СтруктураПодчиненности")},
+        {QStringLiteral("ПрисоединенныеФайлы"),
+         QStringLiteral("Присоединённые файлы"),
+         QStringLiteral("StdPicture.Attach")},
+        {QStringLiteral("ДополнительныеСведенияКоманднаяПанель"),
+         QStringLiteral("Дополнительные сведения"),
+         QStringLiteral("StdPicture.ДополнительныеСведения")},
+        {QStringLiteral("ИсторияИзменений"),
+         QStringLiteral("История изменений"),
+         QStringLiteral("StdPicture.DataHistory")}
+    };
+    if (!commandName.startsWith(prefix))
+        return nullptr;
+    const QString name = commandName.mid(prefix.size());
+    for (const StandardBarCommand &command : commands) {
+        if (command.name == name)
+            return &command;
+    }
+    return nullptr;
+}
+
 QString elementTag(const FormItem &item)
 {
     switch (item.type) {
@@ -275,6 +315,15 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
     const QString title = buttonTitle(item, document);
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
+    // Платформенные команды («Движения документа», «Структура подчинённости»,
+    // «Присоединённые файлы», «Дополнительные сведения», «История изменений»)
+    // клиент выводит на панель одними пиктограммами: заголовок остаётся
+    // подсказкой кнопки и текстом пункта в «Ещё».
+    if (const StandardBarCommand *appearance = standardBarCommand(commandName)) {
+        properties.insert(QStringLiteral("Title"), appearance->title);
+        properties.insert(QStringLiteral("Representation"), QStringLiteral("Picture"));
+        properties.insert(QStringLiteral("Picture"), appearance->picture);
+    }
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), boolText(false));
     if (!item.onCommandBar)
@@ -583,6 +632,72 @@ QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &documen
     return json;
 }
 
+// Группа важных команд в панели формы: платформа ставит «Создать на
+// основании» не вплотную к «Провести», а после этой группы, поэтому
+// «Движения документа» оказывается левее подменю создания.
+bool isImportantCommandsGroup(const QJsonObject &group)
+{
+    if (group.value(QStringLiteral("tag")).toString() != QLatin1String("ButtonGroup"))
+        return false;
+    const QString title = group.value(QStringLiteral("properties")).toObject()
+                              .value(QStringLiteral("Title")).toString();
+    const QString name = group.value(QStringLiteral("name")).toString();
+    return title.contains(QStringLiteral("Важн"), Qt::CaseInsensitive)
+        || name.contains(QStringLiteral("Важн"), Qt::CaseInsensitive)
+        || name.contains(QStringLiteral("Important"), Qt::CaseInsensitive);
+}
+
+// Вставляет подменю создания после группы важных команд, где бы внутри
+// панели она ни лежала (обычно — внутри «Кнопки командной панели»).
+bool insertAfterImportantGroup(QJsonArray *groups, const QJsonObject &basedOn)
+{
+    for (int i = 0; i < groups->size(); ++i) {
+        const QJsonObject group = groups->at(i).toObject();
+        if (isImportantCommandsGroup(group)) {
+            groups->insert(i + 1, basedOn);
+            return true;
+        }
+    }
+    for (int i = 0; i < groups->size(); ++i) {
+        QJsonObject group = groups->at(i).toObject();
+        QJsonArray children = group.value(QStringLiteral("childItems")).toArray();
+        if (children.isEmpty())
+            continue;
+        if (!insertAfterImportantGroup(&children, basedOn))
+            continue;
+        group.insert(QStringLiteral("childItems"), children);
+        (*groups)[i] = group;
+        return true;
+    }
+    return false;
+}
+
+void moveCreateBasedOnAfterImportantCommands(QJsonObject *bar)
+{
+    QJsonArray buttons = bar->value(QStringLiteral("childItems")).toArray();
+    QJsonObject basedOn;
+    int basedOnIndex = -1;
+    for (int i = 0; i < buttons.size(); ++i) {
+        const QJsonObject button = buttons.at(i).toObject();
+        if (button.value(QStringLiteral("name")).toString()
+            == QLatin1String("_global_create_based_on")) {
+            basedOn = button;
+            basedOnIndex = i;
+            break;
+        }
+    }
+    if (basedOnIndex < 0)
+        return;
+    QJsonArray rest;
+    for (int i = 0; i < buttons.size(); ++i) {
+        if (i != basedOnIndex)
+            rest.append(buttons.at(i));
+    }
+    if (!insertAfterImportantGroup(&rest, basedOn))
+        return;
+    bar->insert(QStringLiteral("childItems"), rest);
+}
+
 QJsonObject buildAutoCommandBar(const FormDocument &document,
                                 const FormItem *authoredBar)
 {
@@ -611,8 +726,10 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
     // «Создать на основании» — стандартное подменю рядом с «Записать».
     standard.append(makePopup(QStringLiteral("_global_create_based_on"),
                               QStringLiteral("Создать на основании"), QJsonArray()));
-    return buildCommandBarNode(authoredBar, document, standard, false,
-                               QStringLiteral("ФормаКоманднаяПанель"));
+    QJsonObject bar = buildCommandBarNode(authoredBar, document, standard, false,
+                                          QStringLiteral("ФормаКоманднаяПанель"));
+    moveCreateBasedOnAfterImportantCommands(&bar);
+    return bar;
 }
 
 QString kindTagFor(const QString &ownerTitle)

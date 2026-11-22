@@ -73,6 +73,30 @@ const FormItem *findItemById(const QVector<FormItem> &items, int id)
     return nullptr;
 }
 
+// Узел модели командной панели по имени на любой глубине вложенности.
+QJsonObject findModelNode(const QJsonArray &items, const QString &name)
+{
+    for (const QJsonValue &value : items) {
+        const QJsonObject node = value.toObject();
+        if (node.value(QStringLiteral("name")).toString() == name)
+            return node;
+        const QJsonObject nested =
+            findModelNode(node.value(QStringLiteral("childItems")).toArray(), name);
+        if (!nested.isEmpty())
+            return nested;
+    }
+    return QJsonObject();
+}
+
+int modelNodeIndex(const QJsonArray &items, const QString &name)
+{
+    for (int i = 0; i < items.size(); ++i) {
+        if (items.at(i).toObject().value(QStringLiteral("name")).toString() == name)
+            return i;
+    }
+    return -1;
+}
+
 class TestForm : public QObject
 {
     Q_OBJECT
@@ -81,6 +105,7 @@ private slots:
     void parseSynthetic();
     void parsedGroupAndTitleModes();
     void webModel();
+    void commandBarStandardCommands();
     void notAForm();
     void realBpForm();
     void realBpListFormGeometry();
@@ -222,6 +247,97 @@ void TestForm::webModel()
     QCOMPARE(objectMeta.value(QStringLiteral("captions")).toObject()
                  .value(QStringLiteral("Поле1")).toString(),
              QStringLiteral("Поле 1"));
+}
+
+// Командная панель формы документа: платформенные команды выводятся одними
+// пиктограммами, а «Создать на основании» стоит после группы важных команд.
+void TestForm::commandBarStandardCommands()
+{
+    FormDocument document;
+    document.runtimeDocumentCommands = true;
+    document.ownerTitle = QStringLiteral("Документ.АвансовыйОтчет");
+
+    FormItem bar;
+    bar.type = FormItem::Type::Group;
+    bar.groupKind = 9;  // командная панель
+    bar.name = QStringLiteral("ФормаКоманднаяПанель");
+
+    FormItem panel;
+    panel.type = FormItem::Type::Group;
+    panel.groupKind = 6;  // группа кнопок
+    panel.name = QStringLiteral("ГруппаКнопкиКоманднойПанели");
+
+    FormItem important;
+    important.type = FormItem::Type::Group;
+    important.groupKind = 6;
+    important.name = QStringLiteral("ГруппаВажныеКоманды");
+    important.synonym = QStringLiteral("Важные команды");
+
+    FormItem motions;
+    motions.type = FormItem::Type::Button;
+    motions.name = QStringLiteral("ФормаОбщаяКомандаПоказатьДвиженияДокумента");
+    important.children.append(motions);
+
+    FormItem global;
+    global.type = FormItem::Type::Group;
+    global.groupKind = 6;
+    global.name = QStringLiteral("ГруппаГлобальныеКоманды");
+
+    FormItem structure;
+    structure.type = FormItem::Type::Button;
+    structure.name = QStringLiteral("ОбщаяКомандаСтруктураПодчиненности");
+    FormItem history;
+    history.type = FormItem::Type::Button;
+    history.name = QStringLiteral("ОбщаяКомандаИсторияИзменений");
+    global.children.append(structure);
+    global.children.append(history);
+
+    panel.children.append(important);
+    panel.children.append(global);
+    bar.children.append(panel);
+    document.items.append(bar);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray barItems = model.value(QStringLiteral("autoCommandBar")).toObject()
+                                    .value(QStringLiteral("childItems")).toArray();
+    QCOMPARE(barItems.first().toObject().value(QStringLiteral("name")).toString(),
+             QStringLiteral("_stdPostAndClose"));
+    QCOMPARE(modelNodeIndex(barItems, QStringLiteral("_global_create_based_on")), -1);
+
+    const QJsonObject panelNode =
+        findModelNode(barItems, QStringLiteral("ГруппаКнопкиКоманднойПанели"));
+    QVERIFY(!panelNode.isEmpty());
+    const QJsonArray panelItems = panelNode.value(QStringLiteral("childItems")).toArray();
+    const int importantIndex =
+        modelNodeIndex(panelItems, QStringLiteral("ГруппаВажныеКоманды"));
+    const int basedOnIndex =
+        modelNodeIndex(panelItems, QStringLiteral("_global_create_based_on"));
+    const int globalIndex =
+        modelNodeIndex(panelItems, QStringLiteral("ГруппаГлобальныеКоманды"));
+    QVERIFY(importantIndex >= 0);
+    QVERIFY(basedOnIndex > importantIndex);
+    QVERIFY(basedOnIndex < globalIndex);
+
+    const QJsonObject motionsProperties =
+        findModelNode(barItems, QStringLiteral("ФормаОбщаяКомандаПоказатьДвиженияДокумента"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(motionsProperties.value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("Picture"));
+    QCOMPARE(motionsProperties.value(QStringLiteral("Picture")).toString(),
+             QStringLiteral("StdPicture.ДебетКредит"));
+    QCOMPARE(motionsProperties.value(QStringLiteral("Title")).toString(),
+             QStringLiteral("Движения документа"));
+
+    const QJsonObject historyProperties =
+        findModelNode(barItems, QStringLiteral("ОбщаяКомандаИсторияИзменений"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(historyProperties.value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("Picture"));
+    QCOMPARE(historyProperties.value(QStringLiteral("Picture")).toString(),
+             QStringLiteral("StdPicture.DataHistory"));
+    QCOMPARE(historyProperties.value(QStringLiteral("Title")).toString(),
+             QStringLiteral("История изменений"));
 }
 
 void TestForm::notAForm()
