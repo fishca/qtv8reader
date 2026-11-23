@@ -1,4 +1,5 @@
 #include "TestContainerBuilder.h"
+#include "TestPaths.h"
 #include "core/V8Container.h"
 
 #include <QFile>
@@ -259,12 +260,9 @@ void TestV8Container::corruptHeader()
 
 void TestV8Container::realSamples()
 {
-    const QString test1 = QStringLiteral(
-        "C:/work/cpp/Projects/_e8unpack_/release_package/1Cv8_test1.cf");
-    const QString minTest = QStringLiteral(
-        "C:/work/cpp/Projects/w8reader/bin/Debug/1Cv8_minTest.cf");
+    const QString test1 = test::exactSampleFile(QStringLiteral("1Cv8_test1.cf"));
 
-    if (!QFileInfo::exists(test1))
+    if (test1.isEmpty())
         QSKIP("Реальный образец 1Cv8_test1.cf не найден");
 
     V8Container container;
@@ -279,7 +277,8 @@ void TestV8Container::realSamples()
     QVERIFY(container.elementPayload(*root, &payload, nullptr, &error));
     QVERIFY(payload.contains("58776e78-c74e-4bf2-8451-ad73247103ce"));
 
-    if (QFileInfo::exists(minTest)) {
+    const QString minTest = test::exactSampleFile(QStringLiteral("1Cv8_minTest.cf"));
+    if (!minTest.isEmpty()) {
         V8Container small;
         QVERIFY2(small.open(minTest, &error), qPrintable(error));
         QCOMPARE(small.format().version, 16);

@@ -2,6 +2,7 @@
 #include "core/MxlDocument.h"
 #include "core/MxlReader.h"
 #include "core/V8Container.h"
+#include "TestPaths.h"
 
 #include <QTest>
 
@@ -227,8 +228,8 @@ void TestMxl::lookupHelpers()
 
 void TestMxl::realBpTemplate()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;

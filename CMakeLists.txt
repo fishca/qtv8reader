@@ -203,6 +203,7 @@ qt_add_executable(qtv8reader_tests
     tests/test_form.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
+    tests/TestPaths.h
 )
 
 target_link_libraries(qtv8reader_tests PRIVATE qtv8reader_core Qt6::Test)
@@ -213,6 +214,7 @@ qt_add_executable(qtv8reader_cli_tests
     tests/test_cli.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
+    tests/TestPaths.h
 )
 
 target_link_libraries(qtv8reader_cli_tests PRIVATE qtv8reader_cli_lib Qt6::Test)

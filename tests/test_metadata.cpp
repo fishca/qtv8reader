@@ -1,4 +1,5 @@
 #include "TestContainerBuilder.h"
+#include "TestPaths.h"
 #include "core/ConfigurationReader.h"
 #include "core/Extractor.h"
 #include "core/MetadataCatalog.h"
@@ -982,9 +983,8 @@ void TestMetadata::missingConfigurationObject()
 
 void TestMetadata::realSampleMetadata()
 {
-    const QString sample = QStringLiteral(
-        "C:/work/cpp/Projects/_e8unpack_/release_package/1Cv8_test1.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::exactSampleFile(QStringLiteral("1Cv8_test1.cf"));
+    if (sample.isEmpty())
         QSKIP("Реальный образец 1Cv8_test1.cf не найден");
 
     ConfigurationReader reader;
@@ -1014,8 +1014,8 @@ void TestMetadata::realSampleMetadata()
 
 void TestMetadata::realBpDocument()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -1067,8 +1067,8 @@ void TestMetadata::realBpDocument()
 
 void TestMetadata::realExternalProcessing()
 {
-    const QString sample = QStringLiteral("C:/work/1с/Обработки/UI_Portable.epf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("UI_Portable.epf"));
+    if (sample.isEmpty())
         QSKIP("Внешняя обработка UI_Portable.epf не найдена");
 
     ConfigurationReader reader;
@@ -1103,9 +1103,8 @@ void TestMetadata::realExternalProcessing()
 
 void TestMetadata::realExtension()
 {
-    const QString sample = QStringLiteral(
-        "C:/work/repo_github/yellow_watcher/1c-extention/YellowWatcher.cfe");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("YellowWatcher.cfe"));
+    if (sample.isEmpty())
         QSKIP("Расширение YellowWatcher.cfe не найдено");
 
     ConfigurationReader reader;

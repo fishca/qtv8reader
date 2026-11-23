@@ -9,6 +9,7 @@
 #include "core/FormWebModel.h"
 #include "core/V8Text.h"
 #include "core/V8Container.h"
+#include "TestPaths.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -380,8 +381,8 @@ void TestForm::notAForm()
 
 void TestForm::realBpForm()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -532,8 +533,8 @@ void TestForm::realBpForm()
 
 void TestForm::realBpListFormGeometry()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -614,8 +615,8 @@ void TestForm::realBpListFormGeometry()
 // у поля появляются заголовок реквизита, тип и ширина в символах.
 void TestForm::resolvedFieldTypes()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -696,8 +697,8 @@ void TestForm::resolvedFieldTypes()
 // полные пути колонок табличных частей и группы колонок.
 void TestForm::ownerMetadataAndTableColumns()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -818,8 +819,8 @@ void TestForm::ownerMetadataAndTableColumns()
 // получает настоящее имя поля — по нему рендерер берёт заголовок и тип.
 void TestForm::dynamicListColumns()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -932,8 +933,8 @@ void TestForm::dynamicListColumns()
 
 void TestForm::fieldKindsFromForm()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -1117,8 +1118,8 @@ void TestForm::fieldKindsFromForm()
 // которая закрывает баннер.
 void TestForm::decorationKindsAndHyperlinks()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -1250,8 +1251,8 @@ void TestForm::decorationKindsAndHyperlinks()
 // вместе с её содержимым пропадала из модели.
 void TestForm::commandBarGroupKinds()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -1341,8 +1342,8 @@ void TestForm::commandBarGroupKinds()
 // поля (стили конфигурации), рамку поля (стиль платформы BorderColor).
 void TestForm::styleReferences()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -2069,8 +2070,8 @@ void TestForm::groupAlignment()
 // «Страницы» без закладок, надпись с высотой 1 и без вертикального растяжения).
 void TestForm::sizesStretchAndPages()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -2157,8 +2158,8 @@ void TestForm::sizesStretchAndPages()
 // таблицу, поведение групп и путь к данным по номеру реквизита формы.
 void TestForm::formattedTitlesAndGroupFlags()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -2325,8 +2326,8 @@ void TestForm::formattedTitlesAndGroupFlags()
 // в записи лежит блок {18,…}, 17-е поле которого задаёт Group.
 void TestForm::pageOrientation()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -2387,8 +2388,8 @@ void TestForm::pageOrientation()
 // у группы кнопок — четвёртым полем блока {2, …, 2, вид}.
 void TestForm::commandBarAutofillAndCompactGroups()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -2494,8 +2495,8 @@ void TestForm::commandBarAutofillAndCompactGroups()
 // вставка картинки и зачеркивание с выравниванием в подменю «Ещё».
 void TestForm::formattedDocumentCommandBar()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
@@ -2592,8 +2593,8 @@ void TestForm::formattedDocumentCommandBar()
 // вводе и DefaultItem. Все значения сверены с Form.xml корпуса.
 void TestForm::tableRepresentationAndRowFlags()
 {
-    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
-    if (!QFileInfo::exists(sample))
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
         QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
 
     ConfigurationReader reader;
