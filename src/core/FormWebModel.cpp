@@ -534,6 +534,9 @@ QString elementTag(const FormItem &item, bool insideTable = false)
 }
 
 QJsonObject makeItem(const FormItem &item, const FormDocument &document);
+// Дополняет узел признаками «видимости для пользователя»: скрытый
+// пользователем элемент платформа не показывает, хотя Visible у него не задан.
+QJsonObject withUserVisible(const FormItem &item, QJsonObject json);
 
 QString kindTagFor(const QString &ownerTitle);
 
@@ -842,7 +845,7 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
     json.insert(QStringLiteral("authoredProperties"), properties);
     json.insert(QStringLiteral("childItems"), QJsonArray());
     json.insert(QStringLiteral("events"), QJsonArray());
-    return json;
+    return withUserVisible(item, json);
 }
 
 // Путь к данным колонки таблицы в форме записан от корня формы
@@ -1105,7 +1108,7 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         json.insert(QStringLiteral("childItems"), children);
     }
     json.insert(QStringLiteral("events"), QJsonArray());
-    return json;
+    return withUserVisible(item, json);
 }
 
 QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
@@ -1277,7 +1280,7 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
     appendChildren(item.children, document, &children);
     json.insert(QStringLiteral("childItems"), children);
     json.insert(QStringLiteral("events"), QJsonArray());
-    return json;
+    return withUserVisible(item, json);
 }
 
 // Группа колонок таблицы: заголовок над несколькими колонками. В таблице
@@ -1334,7 +1337,7 @@ QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
     json.insert(QStringLiteral("authoredProperties"), properties);
     json.insert(QStringLiteral("childItems"), children);
     json.insert(QStringLiteral("events"), QJsonArray());
-    return json;
+    return withUserVisible(item, json);
 }
 
 // Имя главного реквизита формы: «Список» у формы списка, «Объект» у формы
@@ -1394,6 +1397,10 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
                                   + item.dataPathText + QLatin1Char('.') + fieldName);
         }
     }
+    // «Картинки строк» (RowsPicture): общая картинка-коллекция, из которой
+    // рендерер берёт картинку строки по RowPictureDataPath.
+    if (!item.rowsPicture.isEmpty())
+        properties.insert(QStringLiteral("RowsPicture"), item.rowsPicture);
     // Отображение таблицы: платформа пишет Representation только при отличии
     // от умолчания (Table) — List у таблицы-списка и Tree у дерева. Код
     // отображения читается из записи таблицы (0 — List, 1 — умолчание,
@@ -1590,7 +1597,7 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
                     buildCommandBarNode(tableBar, document, QJsonArray(),
                                         item.name + QStringLiteral("КоманднаяПанель")));
     }
-    return json;
+    return withUserVisible(item, json);
 }
 
 QJsonObject makeItem(const FormItem &item, const FormDocument &document)
@@ -1632,7 +1639,7 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         json.insert(QStringLiteral("authoredProperties"), properties);
         json.insert(QStringLiteral("childItems"), QJsonArray());
         json.insert(QStringLiteral("events"), QJsonArray());
-        return json;
+        return withUserVisible(item, json);
     }
     case FormItem::Type::Decoration: {
         QJsonObject properties;
@@ -1718,12 +1725,28 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         json.insert(QStringLiteral("authoredProperties"), properties);
         json.insert(QStringLiteral("childItems"), QJsonArray());
         json.insert(QStringLiteral("events"), QJsonArray());
-        return json;
+        return withUserVisible(item, json);
     }
     default:
         break;
     }
     return QJsonObject();
+}
+
+// «Видимость для пользователя» (UserVisible=false): платформа скрывает такой
+// элемент уже при открытии формы, хотя свойство Visible у него не задано.
+// В модель уходят оба свойства — UserVisible, как в Form.xml, и Visible,
+// по которому рендерер скрывает элемент.
+QJsonObject withUserVisible(const FormItem &item, QJsonObject json)
+{
+    if (item.userVisible != 0)
+        return json;
+    QJsonObject properties = json.value(QStringLiteral("properties")).toObject();
+    properties.insert(QStringLiteral("UserVisible"), QStringLiteral("false"));
+    properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
+    json.insert(QStringLiteral("properties"), properties);
+    json.insert(QStringLiteral("authoredProperties"), properties);
+    return json;
 }
 
 QJsonObject makeStandardButton(const QString &name, const QString &title,
@@ -1796,6 +1819,16 @@ QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &documen
     // и в модели признак есть только для панели без автозаполнения.
     if (bar && bar->autoFillFlag == 0)
         properties.insert(QStringLiteral("Autofill"), boolText(false));
+    // Выравнивание панели: 1 — Center, 2 — Right, 3 — Auto. Ноль — значение
+    // по умолчанию, платформа HorizontalAlign не пишет.
+    if (bar) {
+        if (bar->contentHorizontalAlign == 1)
+            properties.insert(QStringLiteral("HorizontalAlign"), QStringLiteral("Center"));
+        else if (bar->contentHorizontalAlign == 2)
+            properties.insert(QStringLiteral("HorizontalAlign"), QStringLiteral("Right"));
+        else if (bar->contentHorizontalAlign == 3)
+            properties.insert(QStringLiteral("HorizontalAlign"), QStringLiteral("Auto"));
+    }
     QJsonObject json;
     json.insert(QStringLiteral("tag"), QStringLiteral("AutoCommandBar"));
     json.insert(QStringLiteral("name"),

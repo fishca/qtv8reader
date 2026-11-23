@@ -137,6 +137,7 @@ private slots:
     void commandBarAutofillAndCompactGroups();
     void formattedDocumentCommandBar();
     void tableRepresentationAndRowFlags();
+    void userVisiblePageAlignAndRowsPicture();
 };
 
 void TestForm::parseSynthetic()
@@ -2895,6 +2896,97 @@ void TestForm::tableRepresentationAndRowFlags()
     // Предел высоты надписи (MaxHeight) — девятнадцатое поле записи {11,…}.
     QCOMPARE(resultText.value(QStringLiteral("MaxHeight")).toString(),
              QStringLiteral("2"));
+}
+
+// «Видимость для пользователя», выравнивание содержимого страницы, выравнивание
+// командной панели и картинки строк таблицы.
+void TestForm::userVisiblePageAlignAndRowsPicture()
+{
+    const QString text = QStringLiteral(
+        "{4,"
+        "{50,0,"
+        // Панель автозаполнения с выравниванием вправо: список из трёх чисел
+        // стоит через 14 полей после имени, второе число — HorizontalAlign.
+        "{22,{-1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"9\","
+        "\"ФормаКоманднаяПанель\",{1,0},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"0\",\"2\",\"0\"}},"
+        // Страница: выравнивание содержимого — 12-е и 13-е поля блока {18,…}.
+        "{22,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"4\",\"Страница1\","
+        "{1,1,{\"ru\",\"Страница\"}},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"18\",{\"4\",\"0\",{\"0\"},\"\",\"-1\",\"-1\",\"1\",\"0\",\"\"},\"0\",\"0\",{\"0\"},"
+        "{\"1\",\"0\"},\"1\",\"Pattern\",\"\",{\"3\",\"4\",{\"0\"}},\"0\",\"0\",\"1\",\"1\","
+        "\"0\",\"0\",\"0\",\"0\",{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"}}},"
+        // Скрытое пользователем поле и обычное поле рядом с ним.
+        "{37,{2,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"1\","
+        "{0,{0,{\"B\",\"0\"},\"0\"}},\"1\",\"СкрытоеПоле\"},"
+        "{37,{3,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"1\",\"ОбычноеПоле\"}"
+        "},"
+        "\"Процедура Тест()\\nКонецПроцедуры\","
+        "{4,\"2\",{9,{\"1\"},\"0\",\"Атрибут1\",{1,1,{\"ru\",\"Атрибут 1\"}},"
+        "{\"Pattern\",{\"S\"}}}},"
+        "{0,0},"
+        "{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}"
+        "}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error), qPrintable(error));
+
+    // Запись {0,{0,{"B",0},"0"}} перед именем скрывает элемент уже при первом
+    // показе формы: Form.xml пишет в этом случае UserVisible=false, хотя Visible
+    // у элемента не задан.
+    const FormItem *hidden = findItemByName(document.items, QStringLiteral("СкрытоеПоле"));
+    QVERIFY(hidden);
+    QCOMPARE(hidden->userVisible, 0);
+    const FormItem *plain = findItemByName(document.items, QStringLiteral("ОбычноеПоле"));
+    QVERIFY(plain);
+    QCOMPARE(plain->userVisible, -1);
+    const FormItem *page = findItemByName(document.items, QStringLiteral("Страница1"));
+    QVERIFY(page);
+    QCOMPARE(page->contentHorizontalAlign, 1);
+    QCOMPARE(page->contentVerticalAlign, 1);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject hiddenProps = findModelNode(roots, QStringLiteral("СкрытоеПоле"))
+                                        .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(hiddenProps.value(QStringLiteral("UserVisible")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(hiddenProps.value(QStringLiteral("Visible")).toString(),
+             QStringLiteral("false"));
+    const QJsonObject plainProps = findModelNode(roots, QStringLiteral("ОбычноеПоле"))
+                                       .value(QStringLiteral("properties")).toObject();
+    QVERIFY(!plainProps.contains(QStringLiteral("UserVisible")));
+    QVERIFY(!plainProps.contains(QStringLiteral("Visible")));
+    const QJsonObject pageProps = findModelNode(roots, QStringLiteral("Страница1"))
+                                      .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(pageProps.value(QStringLiteral("HorizontalAlign")).toString(),
+             QStringLiteral("Center"));
+    QCOMPARE(pageProps.value(QStringLiteral("VerticalAlign")).toString(),
+             QStringLiteral("Center"));
+    QCOMPARE(model.value(QStringLiteral("autoCommandBar")).toObject()
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("HorizontalAlign")).toString(),
+             QStringLiteral("Right"));
+
+    // «Картинки строк» таблицы: ссылка на общую картинку из записи картинки
+    // {4,вид,{0,GUID},…} уходит в модель свойством RowsPicture.
+    FormDocument tableDocument;
+    FormItem table;
+    table.type = FormItem::Type::Table;
+    table.typeCode = 55;
+    table.name = QStringLiteral("Таблица");
+    table.rowsPicture = QStringLiteral("CommonPicture.Пиктограммы");
+    tableDocument.items.append(table);
+    const QJsonObject tableModel =
+        QJsonDocument::fromJson(formWebModelJson(tableDocument)).object();
+    QCOMPARE(findModelNode(tableModel.value(QStringLiteral("childItemsRoot")).toArray(),
+                           QStringLiteral("Таблица"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("RowsPicture")).toString(),
+             QStringLiteral("CommonPicture.Пиктограммы"));
 }
 
 } // namespace

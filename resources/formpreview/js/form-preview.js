@@ -286,6 +286,12 @@ function parseProperties(el) {
 
 function parseItemProperties(el) {
     var props = parseProperties(el);
+    /* «Видимость для пользователя» (UserVisible=false) скрывает элемент уже
+     * при первом показе формы, хотя собственно Visible у него не задан:
+     * платформа применяет её как начальное состояние видимости. Сводим обе
+     * записи к Visible — его и проверяет раскладка. */
+    if (props.UserVisible != null && isFalse(props.UserVisible))
+        props.Visible = 'false';
     var attrs = (el && el.attributes) || [];
     function add(name, value, qualifiedName) {
         if (!name || name === 'name' || name === 'id' || name === 'version'

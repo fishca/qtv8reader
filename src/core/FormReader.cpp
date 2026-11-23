@@ -874,6 +874,55 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
     }
 }
 
+// «Видимость для пользователя» (UserVisible) записана прямо перед именем
+// элемента записью {"0", {"0", {"B", 0|1}, "0"}}: у полей, групп, кнопок,
+// декораций и дополнений — вторым элементом перед именем (первым идёт код
+// вида поля/группы), у таблицы — первым. Ноль скрывает элемент уже при первом
+// показе формы, единица — значение по умолчанию, и Form.xml свойство тогда не
+// пишет. Сверено с Form.xml по 26 формам корпуса: набор элементов со скрытой
+// пользовательской видимостью совпал полностью (25 элементов), и ни один
+// элемент без признака не попал в набор.
+void readUserVisible(const V8TextNode &node, int nameIndex, FormItem *item)
+{
+    if (nameIndex < 3)
+        return;
+    const int offset = item->typeCode == 55 ? 1 : 2;
+    const V8TextNode *block = node.child(nameIndex - offset);
+    if (!block || !block->isList() || block->children.size() < 2)
+        return;
+    const V8TextNode *marker = block->child(0);
+    const V8TextNode *inner = block->child(1);
+    if (!marker || !marker->isScalar()
+        || marker->scalar().trimmed() != QLatin1String("0")) {
+        return;
+    }
+    if (!inner || !inner->isList() || inner->children.size() < 3)
+        return;
+    const V8TextNode *innerMarker = inner->child(0);
+    const V8TextNode *value = inner->child(1);
+    const V8TextNode *innerTail = inner->child(2);
+    if (!innerMarker || !innerMarker->isScalar()
+        || innerMarker->scalar().trimmed() != QLatin1String("0")) {
+        return;
+    }
+    if (!innerTail || !innerTail->isScalar()
+        || innerTail->scalar().trimmed() != QLatin1String("0")) {
+        return;
+    }
+    if (!value || !value->isList() || value->children.size() < 2)
+        return;
+    const V8TextNode *tag = value->child(0);
+    const V8TextNode *flag = value->child(1);
+    if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("B"))
+        return;
+    if (!flag)
+        return;
+    if (flag->isInteger())
+        item->userVisible = static_cast<int>(flag->toInteger());
+    else if (flag->isScalar())
+        item->userVisible = flag->scalar().trimmed() == QLatin1String("0") ? 0 : 1;
+}
+
 // Признаки декорации, которых нет в её имени: вид (надпись или картинка),
 // гиперссылка и картинка. Все они лежат в записи оформления — через 12 полей
 // после имени. Запись начинается тегом: «5» у надписи (тогда второй элемент —
@@ -1749,7 +1798,8 @@ void readDynamicListSettings(const V8TextNode &node, FormItem *item)
 // Свойства таблицы: положение командной панели, чередование цветов строк,
 // добавление строки, перетаскивание. В XML платформа пишет их только при
 // отличии от значения по умолчанию. Сверено с Form.xml по 48 таблицам корпуса.
-void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
+void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item,
+                    const FormPictureTable *pictures)
 {
     if (nameIndex < 0)
         return;
@@ -1799,6 +1849,16 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
             const V8TextNode *ids = record->child(1);
             if (ids && ids->isList() && ids->child(0) && ids->child(0)->isInteger())
                 item->rowPictureFieldId = static_cast<int>(ids->child(0)->toInteger());
+        }
+    }
+    // «Картинки строк» (RowsPicture) — сороковое поле записи таблицы: та же
+    // запись картинки {4, вид, {0, GUID}, …}, что у декорации-картинки. Сверено
+    // с Form.xml по трём таблицам корпуса с этим свойством и 51 без него.
+    if (pictures) {
+        if (const V8TextNode *record = node.child(nameIndex + 39)) {
+            const ParsedPicture picture = pictureFromRecord(*record, pictures);
+            if (!picture.reference.isEmpty())
+                item->rowsPicture = picture.reference;
         }
     }
     item->useAlternationRowColor = codeAt(31) == 1;
@@ -2281,6 +2341,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     }
 
     readGeometry(node, nameIndex, &item);
+    readUserVisible(node, nameIndex, &item);
 
     // Ориентация страницы: у тега Page нет узла макета {29,…} обычной группы,
     // вместо него в записи лежит блок {18,…}, семнадцатое поле которого и
@@ -2305,6 +2366,25 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 if (isPathDescriptor(*path))
                     item.titleDataPath = parsePathDescriptor(*path);
             }
+            // Выравнивание содержимого страницы (HorizontalAlign и
+            // VerticalAlign) — двенадцатое и тринадцатое поля блока: 0 —
+            // Left/Top, 1 — Center, 2 — Right/Bottom; 3 — Auto, значение по
+            // умолчанию, платформа свойства не пишет. Сверено с Form.xml по
+            // 71 странице корпуса: расхождений нет.
+            if (const V8TextNode *horizontal = child.child(12)) {
+                if (horizontal->isInteger()) {
+                    const int value = static_cast<int>(horizontal->toInteger());
+                    if (value >= 0 && value <= 2)
+                        item.contentHorizontalAlign = value;
+                }
+            }
+            if (const V8TextNode *vertical = child.child(13)) {
+                if (vertical->isInteger()) {
+                    const int value = static_cast<int>(vertical->toInteger());
+                    if (value >= 0 && value <= 2)
+                        item.contentVerticalAlign = value;
+                }
+            }
             break;
         }
     }
@@ -2317,7 +2397,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         readFieldLayoutFlags(node, &item);
         readRadioButtonType(node, &item);
     } else if (item.typeCode == 55 && nameIndex >= 0) {
-        readTableFlags(node, nameIndex, &item);
+        readTableFlags(node, nameIndex, &item, pictures);
     }
 
     // Известный вид поля решает, есть ли у него редактор: у надписи и поля
@@ -2409,6 +2489,17 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 const V8TextNode *autoFill = flags->child(2);
                 if (autoFill && autoFill->isInteger())
                     item.autoFillFlag = autoFill->toInteger() != 0 ? 1 : 0;
+                // Выравнивание панели (HorizontalAlign) — второе поле того же
+                // списка: 0 — значение по умолчанию (Form.xml свойства не
+                // пишет), 1 — Center, 2 — Right, 3 — Auto (пишется явно).
+                // Сверено с Form.xml по 24 панелям корпуса и по панели с
+                // Auto: расхождений нет.
+                const V8TextNode *align = flags->child(1);
+                if (align && align->isInteger()) {
+                    const int value = static_cast<int>(align->toInteger());
+                    if (value >= 1 && value <= 3)
+                        item.contentHorizontalAlign = value;
+                }
             }
         }
         // Компактное отображение группы кнопок: блок {2, […], 2, вид} в записи
