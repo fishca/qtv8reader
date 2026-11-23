@@ -355,10 +355,25 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
         case FormPathSegment::Kind::Attribute: {
             const auto it = m_byGuid.constFind(segment.guid.toLower());
             if (it == m_byGuid.constEnd()) {
-                if (i == path.size() - 1 && !fallbackName.isEmpty())
-                    parts.append(fallbackName);
-                else
+                if (i == path.size() - 1 && !fallbackName.isEmpty()) {
+                    // Колонка, реквизит которой не попал в индекс метаданных
+                    // (табличные части читаются не у всех объектов): в XML
+                    // путь — «Объект.ТЧ.Колонка», а имя элемента собрано из
+                    // имён сегментов пути («ТЧКолонка» либо
+                    // «ТЧСсылка.Колонка»). Поэтому последовательно снимаем
+                    // с имени уже разобранные сегменты пути.
+                    QString column = fallbackName;
+                    for (int part = 0; part < parts.size(); ++part) {
+                        const QString &name = parts.at(part);
+                        if (!name.isEmpty() && column.startsWith(name)
+                            && column.size() > name.size()) {
+                            column = column.mid(name.size());
+                        }
+                    }
+                    parts.append(column.isEmpty() ? fallbackName : column);
+                } else {
                     parts.append(QStringLiteral("?"));
+                }
                 insideTable = false;
                 break;
             }
@@ -385,16 +400,34 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                 || kind == QLatin1String("DocumentJournal")
                 || kind == QLatin1String("BusinessProcess")
                 || kind == QLatin1String("Task");
+            // Стандартный реквизит вложенного объекта (путь идёт через ссылку,
+            // например «Объект.Товары.Номенклатура.Code»): имя зависит от вида
+            // того объекта, на который ссылается предыдущий сегмент, а не от
+            // вида владельца формы.
+            const QString referencedType = last ? last->typeText : QString();
+            const bool referencedCatalog =
+                referencedType.contains(QStringLiteral("СправочникСсылка"))
+                || referencedType.contains(QStringLiteral("ПланВидовХарактеристикСсылка"))
+                || referencedType.contains(QStringLiteral("ПланСчетовСсылка"))
+                || referencedType.contains(QStringLiteral("ПланВидовРасчетаСсылка"));
+            const bool referencedDocument =
+                referencedType.contains(QStringLiteral("ДокументСсылка"))
+                || referencedType.contains(QStringLiteral("БизнесПроцессСсылка"))
+                || referencedType.contains(QStringLiteral("ЗадачаСсылка"));
+            const bool catalogNames = referencedCatalog
+                || (!referencedDocument && catalogLike);
+            const bool documentNames = referencedDocument
+                || (!referencedCatalog && documentLike);
             QString standardName;
             if (segment.code == -2) {
                 if (insideTable)
                     standardName = QStringLiteral("LineNumber");
-                else if (catalogLike)
+                else if (catalogNames)
                     standardName = QStringLiteral("Code");
                 else
                     standardName = QStringLiteral("Number");
             } else if (segment.code == -3) {
-                standardName = (catalogLike || !documentLike)
+                standardName = (!documentNames)
                     ? QStringLiteral("Description")
                     : QStringLiteral("Date");
             } else {

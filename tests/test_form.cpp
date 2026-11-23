@@ -121,6 +121,7 @@ private slots:
     void commandBarGroupKinds();
     void styleReferences();
     void standardCommandTables();
+    void tableAndColumnProperties();
 };
 
 void TestForm::parseSynthetic()
@@ -464,6 +465,50 @@ void TestForm::realBpForm()
     const FormItem *visibleBanner = findItemById(document.items, 774);
     QVERIFY(visibleBanner);
     QVERIFY(visibleBanner->visible);
+
+    // Свойства колонок таблицы «Товары» из Form.xml: закреплённая колонка
+    // «Номер строки» (FixingInTable=Left), скрытые шапка и подвал у колонок
+    // входящего документа и подсказки ввода (InputHint).
+    const FormItem *lineNumber = findItemById(document.items, 172);
+    QVERIFY(lineNumber);
+    QCOMPARE(lineNumber->fixingInTable, 1);
+    QVERIFY(!lineNumber->readOnly);
+    QVERIFY(lineNumber->showInHeader);
+    QVERIFY(lineNumber->showInFooter);
+    QVERIFY(lineNumber->inputHint.isEmpty());
+    QCOMPARE(lineNumber->widthUnits, 3);
+
+    const FormItem *documentKind = findItemById(document.items, 174);
+    QVERIFY(documentKind);
+    QVERIFY(!documentKind->showInFooter);
+    QCOMPARE(documentKind->inputHint, QStringLiteral("Вид документа"));
+
+    const FormItem *documentNumber = findItemById(document.items, 176);
+    QVERIFY(documentNumber);
+    QVERIFY(!documentNumber->showInHeader);
+    QVERIFY(!documentNumber->showInFooter);
+    QCOMPARE(documentNumber->inputHint, QStringLiteral("Вх.номер"));
+    QCOMPARE(documentNumber->editMode, 2);
+    QVERIFY(documentNumber->horizontalStretch == 0);
+
+    // У колонки «БилетыПеревозчик» в Form.xml явно задан ReadOnly.
+    const FormItem *readOnlyColumn = findItemById(document.items, 798);
+    QVERIFY(readOnlyColumn);
+    QVERIFY(readOnlyColumn->readOnly);
+
+    // Таблица «Товары»: платформа пишет AutoInsertNewRow, EnableStartDrag и
+    // EnableDrag, но не чередование цветов строк.
+    const FormItem *goods = findItemById(document.items, 169);
+    QVERIFY(goods);
+    QCOMPARE(goods->type, FormItem::Type::Table);
+    QVERIFY(goods->autoInsertNewRow);
+    QVERIFY(goods->enableStartDrag);
+    QVERIFY(goods->enableDrag);
+    QVERIFY(!goods->useAlternationRowColor);
+
+    // Режим ориентации группы лежит в узле макета и различает Horizontal
+    // (1) и AlwaysHorizontal (3) — в Form.xml «ГруппаШапка» горизонтальная.
+    QCOMPARE(findItemById(document.items, 233)->groupMode, 1);
 }
 
 void TestForm::realBpListFormGeometry()
@@ -1506,6 +1551,145 @@ void TestForm::standardCommandTables()
     QCOMPARE(groupNode.value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("ToolTip")).toString(),
              QStringLiteral("Группа оформлено отбор"));
+}
+
+// Свойства таблицы и колонок, которые платформа пишет в Form.xml только при
+// отличии от значения по умолчанию. Проверяется и разбор, и модель для
+// рендерера: лишних свойств (значение по умолчанию) в модели быть не должно.
+void TestForm::tableAndColumnProperties()
+{
+    FormDocument document;
+    FormItem table;
+    table.type = FormItem::Type::Table;
+    table.typeCode = 55;
+    table.name = QStringLiteral("Товары");
+    table.dataPathText = QStringLiteral("Объект.Товары");
+    table.autoInsertNewRow = true;
+    table.useAlternationRowColor = true;
+    table.enableStartDrag = true;
+    table.enableDrag = false;
+    table.commandBarLocation = 0;
+    table.tableTitleLocation = 3;
+
+    FormItem column;
+    column.type = FormItem::Type::Field;
+    column.typeCode = 37;
+    column.fieldKind = FormFieldKind::Input;
+    column.name = QStringLiteral("ТоварыКоличество");
+    column.dataPathText = QStringLiteral("Объект.Товары.Количество");
+    column.valueKind = FormValueKind::Number;
+    column.editMode = 2;
+    column.inputHint = QStringLiteral("Количество");
+    column.fixingInTable = 1;
+    column.readOnly = true;
+    column.showInHeader = false;
+    column.showInFooter = false;
+    column.cellHyperlink = true;
+    column.horizontalAlign = 2;
+    column.skipOnInput = 0;
+    column.horizontalStretch = 0;
+    table.children.append(column);
+
+    // Колонка без заданных свойств: значения по умолчанию в модель не попадают.
+    FormItem plainColumn;
+    plainColumn.type = FormItem::Type::Field;
+    plainColumn.typeCode = 37;
+    plainColumn.fieldKind = FormFieldKind::Input;
+    plainColumn.name = QStringLiteral("ТоварыЦена");
+    plainColumn.dataPathText = QStringLiteral("Объект.Товары.Цена");
+    plainColumn.valueKind = FormValueKind::Number;
+    plainColumn.horizontalStretch = 2;
+    table.children.append(plainColumn);
+
+    document.items.append(table);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject tableNode = findModelNode(roots, QStringLiteral("Товары"));
+    QVERIFY2(!tableNode.isEmpty(), "таблица не попала в модель");
+    const QJsonObject tableProps = tableNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(tableProps.value(QStringLiteral("AutoInsertNewRow")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(tableProps.value(QStringLiteral("UseAlternationRowColor")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(tableProps.value(QStringLiteral("EnableStartDrag")).toString(),
+             QStringLiteral("true"));
+    QVERIFY(!tableProps.contains(QStringLiteral("EnableDrag")));
+    QCOMPARE(tableProps.value(QStringLiteral("CommandBarLocation")).toString(),
+             QStringLiteral("None"));
+    QCOMPARE(tableProps.value(QStringLiteral("TitleLocation")).toString(),
+             QStringLiteral("Top"));
+
+    const QJsonObject columnNode = findModelNode(
+        tableNode.value(QStringLiteral("childItems")).toArray(),
+        QStringLiteral("ТоварыКоличество"));
+    QVERIFY2(!columnNode.isEmpty(), "колонка не попала в модель");
+    const QJsonObject columnProps =
+        columnNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(columnProps.value(QStringLiteral("ReadOnly")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("ShowInHeader")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("ShowInFooter")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("CellHyperlink")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("FixingInTable")).toString(),
+             QStringLiteral("Left"));
+    QCOMPARE(columnProps.value(QStringLiteral("HorizontalAlign")).toString(),
+             QStringLiteral("Right"));
+    QCOMPARE(columnProps.value(QStringLiteral("SkipOnInput")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("EditMode")).toString(),
+             QStringLiteral("EnterOnInput"));
+    QCOMPARE(columnProps.value(QStringLiteral("InputHint")).toString(),
+             QStringLiteral("Количество"));
+    QCOMPARE(columnProps.value(QStringLiteral("HorizontalStretch")).toString(),
+             QStringLiteral("false"));
+
+    const QJsonObject plainNode = findModelNode(
+        tableNode.value(QStringLiteral("childItems")).toArray(),
+        QStringLiteral("ТоварыЦена"));
+    QVERIFY(!plainNode.isEmpty());
+    const QJsonObject plainProps =
+        plainNode.value(QStringLiteral("properties")).toObject();
+    QVERIFY(!plainProps.contains(QStringLiteral("ReadOnly")));
+    QVERIFY(!plainProps.contains(QStringLiteral("ShowInHeader")));
+    QVERIFY(!plainProps.contains(QStringLiteral("ShowInFooter")));
+    QVERIFY(!plainProps.contains(QStringLiteral("FixingInTable")));
+    QVERIFY(!plainProps.contains(QStringLiteral("EditMode")));
+    QVERIFY(!plainProps.contains(QStringLiteral("InputHint")));
+    // Auto — значение по умолчанию, в XML его нет.
+    QVERIFY(!plainProps.contains(QStringLiteral("HorizontalStretch")));
+
+    // Группа: Group выводится из режима ориентации, «горизонтально, если
+    // помещается» (2) — значение по умолчанию и в модель не попадает.
+    FormDocument groups;
+    FormItem always;
+    always.type = FormItem::Type::Group;
+    always.groupKind = 5;
+    always.name = QStringLiteral("ГруппаВсегда");
+    always.groupMode = 3;
+    groups.items.append(always);
+    FormItem horizontalIfPossible;
+    horizontalIfPossible.type = FormItem::Type::Group;
+    horizontalIfPossible.groupKind = 5;
+    horizontalIfPossible.name = QStringLiteral("ГруппаПоШирине");
+    horizontalIfPossible.groupMode = 2;
+    groups.items.append(horizontalIfPossible);
+
+    const QJsonObject groupModel =
+        QJsonDocument::fromJson(formWebModelJson(groups)).object();
+    const QJsonArray groupRoots =
+        groupModel.value(QStringLiteral("childItemsRoot")).toArray();
+    QCOMPARE(findModelNode(groupRoots, QStringLiteral("ГруппаВсегда"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Group")).toString(),
+             QStringLiteral("AlwaysHorizontal"));
+    QVERIFY(!findModelNode(groupRoots, QStringLiteral("ГруппаПоШирине"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .contains(QStringLiteral("Group")));
 }
 
 } // namespace

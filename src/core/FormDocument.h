@@ -167,6 +167,10 @@ struct FormItem
     int typeCode = 0;      // код элемента в сериализации (22 — группа, 37 — поле, ...)
     int groupKind = -1;    // вид группы (9 — командная панель, 6 — группа кнопок, ...)
     int orientation = -1;  // 1 — горизонтально, 0 — вертикально (для групп)
+    // Режим ориентации группы из узла макета {29,…}: 0 — вертикально,
+    // 1 — горизонтально, 2 — горизонтально, если помещается (платформа
+    // в этом случае не пишет Group в Form.xml), 3 — всегда горизонтально.
+    int groupMode = -1;
     int id = 0;
     int widthUnits = -1;       // ширина поля в единицах формы (×10 px); -1 — авто
     int heightUnits = -1;      // высота в единицах формы
@@ -183,6 +187,37 @@ struct FormItem
     // значения, у которых представление берётся из метаданных.
     QStringList choiceItems;
     QString tooltip;            // подсказка элемента (ToolTip)
+    // Свойства поля и колонки таблицы, которые платформа пишет в Form.xml
+    // только при отличии от значения по умолчанию (поэтому простой признак
+    // «слот равен 1» недостаточен: у ShowInHeader/ShowInFooter значение по
+    // умолчанию — true). Коды ниже — как в бинарной форме, −1 значит
+    // «в форме не задано». Сверено с Form.xml по 372 колонкам и 233 полям
+    // корпуса: расхождений по этим свойствам нет.
+    bool readOnly = false;          // ReadOnly
+    bool showInHeader = true;       // ShowInHeader
+    bool showInFooter = true;       // ShowInFooter
+    bool cellHyperlink = false;     // CellHyperlink
+    bool autoCellHeight = false;    // AutoCellHeight
+    int skipOnInput = -1;           // 0 — false, 1 — true; -1 — не задано
+    bool defaultItem = false;       // DefaultItem
+    int horizontalAlign = -1;       // 0 — Left, 1 — Center, 2 — Right, 3 — Auto
+    int headerHorizontalAlign = -1; // то же (заголовок колонки)
+    int footerHorizontalAlign = -1; // то же (подвал колонки)
+    int verticalAlign = -1;         // 0 — Top, 1 — Center, 2 — Bottom, 3 — Auto
+    int editMode = -1;              // 0 — Directly, 1 — Auto, 2 — EnterOnInput
+    int fixingInTable = -1;         // 0 — None, 1 — Left, 2 — Right
+    int toolTipRepresentation = -1; // 3 — Button, 5 — ShowTop, 7 — ShowBottom
+    QString inputHint;              // текст-подсказка ввода (InputHint)
+    // Таблица: настройки, которые платформа пишет в Form.xml только для
+    // отличающегося значения. Сверено с Form.xml по 48 таблицам корпуса.
+    bool useAlternationRowColor = false; // UseAlternationRowColor
+    bool autoInsertNewRow = false;       // AutoInsertNewRow
+    bool enableStartDrag = false;        // EnableStartDrag
+    bool enableDrag = false;             // EnableDrag
+    int commandBarLocation = -1;         // 0 — None, 1 — Auto, 2 — Top, 3 — Bottom
+    // Положение заголовка таблицы: 0 — None (по умолчанию, в XML не пишется),
+    // 1 — Auto, 2 — Left, 3 — Top, 4 — Right; −1 — не задано.
+    int tableTitleLocation = -1;
     // Оформление элемента. Ссылка на общий стиль конфигурации записана в форме
     // GUID-ом, на стиль платформы — отрицательным кодом, абсолютный цвет —
     // числом RGB. После разбора значения хранятся так же, как их пишет

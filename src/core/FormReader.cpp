@@ -1084,6 +1084,83 @@ void readFieldPictures(const V8TextNode &node, int nameIndex,
     }
 }
 
+// Свойства поля и колонки таблицы, которые платформа пишет в Form.xml только
+// при отличии от значения по умолчанию, поэтому сам признак читается как
+// «слот не равен коду значения по умолчанию». Смещения — от имени элемента;
+// коды значений — как в бинарной форме. Сверено с Form.xml по 372 колонкам и
+// 233 полям корпуса: ни одного расхождения.
+void readFieldFlags(const V8TextNode &node, int nameIndex, FormItem *item)
+{
+    if (nameIndex < 0)
+        return;
+    auto codeAt = [&node, nameIndex](int offset) {
+        const V8TextNode *child = node.child(nameIndex + offset);
+        return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
+    };
+
+    item->readOnly = codeAt(8) == 1;
+    // SkipOnInput: 2 — значение по умолчанию (в XML свойства нет), 0 и 1 —
+    // явно заданные false и true.
+    const int skip = codeAt(9);
+    if (skip == 0 || skip == 1)
+        item->skipOnInput = skip;
+    item->defaultItem = codeAt(10) == 1;
+    // ShowInHeader/ShowInFooter по умолчанию true: в XML пишется только false.
+    const int headerFlag = codeAt(14);
+    if (headerFlag >= 0)
+        item->showInHeader = headerFlag != 0;
+    const int footerFlag = codeAt(15);
+    if (footerFlag >= 0)
+        item->showInFooter = footerFlag != 0;
+    item->cellHyperlink = codeAt(16) == 1;
+    item->horizontalAlign = codeAt(17);
+    item->headerHorizontalAlign = codeAt(18);
+    item->footerHorizontalAlign = codeAt(19);
+    item->editMode = codeAt(20);
+    item->verticalAlign = codeAt(21);
+    item->autoCellHeight = codeAt(22) == 1;
+    item->fixingInTable = codeAt(43);
+    item->toolTipRepresentation = codeAt(44);
+}
+
+// Подсказка ввода (InputHint) лежит в записи макета поля ввода (код 36)
+// сорок пятым полем, локализованной записью. Сверено с Form.xml по 35 полям
+// корпуса; у 34 подсказка совпала, одно поле в XML содержит заглушку
+// «<отсутствует>».
+void readFieldInputHint(const V8TextNode &node, FormItem *item)
+{
+    QString code;
+    const V8TextNode *layout = findFieldLayout(node, &code);
+    if (!layout || code != QLatin1String("36"))
+        return;
+    if (const V8TextNode *hint = layout->child(44))
+        item->inputHint = localizedText(*hint);
+}
+
+// Свойства таблицы: положение командной панели, чередование цветов строк,
+// добавление строки, перетаскивание. В XML платформа пишет их только при
+// отличии от значения по умолчанию. Сверено с Form.xml по 48 таблицам корпуса.
+void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
+{
+    if (nameIndex < 0)
+        return;
+    auto codeAt = [&node, nameIndex](int offset) {
+        const V8TextNode *child = node.child(nameIndex + offset);
+        return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
+    };
+
+    // TitleLocation таблицы: 0 — None (по умолчанию), 1 — Auto, 3 — Top.
+    const int title = codeAt(1);
+    if (title > 0 && title <= 5)
+        item->tableTitleLocation = title;
+    // CommandBarLocation: 1 — Auto (по умолчанию), 0 — None.
+    item->commandBarLocation = codeAt(3);
+    item->useAlternationRowColor = codeAt(31) == 1;
+    item->autoInsertNewRow = codeAt(32) == 1;
+    item->enableStartDrag = codeAt(47) == 1;
+    item->enableDrag = codeAt(48) == 1;
+}
+
 // Картинка кнопки лежит через 20 полей после имени. Сверено с Form.xml по
 // кнопкам «Сформировать» и «Показать быстрые настройки» (10 кнопок корпуса).
 void readButtonPictures(const V8TextNode &node, int nameIndex,
@@ -1392,6 +1469,15 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
 
     readGeometry(node, nameIndex, &item);
 
+    // Прочие свойства полей и таблиц, которые платформа пишет в Form.xml
+    // только при отличии от значения по умолчанию.
+    if (isFieldCode(item.typeCode) && nameIndex >= 0) {
+        readFieldFlags(node, nameIndex, &item);
+        readFieldInputHint(node, &item);
+    } else if (item.typeCode == 55 && nameIndex >= 0) {
+        readTableFlags(node, nameIndex, &item);
+    }
+
     // Известный вид поля решает, есть ли у него редактор: у надписи и поля
     // картинки его нет. Запись макета (36/11) остаётся запасным вариантом для
     // сборок, где код вида не читается.
@@ -1405,6 +1491,13 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // всплывающие — 1/0/0; сверено с Form.xml на четырёх справочниках.
     if (item.type == FormItem::Type::Group) {
         if (const V8TextNode *layout = findLayoutNode(node)) {
+            // Режим ориентации группы: 0 — вертикально, 1 — горизонтально,
+            // 2 — горизонтально, если помещается (Group в XML не пишется),
+            // 3 — всегда горизонтально. Сверено с Form.xml по 161 группе
+            // корпуса (см. groupMode в FormItem).
+            const int mode = layoutInteger(*layout, 27);
+            if (mode >= 0)
+                item.groupMode = mode;
             const int representation = layoutInteger(*layout, 3);
             if (representation >= 0 && representation <= 3)
                 item.representation = static_cast<FormGroupRepresentation>(representation);

@@ -53,6 +53,110 @@ QString groupText(int orientation)
                             : QStringLiteral("Horizontal");
 }
 
+// Значение Group обычной группы: режим ориентации из узла макета
+// (2 — «горизонтально, если помещается» — это значение по умолчанию,
+// платформа Group в Form.xml не пишет).
+QString groupModeText(int mode, int orientation)
+{
+    switch (mode) {
+    case 0:
+        return QStringLiteral("Vertical");
+    case 1:
+        return QStringLiteral("Horizontal");
+    case 3:
+        return QStringLiteral("AlwaysHorizontal");
+    case 2:
+        return QString();
+    default:
+        break;
+    }
+    return groupText(orientation);
+}
+
+// Выравнивание поля и колонки: платформа пишет свойство, только если оно
+// отличается от значения по умолчанию. Коды общие для HorizontalAlign,
+// HeaderHorizontalAlign и FooterHorizontalAlign: 0 — Left, 1 — Center,
+// 2 — Right, 3 — Auto (по умолчанию, в XML свойства нет).
+QString alignText(int code)
+{
+    switch (code) {
+    case 0:
+        return QStringLiteral("Left");
+    case 1:
+        return QStringLiteral("Center");
+    case 2:
+        return QStringLiteral("Right");
+    default:
+        return QString();
+    }
+}
+
+QString verticalAlignText(int code)
+{
+    switch (code) {
+    case 0:
+        return QStringLiteral("Top");
+    case 1:
+        return QStringLiteral("Center");
+    case 2:
+        return QStringLiteral("Bottom");
+    default:
+        return QString();
+    }
+}
+
+QString editModeText(int code)
+{
+    switch (code) {
+    case 0:
+        return QStringLiteral("Directly");
+    case 2:
+        return QStringLiteral("EnterOnInput");
+    default:
+        return QString();
+    }
+}
+
+QString fixingInTableText(int code)
+{
+    switch (code) {
+    case 1:
+        return QStringLiteral("Left");
+    case 2:
+        return QStringLiteral("Right");
+    default:
+        return QString();
+    }
+}
+
+QString toolTipRepresentationText(int code)
+{
+    switch (code) {
+    case 3:
+        return QStringLiteral("Button");
+    case 5:
+        return QStringLiteral("ShowTop");
+    case 7:
+        return QStringLiteral("ShowBottom");
+    default:
+        return QString();
+    }
+}
+
+QString commandBarLocationText(int code)
+{
+    switch (code) {
+    case 0:
+        return QStringLiteral("None");
+    case 2:
+        return QStringLiteral("Top");
+    case 3:
+        return QStringLiteral("Bottom");
+    default:
+        return QString();
+    }
+}
+
 QString representationText(FormGroupRepresentation representation)
 {
     switch (representation) {
@@ -492,11 +596,20 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("Title"), title);
     if (!item.tooltip.isEmpty())
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
-    if (item.valueKind == FormValueKind::Boolean) {
+    // Флажок: вид поля из формы важнее типа реквизита — у надписи с булевым
+    // реквизитом флажка нет, а у привязанного к таблице флажка тип может быть
+    // неизвестен. CheckBoxType платформа пишет как Auto, если не задан
+    // переключатель.
+    if (item.fieldKind == FormFieldKind::CheckBox
+        || (item.valueKind == FormValueKind::Boolean
+            && item.fieldKind != FormFieldKind::Label && !item.labelOnly)) {
         properties.insert(QStringLiteral("CheckBoxType"), QStringLiteral("Auto"));
-    } else if (item.valueKind != FormValueKind::Unknown) {
-        properties.insert(QStringLiteral("EditMode"), QStringLiteral("EnterOnInput"));
     }
+    // EditMode: 0 — Directly, 2 — EnterOnInput; 1 — значение по умолчанию,
+    // платформа свойства в Form.xml не пишет. Пишется и у флажков: в форме
+    // у них тоже есть режим редактирования.
+    if (const QString editMode = editModeText(item.editMode); !editMode.isEmpty())
+        properties.insert(QStringLiteral("EditMode"), editMode);
     if (!item.showTitle)
         properties.insert(QStringLiteral("TitleLocation"), QStringLiteral("None"));
     else if (item.titleLocation != FormTitleLocation::Auto
@@ -508,12 +621,58 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("Width"),
                           QString::number(item.widthUnits));
     }
-    if (item.horizontalStretch == 0)
-        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
-    else if (item.horizontalStretch == 1)
-        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
+    // Растяжение поля: платформа пишет свойство только при отличии от
+    // значения по умолчанию. У обычных полей это Auto (2), у поля-картинки —
+    // true (1): так в корпусе (372 колонки и 233 поля), иначе у 17 картинок
+    // появлялось лишнее HorizontalStretch=true.
+    const int stretchDefault = item.fieldKind == FormFieldKind::Picture ? 1 : 2;
+    if (item.horizontalStretch >= 0 && item.horizontalStretch != stretchDefault) {
+        properties.insert(QStringLiteral("HorizontalStretch"),
+                          item.horizontalStretch == 0 ? QStringLiteral("false")
+                          : item.horizontalStretch == 1 ? QStringLiteral("true")
+                                                        : QStringLiteral("Auto"));
+    }
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
+
+    // Свойства поля и колонки таблицы, которые платформа пишет в Form.xml
+    // только при отличии от значения по умолчанию: серые ячейки только для
+    // просмотра, ячейки-ссылки, закрепление колонки, скрытые шапка и подвал,
+    // выравнивание, пропуск при вводе и подсказка ввода.
+    if (item.readOnly)
+        properties.insert(QStringLiteral("ReadOnly"), boolText(true));
+    if (!item.showInHeader)
+        properties.insert(QStringLiteral("ShowInHeader"), boolText(false));
+    if (!item.showInFooter)
+        properties.insert(QStringLiteral("ShowInFooter"), boolText(false));
+    if (item.cellHyperlink)
+        properties.insert(QStringLiteral("CellHyperlink"), boolText(true));
+    if (item.skipOnInput >= 0)
+        properties.insert(QStringLiteral("SkipOnInput"), boolText(item.skipOnInput != 0));
+    if (item.defaultItem)
+        properties.insert(QStringLiteral("DefaultItem"), boolText(true));
+    if (item.autoCellHeight)
+        properties.insert(QStringLiteral("AutoCellHeight"), boolText(true));
+    if (const QString fixing = fixingInTableText(item.fixingInTable); !fixing.isEmpty())
+        properties.insert(QStringLiteral("FixingInTable"), fixing);
+    if (const QString align = alignText(item.horizontalAlign); !align.isEmpty())
+        properties.insert(QStringLiteral("HorizontalAlign"), align);
+    // У заголовка и подвала колонки значение по умолчанию — Auto (3), поэтому
+    // Left — это код 0, Center — 1, Right — 2.
+    if (const QString align = alignText(item.headerHorizontalAlign);
+        !align.isEmpty() && item.headerHorizontalAlign != 0) {
+        properties.insert(QStringLiteral("HeaderHorizontalAlign"), align);
+    }
+    if (const QString align = alignText(item.footerHorizontalAlign); !align.isEmpty())
+        properties.insert(QStringLiteral("FooterHorizontalAlign"), align);
+    if (const QString align = verticalAlignText(item.verticalAlign); !align.isEmpty())
+        properties.insert(QStringLiteral("VerticalAlign"), align);
+    if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
+        !representation.isEmpty()) {
+        properties.insert(QStringLiteral("ToolTipRepresentation"), representation);
+    }
+    if (!item.inputHint.isEmpty())
+        properties.insert(QStringLiteral("InputHint"), item.inputHint);
 
     // Подписи списка выбора: у переключателя по ним рисуется одна радиокнопка
     // на элемент (список без представлений приходит из метаданных — его не
@@ -605,16 +764,21 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         // задан, а ориентацию по умолчанию считает горизонтальной — как и
         // рендерер, поэтому Group отдаём всегда, а ShowTitle только для
         // скрытого заголовка.
-        properties.insert(QStringLiteral("Group"), groupText(item.orientation));
+        if (const QString group = groupModeText(item.groupMode, item.orientation);
+            !group.isEmpty()) {
+            properties.insert(QStringLiteral("Group"), group);
+        }
         properties.insert(QStringLiteral("Representation"),
                           representationText(item.representation));
         properties.insert(QStringLiteral("Behavior"), behaviorText(item.behavior));
         if (!item.showTitle)
             properties.insert(QStringLiteral("ShowTitle"), boolText(false));
-        if (item.horizontalStretch == 1)
+        // Растяжение группы: Auto (2) — значение по умолчанию, в Form.xml его
+        // нет; платформа пишет только false и true.
+        if (item.horizontalStretch == 0)
+            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
+        else if (item.horizontalStretch == 1)
             properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
-        else if (item.horizontalStretch == 2)
-            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("Auto"));
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
     }
@@ -646,7 +810,10 @@ QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (item.widthUnits > 0)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
-    if (item.horizontalStretch == 1)
+    // Растяжение группы колонок: Auto (2) — по умолчанию, в XML не пишется.
+    if (item.horizontalStretch == 0)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
+    else if (item.horizontalStretch == 1)
         properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
@@ -700,7 +867,27 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     if (!item.dataPathText.isEmpty() && !item.dataPathText.contains(QLatin1Char('?')))
         properties.insert(QStringLiteral("DataPath"), item.dataPathText);
     properties.insert(QStringLiteral("Representation"), QStringLiteral("List"));
-    properties.insert(QStringLiteral("AutoInsertNewRow"), QStringLiteral("true"));
+    // AutoInsertNewRow платформа пишет только для true; по умолчанию строка
+    // не добавляется автоматически.
+    if (item.autoInsertNewRow)
+        properties.insert(QStringLiteral("AutoInsertNewRow"), QStringLiteral("true"));
+    if (item.useAlternationRowColor)
+        properties.insert(QStringLiteral("UseAlternationRowColor"), boolText(true));
+    if (item.enableStartDrag)
+        properties.insert(QStringLiteral("EnableStartDrag"), boolText(true));
+    if (item.enableDrag)
+        properties.insert(QStringLiteral("EnableDrag"), boolText(true));
+    if (const QString location = commandBarLocationText(item.commandBarLocation);
+        !location.isEmpty()) {
+        properties.insert(QStringLiteral("CommandBarLocation"), location);
+    }
+    // Положение заголовка таблицы: 0 — None (по умолчанию), 1 — Auto,
+    // 2 — Left, 3 — Top, 4 — Right.
+    if (item.tableTitleLocation > 0 && item.tableTitleLocation <= 5) {
+        properties.insert(QStringLiteral("TitleLocation"),
+                          titleLocationText(static_cast<FormTitleLocation>(
+                              item.tableTitleLocation)));
+    }
     // Заголовок таблицы — только собственный: подпись из метаданных рендерер
     // получает по пути к данным, как и для полей.
     if (!item.synonym.isEmpty())
