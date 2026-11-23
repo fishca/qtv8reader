@@ -553,14 +553,58 @@ void readTableColumns(const V8TextNode &entry, FormAttribute *attribute)
     }
 }
 
-// Код записи макета поля. Он свой у каждого вида контрола: 36 — поле ввода,
-// 11 — надпись и флажок, 10 — поле-картинка, 6 — календарь. Соответствие
-// сверено с Form.xml по 583 полям 26 форм (вид поля в записи и код макета
-// совпадают во всех полях).
-bool isFieldLayoutCode(const QString &code)
+// Код записи макета поля зависит от вида контрола: 36 и 32 — поле ввода (у
+// обоих второй элемент записи — формат значения, поэтому размеры лежат со
+// сдвигом на один), 11 — надпись, 10 — поле-картинка, 6 — календарь,
+// 13 — поле табличного документа, 3 — графсхема и HTML-документ, 5 — текстовый
+// документ, 1 — диаграмма, 2 — ползунок, 4 — индикатор. У флажка своя запись
+// 11 — без размеров (в ней на месте ширины и высоты стоят вложенные записи).
+// Коды совпадают с видом поля у всех 610 полей корпуса; чужой код у вида поля
+// не встречается.
+bool isFieldLayoutCode(FormFieldKind kind, const QString &code)
 {
-    return code == QLatin1String("36") || code == QLatin1String("11")
-        || code == QLatin1String("10") || code == QLatin1String("6");
+    switch (kind) {
+    case FormFieldKind::Input:
+        return code == QLatin1String("36") || code == QLatin1String("32");
+    case FormFieldKind::Label:
+    case FormFieldKind::CheckBox:
+        return code == QLatin1String("11");
+    case FormFieldKind::Picture:
+        return code == QLatin1String("10");
+    case FormFieldKind::Calendar:
+        return code == QLatin1String("6");
+    case FormFieldKind::SpreadSheetDocument:
+        return code == QLatin1String("13");
+    case FormFieldKind::TextDocument:
+        return code == QLatin1String("5");
+    case FormFieldKind::GraphicalSchema:
+    case FormFieldKind::HTMLDocument:
+        return code == QLatin1String("3");
+    case FormFieldKind::Chart:
+        return code == QLatin1String("1");
+    case FormFieldKind::TrackBar:
+        return code == QLatin1String("2");
+    case FormFieldKind::ProgressBar:
+        return code == QLatin1String("4");
+    default:
+        // Вид не прочитался — принимаем записи тех видов, у которых размеры
+        // стоят на первых местах.
+        return code == QLatin1String("36") || code == QLatin1String("32")
+            || code == QLatin1String("11") || code == QLatin1String("10")
+            || code == QLatin1String("6");
+    }
+}
+
+// Растяжение (HorizontalStretch/VerticalStretch) лежит в записи макета только
+// у полей ввода (36 и 32), надписей и флажков (11), поля-картинки (10) и
+// календаря (6): у остальных видов на этих местах стоят другие числа (у поля
+// табличного документа — признаки полос прокрутки). Сверено с Form.xml по
+// 610 полям корпуса.
+bool fieldLayoutHasStretch(const QString &code)
+{
+    return code == QLatin1String("36") || code == QLatin1String("32")
+        || code == QLatin1String("11") || code == QLatin1String("10")
+        || code == QLatin1String("6");
 }
 
 // Выравнивание элемента внутри группы (GroupHorizontalAlign и
@@ -629,10 +673,11 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
     // Поля: размеры лежат в записи макета, первым элементом которой стоит её
     // код. У записи два варианта раскладки: если второй элемент — список
     // (формат значения, например {3,0}), размеры идут со сдвигом на один:
-    //   36: [1] формат, [2] Width, [3] Height, [4] HStretch, [5] VStretch;
-    //   11/10/6: [1] Width, [2] Height, [3] HStretch, [4] VStretch.
-    // Сверено с Form.xml по корпусу: Width — 142 поля с записью 36 и 38 полей
-    // с записью 11, Height — 6 полей; расхождений нет.
+    //   36/32: [1] формат, [2] Width, [3] Height, [4] HStretch, [5] VStretch;
+    //   11/10/6: [1] Width, [2] Height, [3] HStretch, [4] VStretch;
+    //   13/3: [1] Width, [2] Height, дальше — признаки вида поля.
+    // Сверено с Form.xml по корпусу: ширина и высота совпали у всех полей,
+    // растяжение — у полей ввода и надписей.
     if (isFieldCode(item->typeCode)) {
         for (const V8TextNode &child : node.children) {
             if (!child.isList() || child.children.size() < 5)
@@ -641,28 +686,65 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
             if (!first || !first->isScalar())
                 continue;
             const QString code = first->scalar().trimmed();
-            if (!isFieldLayoutCode(code))
+            if (!isFieldLayoutCode(item->fieldKind, code))
                 continue;
             const V8TextNode *second = child.child(1);
             const int base = (second && second->isList()) ? 2 : 1;
-            item->widthUnits = integerSlot(child, base);
-            item->heightUnits = integerSlot(child, base + 1);
-            item->horizontalStretch = integerSlot(child, base + 2);
-            item->verticalStretch = integerSlot(child, base + 3);
+            int baseWidth = integerSlot(child, base);
+            int baseHeight = integerSlot(child, base + 1);
+            // Запись с тем же кодом, но без чисел на месте размеров — это
+            // другая запись (например, привязка действия к полю); ищем дальше.
+            if (baseWidth < 0 && baseHeight < 0)
+                continue;
+            // У редких видов полей (графсхема, поле табличного документа,
+            // диаграмма, ползунок, индикатор, текстовый документ) запись макета
+            // хранит и действующие размеры, а не только заданные, поэтому
+            // размеры по умолчанию (50×10 у графсхемы, табличного и текстового
+            // документа, диаграммы; высота 1 у ползунка и индикатора) в модель
+            // не идут — платформа их в Form.xml не пишет.
+            if (code == QLatin1String("13") || code == QLatin1String("3")) {
+                if (baseWidth == 50)
+                    baseWidth = -1;
+                if (baseHeight == 10)
+                    baseHeight = -1;
+            } else if (code == QLatin1String("1") || code == QLatin1String("5")) {
+                if (baseHeight == 10)
+                    baseHeight = -1;
+            } else if (code == QLatin1String("4")) {
+                // Индикатор: высота 1 — размер по умолчанию.
+                if (baseHeight == 1)
+                    baseHeight = -1;
+            }
+            if (baseWidth > 0)
+                item->widthUnits = baseWidth;
+            if (baseHeight > 0)
+                item->heightUnits = baseHeight;
+            // У флажка запись макета (11) короче и без размеров — там на месте
+            // растяжения стоят другие записи, поэтому растяжение читаем только
+            // когда на месте ширины и высоты действительно числа.
+            if (fieldLayoutHasStretch(code) && baseWidth >= 0 && baseHeight >= 0) {
+                item->horizontalStretch = integerSlot(child, base + 2);
+                item->verticalStretch = integerSlot(child, base + 3);
+            }
             if (item->fieldKind == FormFieldKind::Unknown)
                 item->labelOnly = code == QLatin1String("11")
                     || code == QLatin1String("10");
-            return;
+            if (item->widthUnits > 0 || item->heightUnits > 0)
+                return;
         }
     }
 
-    // Группа: ширина записана через шесть полей после имени, растяжение — через
-    // восемь и девять (сверено с Form.xml по форме «Авансовый отчёт»: ширина —
-    // 13 групп корпуса, растяжение — группы 146, 160 и 110).
+    // Группа: ширина записана через шесть полей после имени, высота — через
+    // семь, растяжение — через восемь и девять (сверено с Form.xml по всем
+    // 361 группе, странице, страницам, панели и всплывающей группе корпуса).
     if (item->typeCode == 22 && nameIndex >= 0) {
         if (const V8TextNode *width = node.child(nameIndex + 6)) {
             if (width->isInteger() && width->toInteger() > 0)
                 item->widthUnits = static_cast<int>(width->toInteger());
+        }
+        if (const V8TextNode *height = node.child(nameIndex + 7)) {
+            if (height->isInteger() && height->toInteger() > 0)
+                item->heightUnits = static_cast<int>(height->toInteger());
         }
         if (const V8TextNode *horizontal = node.child(nameIndex + 8)) {
             if (horizontal->isInteger())
@@ -675,8 +757,36 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
         return;
     }
 
-    // Декорация: ширина и высота лежат через четыре и пять полей после имени
-    // (сверено с Form.xml: ширина — 32 декорации, высота — 18).
+    // Таблица: ширина и высота записаны через 14 и 15 полей после имени
+    // (сверено с Form.xml: у таблиц «Шаблон заполнения» 45×7 и «Сортировка» 6),
+    // растяжение — через 16 и 17. Растяжение есть только у таблицы с заданными
+    // шириной и высотой: платформа пишет его только тогда, когда у таблицы
+    // задан размер (у «Сортировки» задана одна высота, и растяжения нет).
+    if (item->typeCode == 55 && nameIndex >= 0) {
+        if (const V8TextNode *width = node.child(nameIndex + 14)) {
+            if (width->isInteger() && width->toInteger() > 0)
+                item->widthUnits = static_cast<int>(width->toInteger());
+        }
+        if (const V8TextNode *height = node.child(nameIndex + 15)) {
+            if (height->isInteger() && height->toInteger() > 0)
+                item->heightUnits = static_cast<int>(height->toInteger());
+        }
+        if (item->widthUnits > 0 && item->heightUnits > 0) {
+            if (const V8TextNode *horizontal = node.child(nameIndex + 16)) {
+                if (horizontal->isInteger())
+                    item->horizontalStretch = static_cast<int>(horizontal->toInteger());
+            }
+            if (const V8TextNode *vertical = node.child(nameIndex + 17)) {
+                if (vertical->isInteger())
+                    item->verticalStretch = static_cast<int>(vertical->toInteger());
+            }
+        }
+        return;
+    }
+
+    // Декорация: ширина и высота лежат через четыре и пять полей после имени,
+    // растяжение — через шесть и семь (сверено с Form.xml: ширина — 32
+    // декорации, высота — 18, растяжение — 73 надписи и 39 картинок).
     if (item->typeCode == 12 && nameIndex >= 0) {
         if (const V8TextNode *width = node.child(nameIndex + 4)) {
             if (width->isInteger() && width->toInteger() > 0)
@@ -685,6 +795,14 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
         if (const V8TextNode *height = node.child(nameIndex + 5)) {
             if (height->isInteger() && height->toInteger() > 0)
                 item->heightUnits = static_cast<int>(height->toInteger());
+        }
+        if (const V8TextNode *horizontal = node.child(nameIndex + 6)) {
+            if (horizontal->isInteger())
+                item->horizontalStretch = static_cast<int>(horizontal->toInteger());
+        }
+        if (const V8TextNode *vertical = node.child(nameIndex + 7)) {
+            if (vertical->isInteger())
+                item->verticalStretch = static_cast<int>(vertical->toInteger());
         }
     }
 }
@@ -1568,6 +1686,25 @@ void resolveButtonCommands(QVector<FormItem> *items,
     }
 }
 
+// Представление страниц (PagesRepresentation) группа-страницы держит в записи
+// через 14 полей после имени: второй элемент записи — код представления
+// (0 — None, 1 — TabsOnTop, 2 — TabsOnBottom). Сверено с Form.xml по всем
+// 21 группе-страницам корпуса: расхождений нет.
+void readPagesRepresentation(const V8TextNode &node, int nameIndex, FormItem *item)
+{
+    if (item->groupKind != 3 || nameIndex < 0)
+        return;
+    const V8TextNode *record = node.child(nameIndex + 14);
+    if (!record || !record->isList() || record->children.size() < 2)
+        return;
+    const V8TextNode *code = record->child(1);
+    if (code && code->isInteger()) {
+        const int value = static_cast<int>(code->toInteger());
+        if (value >= 0 && value <= 2)
+            item->pagesRepresentation = value;
+    }
+}
+
 FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                   const FormPictureTable *pictures)
 {
@@ -1588,6 +1725,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // управление поиском) записан перед именем.
     if ((item.typeCode == 22 || item.typeCode == 5) && nameIndex > 2)
         item.groupKind = integerChild(node, nameIndex - 1);
+    readPagesRepresentation(node, nameIndex, &item);
     item.synonym = localizedText(node);
 
     // Поля: сразу после имени — TitleLocation (0 — None, 1 — Auto,

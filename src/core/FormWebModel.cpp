@@ -157,6 +157,21 @@ QString commandBarLocationText(int code)
     }
 }
 
+// Представление страниц группы-страниц: 0 — None, 1 — TabsOnTop, 2 — TabsOnBottom.
+// Значение по умолчанию — TabsOnTop, поэтому непрочитанный код (Pages без
+// записи) тоже даёт TabsOnTop.
+QString pagesRepresentationText(int code)
+{
+    switch (code) {
+    case 0:
+        return QStringLiteral("None");
+    case 2:
+        return QStringLiteral("TabsOnBottom");
+    default:
+        return QStringLiteral("TabsOnTop");
+    }
+}
+
 QString representationText(FormGroupRepresentation representation)
 {
     switch (representation) {
@@ -662,17 +677,28 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("Width"),
                           QString::number(item.widthUnits));
     }
-    // Растяжение поля: платформа пишет свойство только при отличии от
-    // значения по умолчанию. У обычных полей это Auto (2), у поля-картинки —
-    // true (1): так в корпусе (372 колонки и 233 поля), иначе у 17 картинок
-    // появлялось лишнее HorizontalStretch=true.
-    const int stretchDefault = item.fieldKind == FormFieldKind::Picture ? 1 : 2;
-    if (item.horizontalStretch >= 0 && item.horizontalStretch != stretchDefault) {
-        properties.insert(QStringLiteral("HorizontalStretch"),
-                          item.horizontalStretch == 0 ? QStringLiteral("false")
-                          : item.horizontalStretch == 1 ? QStringLiteral("true")
-                                                        : QStringLiteral("Auto"));
+    if (item.heightUnits > 0) {
+        properties.insert(QStringLiteral("Height"),
+                          QString::number(item.heightUnits));
     }
+    // Растяжение поля: платформа пишет свойство только при отличии от
+    // значения по умолчанию. У полей ввода, надписей и флажков это Auto (2),
+    // у поля-картинки и календаря — true (1): так в корпусе (610 полей), иначе
+    // у 17 картинок появлялось лишнее HorizontalStretch=true.
+    const bool stretchTrueByDefault = item.fieldKind == FormFieldKind::Picture
+        || item.fieldKind == FormFieldKind::Calendar;
+    const int stretchDefault = stretchTrueByDefault ? 1 : 2;
+    const auto stretchText = [stretchDefault](int code) {
+        if (code < 0 || code == stretchDefault)
+            return QString();
+        return code == 0 ? QStringLiteral("false")
+             : code == 1 ? QStringLiteral("true")
+                         : QStringLiteral("Auto");
+    };
+    if (const QString stretch = stretchText(item.horizontalStretch); !stretch.isEmpty())
+        properties.insert(QStringLiteral("HorizontalStretch"), stretch);
+    if (const QString stretch = stretchText(item.verticalStretch); !stretch.isEmpty())
+        properties.insert(QStringLiteral("VerticalStretch"), stretch);
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
 
@@ -845,11 +871,30 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         !align.isEmpty()) {
         properties.insert(QStringLiteral("GroupVerticalAlign"), align);
     }
+    // Размеры группы и растяжение записаны в самой форме: ширина и высота — в
+    // единицах формы, растяжение — кодами 0 (нет), 1 (да) и 2 (авто, значение
+    // по умолчанию, в Form.xml не пишется). Сверено с Form.xml по всем 361
+    // группе, странице, страницам, панели и всплывающей группе корпуса.
+    if (item.widthUnits > 0)
+        properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+    if (item.heightUnits > 0)
+        properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
+    if (item.horizontalStretch == 0)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
+    else if (item.horizontalStretch == 1)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
+    if (item.verticalStretch == 0)
+        properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("false"));
+    else if (item.verticalStretch == 1)
+        properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
 
     if (tag == QLatin1String("Popup")) {
         properties.insert(QStringLiteral("Representation"), QStringLiteral("Text"));
     } else if (tag == QLatin1String("Pages")) {
-        properties.insert(QStringLiteral("PagesRepresentation"), QStringLiteral("TabsOnTop"));
+        // Представление страниц: 0 — None, 1 — TabsOnTop (по умолчанию),
+        // 2 — TabsOnBottom. Код лежит в записи самой группы.
+        properties.insert(QStringLiteral("PagesRepresentation"),
+                          pagesRepresentationText(item.pagesRepresentation));
     } else if (tag == QLatin1String("Page")) {
         // Заголовок страницы уже в Title.
     } else if (tag == QLatin1String("CommandBar")) {
@@ -862,9 +907,7 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
     } else if (tag == QLatin1String("ButtonGroup")) {
         properties.insert(QStringLiteral("Representation"), QStringLiteral("None"));
     } else if (tag == QLatin1String("ColumnGroup")) {
-        // Группа колонок таблицы: рамка и растяжение, как у обычной группы.
-        if (item.widthUnits > 0)
-            properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+        // Группа колонок таблицы: группировка, закрепление и заголовок.
         // Группировка группы колонок: Horizontal (0) или InCell (2). Значение
         // по умолчанию (1) платформа в XML не пишет; рендерер без свойства
         // считает группу вертикальной, поэтому Horizontal пишем явно.
@@ -878,8 +921,6 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("ShowInHeader"), boolText(true));
         if (const QString fixing = fixingInTableText(item.fixingInTable); !fixing.isEmpty())
             properties.insert(QStringLiteral("FixingInTable"), fixing);
-        if (item.horizontalStretch == 1)
-            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
     } else if (tag == QLatin1String("UsualGroup")) {
@@ -896,12 +937,6 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("Behavior"), behaviorText(item.behavior));
         if (!item.showTitle)
             properties.insert(QStringLiteral("ShowTitle"), boolText(false));
-        // Растяжение группы: Auto (2) — значение по умолчанию, в Form.xml его
-        // нет; платформа пишет только false и true.
-        if (item.horizontalStretch == 0)
-            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
-        else if (item.horizontalStretch == 1)
-            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
     }
@@ -1032,6 +1067,18 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (item.widthUnits > 0)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+    if (item.heightUnits > 0)
+        properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
+    // Растяжение таблицы: платформа пишет его только у таблицы с заданными
+    // шириной и высотой, значения — 0 (нет) и 1 (да); Auto (2) не пишется.
+    if (item.horizontalStretch == 0)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
+    else if (item.horizontalStretch == 1)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
+    if (item.verticalStretch == 0)
+        properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("false"));
+    else if (item.verticalStretch == 1)
+        properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
 
@@ -1198,6 +1245,17 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
         if (item.heightUnits > 0)
             properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
+        // Растяжение декорации: платформа пишет только false и true, Auto (2) —
+        // значение по умолчанию. Сверено с Form.xml по 73 надписям и 39
+        // картинкам корпуса.
+        if (item.horizontalStretch == 0)
+            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
+        else if (item.horizontalStretch == 1)
+            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
+        if (item.verticalStretch == 0)
+            properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("false"));
+        else if (item.verticalStretch == 1)
+            properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
         // AutoMaxWidth надписи: платформа пишет только false (по умолчанию true).
         if (!item.pictureDecoration && !item.autoMaxWidth)
             properties.insert(QStringLiteral("AutoMaxWidth"), boolText(false));

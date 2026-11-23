@@ -131,6 +131,7 @@ private slots:
     void fieldTableListProperties();
     void columnGroupModes();
     void groupAlignment();
+    void sizesStretchAndPages();
 };
 
 void TestForm::parseSynthetic()
@@ -2034,6 +2035,96 @@ void TestForm::groupAlignment()
             .value(QStringLiteral("properties")).toObject();
     QVERIFY(!plainProperties.contains(QStringLiteral("GroupHorizontalAlign")));
     QVERIFY(!plainProperties.contains(QStringLiteral("GroupVerticalAlign")));
+}
+
+// Размеры и растяжение элементов, представление страниц и высота поля: всё это
+// лежит в записи формы и сверяется по справочнику «Календари» из большой
+// конфигурации (таблица «Шаблон заполнения» 45×7 без растяжения, группа
+// «Страницы» без закладок, надпись с высотой 1 и без вертикального растяжения).
+void TestForm::sizesStretchAndPages()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("Календари"), Qt::CaseInsensitive) == 0) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаЭлемента")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+
+    const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error), qPrintable(error));
+
+    // Таблица: ширина и высота в единицах формы, растяжение — код 0 (нет).
+    const FormItem *table = findItemByName(document.items, QStringLiteral("ШаблонЗаполнения"));
+    QVERIFY(table);
+    QCOMPARE(table->widthUnits, 45);
+    QCOMPARE(table->heightUnits, 7);
+    QCOMPARE(table->horizontalStretch, 0);
+    QCOMPARE(table->verticalStretch, 0);
+
+    // Группа-страницы: 0 — PagesRepresentation None (закладок нет).
+    const FormItem *pages = findItemByName(document.items, QStringLiteral("Страницы"));
+    QVERIFY(pages);
+    QCOMPARE(pages->pagesRepresentation, 0);
+
+    // Надпись: высота из записи макета и явное отсутствие растяжения.
+    const FormItem *label = findItemByName(
+        document.items, QStringLiteral("РучноеРедактированиеИнформационныйТекст"));
+    QVERIFY(label);
+    QCOMPARE(label->heightUnits, 1);
+    QCOMPARE(label->verticalStretch, 0);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject tableProperties = findModelNode(roots, QStringLiteral("ШаблонЗаполнения"))
+                                            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(tableProperties.value(QStringLiteral("Width")).toString(), QStringLiteral("45"));
+    QCOMPARE(tableProperties.value(QStringLiteral("Height")).toString(), QStringLiteral("7"));
+    QCOMPARE(tableProperties.value(QStringLiteral("HorizontalStretch")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(tableProperties.value(QStringLiteral("VerticalStretch")).toString(),
+             QStringLiteral("false"));
+    const QJsonObject pagesProperties = findModelNode(roots, QStringLiteral("Страницы"))
+                                            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(pagesProperties.value(QStringLiteral("PagesRepresentation")).toString(),
+             QStringLiteral("None"));
+    const QJsonObject labelProperties = findModelNode(
+        roots, QStringLiteral("РучноеРедактированиеИнформационныйТекст"))
+                                            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(labelProperties.value(QStringLiteral("Height")).toString(), QStringLiteral("1"));
+    QCOMPARE(labelProperties.value(QStringLiteral("VerticalStretch")).toString(),
+             QStringLiteral("false"));
 }
 
 } // namespace

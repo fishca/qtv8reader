@@ -180,6 +180,9 @@ struct FormItem
     int id = 0;
     int widthUnits = -1;       // ширина поля в единицах формы (×10 px); -1 — авто
     int heightUnits = -1;      // высота в единицах формы
+    // Представление страниц группы-страниц (PagesRepresentation): 0 — None,
+    // 1 — TabsOnTop (значение по умолчанию), 2 — TabsOnBottom; -1 — не прочитано.
+    int pagesRepresentation = -1;
     int horizontalStretch = -1; // 0 — нет, 1 — да, 2 — авто
     int verticalStretch = -1;
     bool visible = true;
