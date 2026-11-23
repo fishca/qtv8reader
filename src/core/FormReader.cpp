@@ -443,6 +443,10 @@ void readListSettings(const V8TextNode &settings, FormAttribute *attribute)
         } else if (text == QLatin1String("ManualQuery")) {
             attribute->listManualQuery = value != QLatin1String("0")
                 && value.compare(QLatin1String("false"), Qt::CaseInsensitive) != 0;
+        } else if (text == QLatin1String("MainTableCategory")) {
+            // 1 — список построен поверх таблицы объекта метаданных (в
+            // MainTable лежит её GUID), 0 — по произвольному запросу.
+            attribute->customMainTable = value.trimmed() == QLatin1String("0");
         }
     }
     for (auto it = fieldNames.constBegin(); it != fieldNames.constEnd(); ++it) {
@@ -526,9 +530,9 @@ void readTableColumns(const V8TextNode &entry, FormAttribute *attribute)
     if (!attribute->columnNames.isEmpty())
         return;
     // Список значений: состав колонок задан платформой — значение (0),
-    // представление (1) и пометка (2), поэтому в форме они не записаны.
-    // Вид значения распознаём по идентификатору типа в образце значения —
-    // он один и тот же во всех конфигурациях.
+    // представление (1), пометка (2) и картинка (3), поэтому в форме они не
+    // записаны. Вид значения распознаём по идентификатору типа в образце
+    // значения — он один и тот же во всех конфигурациях.
     static const QString kValueListType =
         QStringLiteral("4772b3b4-f4a3-49c0-a1a5-8cb5961511a3");
     for (const V8TextNode &child : entry.children) {
@@ -549,6 +553,9 @@ void readTableColumns(const V8TextNode &entry, FormAttribute *attribute)
         attribute->columnNames.insert(0, QStringLiteral("Value"));
         attribute->columnNames.insert(1, QStringLiteral("Presentation"));
         attribute->columnNames.insert(2, QStringLiteral("Check"));
+        // Картинка строки списка значений — путь к ней платформа пишет в
+        // RowPictureDataPath третьим номером («…СписокДокументов.Picture»).
+        attribute->columnNames.insert(3, QStringLiteral("Picture"));
         break;
     }
 }
@@ -1627,6 +1634,32 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
     item->commandBarLocation = codeAt(3);
     // Header: 0 — false, по умолчанию true.
     item->tableHeader = codeAt(21) != 0;
+    // Оформление таблицы: линии сетки (0 — false, 1 — умолчание) стоят
+    // двадцать седьмым и двадцать восьмым полем, начальное раскрытие дерева
+    // (InitialTreeView: 0 — Default, 1 — ExpandTopLevel, 2 — ExpandAllLevels)
+    // — тридцать четвёртым. Сверено с Form.xml по 54 таблицам корпуса, а
+    // раздельность линий проверена на формах, где выключена только одна сетка:
+    // «ВидыКонтактнойИнформации/ФормаСписка» (+27 = 0 при +28 = 1) и
+    // «ПрограммыЭлектроннойПодписиИШифрования/ОшибкаОбращенияКПрограмме»
+    // (+27 = 1 при +28 = 0).
+    item->horizontalLines = codeAt(27);
+    item->verticalLines = codeAt(28);
+    item->initialTreeView = codeAt(34);
+    // Путь картинки строки (RowPictureDataPath): тридцать девятое поле записи
+    // таблицы — [0] (не задано) или ["1", [номер поля]]. У «Банков» и
+    // «ЗадачиИсполнителя» там 10000000 (стандартное поле DefaultPicture
+    // динамического списка), у «Файлов» — 2, у «СозданныхДокументов» — 4, то
+    // есть номер колонки таблицы значений. Сверено с Form.xml по 54 таблицам
+    // корпуса: у 12 таблиц с путём поле задано, у 42 — [0].
+    if (const V8TextNode *record = node.child(nameIndex + 38)) {
+        const V8TextNode *flag = record->child(0);
+        if (record->isList() && flag && flag->isScalar()
+            && flag->scalar().trimmed() == QLatin1String("1")) {
+            const V8TextNode *ids = record->child(1);
+            if (ids && ids->isList() && ids->child(0) && ids->child(0)->isInteger())
+                item->rowPictureFieldId = static_cast<int>(ids->child(0)->toInteger());
+        }
+    }
     item->useAlternationRowColor = codeAt(31) == 1;
     item->autoInsertNewRow = codeAt(32) == 1;
     item->enableStartDrag = codeAt(47) == 1;

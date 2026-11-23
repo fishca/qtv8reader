@@ -2720,6 +2720,64 @@ void TestForm::tableRepresentationAndRowFlags()
                    QStringLiteral("ГруппаНередактируемыеПослеОтправкиРеквизитыОсновное"))
                  .value(QStringLiteral("ThroughAlign")).toString(),
              QStringLiteral("Use"));
+
+    // Линии сетки таблицы (HorizontalLines и VerticalLines, 27-е и 28-е поля
+    // записи) и начальное раскрытие дерева (InitialTreeView, 34-е поле).
+    // У шаблона заполнения календаря выключены обе сетки, у дерева «Список»
+    // актов отбора развёрнут верхний уровень, у дерева отбора отчёта — все.
+    FormDocument calendar2;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("Календари"),
+                      QStringLiteral("ФормаЭлемента"), &calendar2),
+             qPrintable(error));
+    const QJsonObject calendarModel =
+        QJsonDocument::fromJson(formWebModelJson(calendar2)).object();
+    const QJsonObject templateTable = props(calendarModel, QStringLiteral("ШаблонЗаполнения"));
+    QCOMPARE(templateTable.value(QStringLiteral("HorizontalLines")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(templateTable.value(QStringLiteral("VerticalLines")).toString(),
+             QStringLiteral("false"));
+    FormDocument acts;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("АктыОтбораПробЗЕРНО"),
+                      QStringLiteral("ФормаСписка"), &acts),
+             qPrintable(error));
+    const QJsonObject actsModel = QJsonDocument::fromJson(formWebModelJson(acts)).object();
+    QCOMPARE(props(actsModel, QStringLiteral("Список"))
+                 .value(QStringLiteral("InitialTreeView")).toString(),
+             QStringLiteral("ExpandTopLevel"));
+    const QJsonObject reportModel =
+        QJsonDocument::fromJson(formWebModelJson(report)).object();
+    QCOMPARE(props(reportModel, QStringLiteral("Отборы"))
+                 .value(QStringLiteral("InitialTreeView")).toString(),
+             QStringLiteral("ExpandAllLevels"));
+
+    // Путь картинки строки (RowPictureDataPath) пишется только таблице, у
+    // которой в записи задано поле картинки: у динамического списка — стандартное
+    // DefaultPicture, у таблицы значений — номер её колонки («ИндексКартинки»).
+    // У списка перечисления путь записан с «~».
+    QCOMPARE(props(actsModel, QStringLiteral("Список"))
+                 .value(QStringLiteral("RowPictureDataPath")).toString(),
+             QStringLiteral("Список.DefaultPicture"));
+    QVERIFY(!props(advanceModel, QStringLiteral("Товары"))
+                 .contains(QStringLiteral("RowPictureDataPath")));
+    FormDocument upload;
+    QVERIFY2(loadForm(QStringLiteral("Обработка"),
+                      QStringLiteral("ЗагрузкаДокументовИзФайлов"),
+                      QStringLiteral("Форма"), &upload),
+             qPrintable(error));
+    const QJsonObject uploadModel =
+        QJsonDocument::fromJson(formWebModelJson(upload)).object();
+    QCOMPARE(props(uploadModel, QStringLiteral("Файлы"))
+                 .value(QStringLiteral("RowPictureDataPath")).toString(),
+             QStringLiteral("Файлы.ИндексКартинки"));
+    FormDocument enumList;
+    QVERIFY2(loadForm(QStringLiteral("Перечисление"),
+                      QStringLiteral("ВидыДвиженийДенежныхСредств"),
+                      QStringLiteral("ФормаВыбора"), &enumList),
+             qPrintable(error));
+    const QJsonObject enumModel = QJsonDocument::fromJson(formWebModelJson(enumList)).object();
+    QCOMPARE(props(enumModel, QStringLiteral("Список"))
+                 .value(QStringLiteral("RowPictureDataPath")).toString(),
+             QStringLiteral("~Список.DefaultPicture"));
 }
 
 } // namespace

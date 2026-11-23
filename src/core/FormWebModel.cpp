@@ -1321,6 +1321,39 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     QJsonObject properties;
     if (!item.dataPathText.isEmpty() && !item.dataPathText.contains(QLatin1Char('?')))
         properties.insert(QStringLiteral("DataPath"), item.dataPathText);
+    // Путь картинки строки (RowPictureDataPath): платформа пишет его только
+    // таблице, у которой в записи задано поле картинки, — «Таблица.<поле>».
+    // Поле 10000000 — стандартное «DefaultPicture» динамического списка; у
+    // таблицы значений это номер её колонки («СозданныеДокументы.Картинка»).
+    // У списка перечисления и у списка по произвольному запросу (главная
+    // таблица не задана) тот же путь записан с «~». Сверено с Form.xml по 12
+    // таблицам корпуса с этим свойством и по 42 таблицам без него.
+    if (item.rowPictureFieldId > 0 && !item.dataPathText.isEmpty()) {
+        static const int kDefaultPictureField = 10000000;
+        QString fieldName;
+        bool customTable = false;
+        if (item.rowPictureFieldId == kDefaultPictureField) {
+            fieldName = QStringLiteral("DefaultPicture");
+        }
+        for (const FormAttribute &attribute : document.attributes) {
+            if (attribute.name.compare(item.dataPathText, Qt::CaseInsensitive) != 0)
+                continue;
+            customTable = attribute.customMainTable;
+            if (fieldName.isEmpty()) {
+                fieldName = attribute.columnNames.value(item.rowPictureFieldId);
+                if (fieldName.isEmpty())
+                    fieldName = attribute.listFields.value(item.rowPictureFieldId);
+            }
+            break;
+        }
+        if (!fieldName.isEmpty()) {
+            const bool virtualPath = customTable
+                || document.ownerMeta.kindTag == QLatin1String("Enum");
+            properties.insert(QStringLiteral("RowPictureDataPath"),
+                              (virtualPath ? QStringLiteral("~") : QString())
+                                  + item.dataPathText + QLatin1Char('.') + fieldName);
+        }
+    }
     // Отображение таблицы: платформа пишет Representation только при отличии
     // от умолчания (Table) — List у таблицы-списка и Tree у дерева. Код
     // отображения читается из записи таблицы (0 — List, 1 — умолчание,
@@ -1404,6 +1437,20 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     // пишет платформа. Сверено с Form.xml по 87 таблицам динамических списков.
     if (!item.tableHeader)
         properties.insert(QStringLiteral("Header"), boolText(false));
+    // Линии сетки таблицы: платформа пишет в Form.xml только выключенные
+    // (true — умолчание). Сверено по 3 таблицам корпуса с выключенными линиями.
+    if (item.horizontalLines == 0)
+        properties.insert(QStringLiteral("HorizontalLines"), boolText(false));
+    if (item.verticalLines == 0)
+        properties.insert(QStringLiteral("VerticalLines"), boolText(false));
+    // Начальное раскрытие дерева: умолчание (Default) не пишется. Сверено по
+    // 6 деревьям корпуса.
+    if (item.initialTreeView == 1)
+        properties.insert(QStringLiteral("InitialTreeView"),
+                          QStringLiteral("ExpandTopLevel"));
+    else if (item.initialTreeView == 2)
+        properties.insert(QStringLiteral("InitialTreeView"),
+                          QStringLiteral("ExpandAllLevels"));
     if (item.autoRefresh >= 0)
         properties.insert(QStringLiteral("AutoRefresh"), boolText(item.autoRefresh != 0));
     if (item.autoRefreshPeriod >= 0) {
