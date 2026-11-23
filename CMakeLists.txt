@@ -57,6 +57,8 @@ add_library(qtv8reader_core STATIC
     src/core/FormWebModel.cpp
     src/core/FormBindings.h
     src/core/FormBindings.cpp
+    src/core/FormCommands.h
+    src/core/FormCommands.cpp
     src/core/FormReader.h
     src/core/FormReader.cpp
     src/core/FormStyles.h

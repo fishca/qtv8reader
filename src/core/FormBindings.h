@@ -39,6 +39,12 @@ public:
     // у всех элементов документа.
     void applyToDocument(FormDocument *document) const;
 
+    // Полное имя команды владельца формы по GUID её метаданных
+    // («Task.ЗадачаИсполнителя.Command.Выполнено») или пустая строка, если
+    // GUID принадлежит не команде этого объекта (общая команда конфигурации,
+    // команда другого объекта).
+    QString commandFqn(const QString &guid) const;
+
     static FormValueKind kindForTypeText(const QString &typeText);
     static int charsForType(const QString &typeText, FormValueKind kind);
     static QString typeTextForStandardCode(int code);
@@ -59,6 +65,12 @@ private:
     // Вид объекта-владельца формы («Catalog», «Document», ...): от него зависит
     // расшифровка стандартных реквизитов.
     QString m_ownerKind;
+    // Имя объекта-владельца: нужно полному имени команды
+    // («Task.ЗадачаИсполнителя.Command.Выполнено»).
+    QString m_ownerName;
+    // GUID команд владельца формы -> имя команды. Кнопки ссылаются на
+    // стандартные команды объекта по GUID, а имя нужно для CommandName.
+    QHash<QString, QString> m_commandNames;
 };
 
 } // namespace v8reader

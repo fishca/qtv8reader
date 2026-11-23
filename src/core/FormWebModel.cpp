@@ -182,6 +182,11 @@ bool isRenderable(const FormItem &item)
 // общими командами, «ОбщаяКоманда<Имя>», а команды формы — «ФормаКоманда<Имя>».
 QString commandNameForButton(const FormItem &item, const FormDocument &document)
 {
+    // Разобранная ссылка кнопки на команду: имя команды формы по её
+    // идентификатору, стандартная команда платформы по GUID, стандартная
+    // команда элемента-владельца.
+    if (!item.commandName.isEmpty())
+        return item.commandName;
     for (const FormCommand &command : document.commands) {
         if (command.name == item.name) {
             return QStringLiteral("Form.Command.") + command.name;
@@ -400,59 +405,12 @@ void appendChildren(const QVector<FormItem> &items, const FormDocument &document
     linkFormattedDocumentBars(target);
 }
 
-// Человекочитаемый заголовок из имени элемента: «ПоказатьДвиженияДокумента» →
-// «Показать движения документа». Нужен для кнопок общих команд, у которых в
-// контейнере нет готового заголовка (он берётся из описания общей команды).
-QString humanizeName(const QString &name)
+QString buttonTitle(const FormItem &item)
 {
-    static const QStringList prefixes = {
-        QStringLiteral("ФормаОбщаяКоманда"),
-        QStringLiteral("ОбщаяКоманда"),
-        QStringLiteral("ФормаКоманда"),
-        QStringLiteral("Форма")
-    };
-    QString rest = name;
-    for (const QString &prefix : prefixes) {
-        if (rest.startsWith(prefix) && rest.size() > prefix.size()) {
-            rest = rest.mid(prefix.size());
-            break;
-        }
-    }
-    QString text;
-    text.reserve(rest.size());
-    bool wordStart = true;
-    bool firstWord = true;
-    for (int i = 0; i < rest.size(); ++i) {
-        QChar ch = rest.at(i);
-        if (i > 0 && ch.isUpper() && rest.at(i - 1).isLower()) {
-            text += QLatin1Char(' ');
-            wordStart = true;
-        }
-        if (wordStart) {
-            // В подписи 1С первое слово с заглавной, остальные — со строчной.
-            text += firstWord ? ch.toUpper() : ch.toLower();
-            firstWord = false;
-            wordStart = false;
-        } else {
-            text += ch.toLower();
-        }
-    }
-    if (text.isEmpty())
-        return name;
-    return text;
-}
-
-QString buttonTitle(const FormItem &item, const FormDocument &document)
-{
-    if (!item.synonym.isEmpty())
-        return item.synonym;
-    if (!item.dataTitle.isEmpty())
-        return item.dataTitle;
-    for (const FormCommand &command : document.commands) {
-        if (command.name == item.name && !command.synonym.isEmpty())
-            return command.synonym;
-    }
-    return humanizeName(item.name);
+    // Собственный заголовок кнопки из формы. Подписи стандартных команд и
+    // команд формы рендерер выводит из CommandName, а заголовок из имени
+    // кнопки был бы неверным («Записать изакрыть»).
+    return item.synonym;
 }
 
 QJsonObject makeButton(const FormItem &item, const FormDocument &document)
@@ -462,9 +420,11 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
     const QString commandName = commandNameForButton(item, document);
     if (!commandName.isEmpty())
         properties.insert(QStringLiteral("CommandName"), commandName);
-    const QString title = buttonTitle(item, document);
+    const QString title = buttonTitle(item);
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
+    if (!item.tooltip.isEmpty())
+        properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     // Собственная картинка кнопки: общая картинка конфигурации или
     // стандартная картинка платформы. Пиктограммы платформенных команд
     // (см. ниже) важнее — их подставляет рендерер по имени команды.
@@ -523,9 +483,11 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     // поэтому собственный заголовок отдаём только если он задан в форме:
     // иначе стандартная колонка «Номер строки» получила бы подпись
     // «Выданные авансы номер строки» вместо «N».
-    QString title = item.synonym;
-    if (title.isEmpty() && !insideTable)
-        title = item.dataTitle;
+    // Заголовок поля отдаём только если он задан в самой форме: иначе
+    // подпись платформа (и рендерер) выводит из пути к данным и метаданных,
+    // а заголовок из метаданных в модели был бы лишним и мог не совпасть
+    // с подписью платформы.
+    const QString title = item.synonym;
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
     if (!item.tooltip.isEmpty())
@@ -612,6 +574,8 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
     const QString title = item.titleText();
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
+    if (!item.tooltip.isEmpty())
+        properties.insert(QStringLiteral("ToolTip"), item.tooltip);
 
     if (tag == QLatin1String("Popup")) {
         properties.insert(QStringLiteral("Representation"), QStringLiteral("Text"));
@@ -678,6 +642,8 @@ QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
     QJsonObject properties;
     if (!item.synonym.isEmpty())
         properties.insert(QStringLiteral("Title"), item.synonym);
+    if (!item.tooltip.isEmpty())
+        properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (item.widthUnits > 0)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
     if (item.horizontalStretch == 1)
@@ -735,9 +701,12 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("DataPath"), item.dataPathText);
     properties.insert(QStringLiteral("Representation"), QStringLiteral("List"));
     properties.insert(QStringLiteral("AutoInsertNewRow"), QStringLiteral("true"));
-    const QString title = item.titleText();
-    if (!title.isEmpty())
-        properties.insert(QStringLiteral("Title"), title);
+    // Заголовок таблицы — только собственный: подпись из метаданных рендерер
+    // получает по пути к данным, как и для полей.
+    if (!item.synonym.isEmpty())
+        properties.insert(QStringLiteral("Title"), item.synonym);
+    if (!item.tooltip.isEmpty())
+        properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (item.widthUnits > 0)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
     if (!item.visible)
@@ -853,6 +822,8 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         const QString text = item.titleText();
         if (!text.isEmpty())
             properties.insert(QStringLiteral("Title"), text);
+        if (!item.tooltip.isEmpty())
+            properties.insert(QStringLiteral("ToolTip"), item.tooltip);
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
         if (item.hyperlink)

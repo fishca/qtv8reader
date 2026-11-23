@@ -1,5 +1,6 @@
 #include "core/ConfigurationReader.h"
 #include "core/FormBindings.h"
+#include "core/FormCommands.h"
 #include "core/FormDocument.h"
 #include "core/FormOwner.h"
 #include "core/FormReader.h"
@@ -119,6 +120,7 @@ private slots:
     void decorationKindsAndHyperlinks();
     void commandBarGroupKinds();
     void styleReferences();
+    void standardCommandTables();
 };
 
 void TestForm::parseSynthetic()
@@ -974,8 +976,9 @@ void TestForm::fieldKindsFromForm()
     QVERIFY(!markupNode.isEmpty());
     const QJsonObject markupProperties =
         markupNode.value(QStringLiteral("properties")).toObject();
-    QCOMPARE(markupProperties.value(QStringLiteral("Title")).toString(),
-             QStringLiteral("Наценка"));
+    // У поля нет собственного заголовка: подпись платформа (и рендерер)
+    // выводит из пути к данным и метаданных, поэтому в модели Title не нужен.
+    QVERIFY(!markupProperties.contains(QStringLiteral("Title")));
     QVERIFY(markupProperties.value(QStringLiteral("ToolTip")).toString()
                 .startsWith(QStringLiteral("Коэффициент")));
 
@@ -1437,6 +1440,72 @@ void TestForm::styleReferences()
     const FormItem *nameField = findItemById(list.items, 6);
     QVERIFY(nameField);
     QCOMPARE(nameField->borderColor, QStringLiteral("style:BorderColor"));
+}
+
+// Кнопки в бинарной форме ссылаются на команды парой «номер, GUID»: платформа
+// хранит стандартные команды отдельно и GUID-ы постоянны. Таблица команд живёт
+// в FormCommands.h; здесь проверяем её и то, что у кнопки со стандартной
+// командой в модели нет подставленного заголовка — подпись рендерер выводит из
+// CommandName, как и платформа.
+void TestForm::standardCommandTables()
+{
+    QCOMPARE(formStandardCommandName(
+                 QStringLiteral("4f834c38-add1-45e4-a9f3-cefe3efac5c9")),
+             QStringLiteral("Create"));
+    QCOMPARE(formStandardCommandName(
+                 QStringLiteral("fe558fde-99b3-45d0-a060-9fc2905309f6")),
+             QStringLiteral("Write"));
+    QCOMPARE(formStandardCommandName(
+                 QStringLiteral("342c531d-dc73-458a-8ac4-6a746916a33b")),
+             QStringLiteral("Copy"));
+    QCOMPARE(itemStandardCommandName(
+                 QStringLiteral("b0016a68-ec64-4e6d-b905-c71fd62efc4c")),
+             QStringLiteral("Add"));
+    QCOMPARE(itemStandardCommandName(
+                 QStringLiteral("f20eefc2-f819-4ab1-be67-87b3ca2e26e6")),
+             QStringLiteral("Bold"));
+    QVERIFY(formStandardCommandName(QString()).isEmpty());
+    QVERIFY(itemStandardCommandName(
+                QStringLiteral("00000000-0000-0000-0000-000000000000")).isEmpty());
+
+    FormDocument document;
+    FormItem button;
+    button.type = FormItem::Type::Button;
+    button.name = QStringLiteral("КнопкаКопировать");
+    button.commandRef = 0;
+    button.commandGuid = QStringLiteral("342c531d-dc73-458a-8ac4-6a746916a33b");
+    button.commandName = QStringLiteral("Form.StandardCommand.Copy");
+    document.items.append(button);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonObject node = findModelNode(
+        model.value(QStringLiteral("childItemsRoot")).toArray(),
+        QStringLiteral("КнопкаКопировать"));
+    QVERIFY2(!node.isEmpty(), "кнопка не попала в модель");
+    const QJsonObject properties = node.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(properties.value(QStringLiteral("CommandName")).toString(),
+             QStringLiteral("Form.StandardCommand.Copy"));
+    QVERIFY(!properties.contains(QStringLiteral("Title")));
+
+    // Подсказка группы: в Form.xml это отдельное свойство, в контейнере —
+    // вторая локализованная запись после имени.
+    FormDocument withGroup;
+    FormItem group;
+    group.type = FormItem::Type::Group;
+    group.groupKind = 0;
+    group.name = QStringLiteral("ГруппаОтбор");
+    group.synonym = QStringLiteral("Группа отбор");
+    group.tooltip = QStringLiteral("Группа оформлено отбор");
+    withGroup.items.append(group);
+    const QJsonObject groupModel =
+        QJsonDocument::fromJson(formWebModelJson(withGroup)).object();
+    const QJsonObject groupNode = findModelNode(
+        groupModel.value(QStringLiteral("childItemsRoot")).toArray(),
+        QStringLiteral("ГруппаОтбор"));
+    QCOMPARE(groupNode.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("ToolTip")).toString(),
+             QStringLiteral("Группа оформлено отбор"));
 }
 
 } // namespace

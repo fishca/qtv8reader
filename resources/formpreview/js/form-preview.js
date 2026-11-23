@@ -1835,7 +1835,33 @@ var STD_COMMANDS = {
     FindByCurrentValue: 'Найти по текущему значению', CancelSearch: 'Отменить поиск',
     ChangeHistory: 'История изменений', SetDateInterval: 'Установить период',
     OpenList: 'Открыть список', Generate: 'Сформировать', Print: 'Печать',
-    EndEdit: 'Завершить редактирование', CancelEdit: 'Отмена'
+    EndEdit: 'Завершить редактирование', CancelEdit: 'Отмена',
+    /* Стандартные команды, на которые ссылаются кнопки форм корпуса
+     * (Form.StandardCommand.* и Form.Item.*.StandardCommand.*). Подписи
+     * платформы; в Form.xml их нет, поэтому рендерер берёт их отсюда. */
+    NewWindow: 'Новое окно', CreateFolder: 'Создать группу',
+    SaveReportSettings: 'Сохранить настройки', LoadReportSettings: 'Загрузить настройки',
+    SaveVariant: 'Сохранить вариант', FindNext: 'Найти следующий',
+    PrintImmediately: 'Печать сразу', PageSetup: 'Настройка страницы',
+    Preview: 'Предварительный просмотр', Edit: 'Редактировать',
+    ShowHeaders: 'Отображать заголовки', OutputListSettings: 'Настройки списка',
+    ScaleUp: 'Увеличить масштаб', ScaleDown: 'Уменьшить масштаб',
+    RotateClockwise: 'Повернуть по часовой стрелке',
+    RotateCounterclockwise: 'Повернуть против часовой стрелки',
+    GoToBegin: 'Перейти к началу', GoToEnd: 'Перейти к концу',
+    GoBack: 'Перейти назад', GoForward: 'Перейти вперед',
+    CutToClipboard: 'Вырезать', CopyToClipboard: 'Копировать',
+    PasteFromClipboard: 'Вставить', Undo: 'Отменить', Redo: 'Вернуть',
+    Font: 'Шрифт', IncreaseFontSize: 'Увеличить размер шрифта',
+    DecreaseFontSize: 'Уменьшить размер шрифта', Bold: 'Жирный',
+    Italic: 'Наклонный', Underline: 'Подчеркивание', Strikeout: 'Зачеркивание',
+    BackColor: 'Цвет фона', TextColor: 'Цвет текста', Hyperlink: 'Гиперссылка',
+    Picture: 'Картинка', Char: 'Символ', BulletedList: 'Маркированный список',
+    NumberedList: 'Нумерованный список', AlignLeft: 'Выровнять влево',
+    AlignCenter: 'Выровнять по центру', AlignRight: 'Выровнять вправо',
+    AlignJustify: 'Выровнять по ширине', IncreaseIndent: 'Увеличить отступ',
+    DecreaseIndent: 'Уменьшить отступ', LineSpacing: 'Межстрочный интервал',
+    SaveAs: 'Сохранить как'
 };
 var PIC_ICON = {
     Write: 'save', WriteAndClose: 'save', Post: 'file-check', PostAndClose: 'file-check', Stop: 'circle-x',

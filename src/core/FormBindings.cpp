@@ -31,6 +31,8 @@ bool looksComposite(const QString &typeText)
 void FormBindingResolver::clear()
 {
     m_ownerKind.clear();
+    m_ownerName.clear();
+    m_commandNames.clear();
     m_byGuid.clear();
     m_byName.clear();
 }
@@ -42,6 +44,7 @@ void FormBindingResolver::addObject(const MetadataObject &object)
     // соответственно. Владелец формы известен только здесь, поэтому вид
     // запоминаем сразу: заголовок владельца заполняется позже разбора формы.
     m_ownerKind = ownerKindTag(object.typeTitle);
+    m_ownerName = object.name;
     auto insert = [this](const MetadataEntry &entry, bool tabularSection) {
         if (entry.guid.isEmpty())
             return;
@@ -68,7 +71,12 @@ void FormBindingResolver::addObject(const MetadataObject &object)
     };
     for (const MetadataSection &section : object.sections) {
         const bool tabular = section.kind == MetadataSectionKind::TabularSections;
+        const bool commands = section.kind == MetadataSectionKind::Commands;
         for (const MetadataEntry &entry : section.entries) {
+            // Команды объекта — целиком отдельная таблица: кнопки ссылаются на
+            // них GUID-ом, а в CommandName нужно имя команды и её владелец.
+            if (commands && !entry.guid.isEmpty() && !entry.name.isEmpty())
+                m_commandNames.insert(entry.guid.toLower(), entry.name);
             // Табличные части в таблицу поиска входят ради имён: путь колонки
             // адресуется через них («Объект.Товары.Количество»), хотя типа
             // у самой табличной части нет.
@@ -79,6 +87,17 @@ void FormBindingResolver::addObject(const MetadataObject &object)
                 insert(child, false);
         }
     }
+}
+
+QString FormBindingResolver::commandFqn(const QString &guid) const
+{
+    if (guid.isEmpty() || m_ownerKind.isEmpty() || m_ownerName.isEmpty())
+        return QString();
+    const QString name = m_commandNames.value(guid.toLower());
+    if (name.isEmpty())
+        return QString();
+    return m_ownerKind + QLatin1Char('.') + m_ownerName
+        + QStringLiteral(".Command.") + name;
 }
 
 QString FormBindingResolver::typeTextForStandardCode(int code)

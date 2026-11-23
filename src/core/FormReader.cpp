@@ -1,6 +1,7 @@
 #include "core/FormReader.h"
 
 #include "core/FormBindings.h"
+#include "core/FormCommands.h"
 #include "core/FormPictures.h"
 #include "core/FormStyles.h"
 #include "core/V8Text.h"
@@ -11,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QSet>
 
 #include <algorithm>
 
@@ -73,6 +75,26 @@ QString findName(const V8TextNode &node, int startIndex, int *nameIndex = nullpt
     return QString();
 }
 
+QString normalizedText(QString text)
+{
+    // В контейнере переводы строк записаны парой \r\n, а Form.xml — одним \n.
+    // Платформа показывает одинаковый текст, поэтому выравниваем: иначе
+    // подсказки и заголовки расходятся с эталоном при сверке моделей.
+    text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
+    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    // Строки в контейнере иногда заканчиваются пробелом перед переводом
+    // строки, а выгрузка Form.xml такие пробелы не сохраняет. На вид текст
+    // одинаковый, поэтому хвостовые пробелы строк убираем.
+    QStringList lines = text.split(QLatin1Char('\n'));
+    for (QString &line : lines) {
+        while (!line.isEmpty()
+               && (line.endsWith(QLatin1Char(' ')) || line.endsWith(QLatin1Char('\t')))) {
+            line.chop(1);
+        }
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
 // Ищет первый локализованный текст {"ru", "..."} в дочерних списках,
 // не заходя в дочерние элементы формы.
 QString localizedText(const V8TextNode &node, int depth = 0)
@@ -88,7 +110,7 @@ QString localizedText(const V8TextNode &node, int depth = 0)
         const V8TextNode *value = child.child(1);
         if (lang && value && lang->isScalar() && value->isScalar()
             && lang->scalar() == QLatin1String("ru") && !value->scalar().isEmpty()) {
-            return value->scalar();
+            return normalizedText(value->scalar());
         }
         const QString nested = localizedText(child, depth + 1);
         if (!nested.isEmpty())
@@ -309,6 +331,34 @@ QString typeHintFromAttributes(const V8TextNode &node)
 // ["#", …], "FieldsMapItemId0", ["N", "5"], "FieldsMapItemName0",
 // ["S", "Наименование"]. Ищем список, в котором есть ключ карты полей; часть
 // сборок пишет его с опечаткой («FiledsMapItem…»).
+// Заголовок и подсказка элемента записаны одинаковыми записями:
+// пустая — ["1","0"], с текстом — ["1","1",["ru","…"]]. В дереве рядом
+// бывают и другие записи, поэтому проверяем форму, а не только текст.
+bool localizedRecord(const V8TextNode &node, QString *text)
+{
+    // Заголовок и подсказка элемента записаны одинаковыми записями:
+    // пустая — ["1","0"], с текстом — ["1","1",["ru","…"]]. В дереве рядом
+    // бывают и другие записи, поэтому проверяем форму, а не только текст.
+    if (!node.isList() || node.children.size() < 2)
+        return false;
+    const V8TextNode *flag = node.child(0);
+    const V8TextNode *kind = node.child(1);
+    if (!flag || !flag->isScalar() || flag->scalar() != QLatin1String("1"))
+        return false;
+    if (!kind || !kind->isScalar())
+        return false;
+    const QString code = kind->scalar();
+    if (code == QLatin1String("0") && node.children.size() == 2) {
+        text->clear();
+        return true;
+    }
+    if (code == QLatin1String("1") && node.children.size() >= 3) {
+        *text = localizedText(node);
+        return true;
+    }
+    return false;
+}
+
 bool isListFieldMapKey(const QString &key)
 {
     return key.startsWith(QLatin1String("FieldsMapItemId"))
@@ -1134,6 +1184,62 @@ void collectCommonPictures(const QVector<FormItem> &items,
     }
 }
 
+// Ссылки кнопок на команды разрешаются после разбора всего документа: имена
+// команд формы лежат в другом разделе, а владелец стандартной команды
+// элемента (таблица, поле форматированного документа) — это элемент с
+// идентификатором из ссылки.
+struct ButtonCommandContext
+{
+    QHash<int, QString> commandNames;    // идентификатор команды -> имя
+    QSet<QString> collections;           // GUID коллекций команд формы
+    QHash<int, QString> itemNames;       // идентификатор элемента -> имя
+};
+
+void collectItemNames(const QVector<FormItem> &items, QHash<int, QString> *target)
+{
+    for (const FormItem &item : items) {
+        if (item.id > 0 && !item.name.isEmpty())
+            target->insert(item.id, item.name);
+        collectItemNames(item.children, target);
+    }
+}
+
+void resolveButtonCommands(QVector<FormItem> *items,
+                           const ButtonCommandContext &context,
+                           const FormBindingResolver *resolver)
+{
+    for (FormItem &item : *items) {
+        if (item.type == FormItem::Type::Button && item.commandRef >= 0
+            && !item.commandGuid.isEmpty()) {
+            if (item.commandRef == 0) {
+                const QString standard = formStandardCommandName(item.commandGuid);
+                if (!standard.isEmpty()) {
+                    item.commandName = QStringLiteral("Form.StandardCommand.")
+                        + standard;
+                } else if (resolver) {
+                    // Команда владельца формы (выполнение задачи и т. п.):
+                    // GUID её описания есть в метаданных объекта.
+                    const QString fqn = resolver->commandFqn(item.commandGuid);
+                    if (!fqn.isEmpty())
+                        item.commandName = fqn;
+                }
+            } else if (context.collections.contains(item.commandGuid.toLower())) {
+                const QString name = context.commandNames.value(item.commandRef);
+                if (!name.isEmpty())
+                    item.commandName = QStringLiteral("Form.Command.") + name;
+            } else {
+                const QString suffix = itemStandardCommandName(item.commandGuid);
+                const QString owner = context.itemNames.value(item.commandRef);
+                if (!suffix.isEmpty() && !owner.isEmpty()) {
+                    item.commandName = QStringLiteral("Form.Item.%1.StandardCommand.%2")
+                                           .arg(owner, suffix);
+                }
+            }
+        }
+        resolveButtonCommands(&item.children, context, resolver);
+    }
+}
+
 FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                   const FormPictureTable *pictures)
 {
@@ -1181,6 +1287,28 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
             item.synonym = localizedText(*titleNode);
         if (const V8TextNode *tooltipNode = node.child(nameIndex + 4))
             item.tooltip = localizedText(*tooltipNode);
+    } else if (nameIndex >= 0) {
+        // У групп, страниц, декораций, таблиц, кнопок и дополнений панели
+        // заголовок и подсказка — две соседние записи сразу после имени.
+        // Пустые записи тоже присутствуют, поэтому берём первые две по форме,
+        // не заходя во вложенные элементы (контекстное меню, расширенная
+        // подсказка) — иначе их тексты попадут в заголовок.
+        bool haveTitle = false;
+        for (int i = nameIndex + 1; i < node.children.size() && i <= nameIndex + 8; ++i) {
+            const V8TextNode *child = node.child(i);
+            if (!child || isItemNode(*child))
+                break;
+            QString text;
+            if (!localizedRecord(*child, &text))
+                continue;
+            if (!haveTitle) {
+                item.synonym = text;
+                haveTitle = true;
+            } else {
+                item.tooltip = text;
+                break;
+            }
+        }
     }
 
     // Вид поля (InputField, LabelField, CheckBoxField, PictureField, ...) лежит
@@ -1301,6 +1429,17 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         const V8TextNode *onBar = node.child(nameIndex + 10);
         if (onBar && onBar->isInteger())
             item.onCommandBar = onBar->toInteger() != 0;
+        // Ссылка на команду — через три поля после имени: {номер, GUID}.
+        // Номер — идентификатор команды формы, 0 — стандартная/общая команда
+        // платформы, иное — идентификатор элемента-владельца стандартной
+        // команды. Имя команды восстанавливается после разбора всего
+        // документа (см. resolveButtonCommands).
+        const V8TextNode *command = node.child(nameIndex + 3);
+        if (command && command->isList() && command->children.size() == 2
+            && command->child(0)->isInteger() && command->child(1)->isGuid()) {
+            item.commandRef = static_cast<int>(command->child(0)->toInteger());
+            item.commandGuid = command->child(1)->normalizedGuid();
+        }
     }
 
     // Путь к данным поля: в бинарной форме он записан ссылками на реквизиты
@@ -1477,6 +1616,16 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             if (!entry->child(1)->isList())
                 continue;
             FormCommand command;
+            // У записи команды первым идёт {идентификатор, GUID коллекции}:
+            // на идентификатор ссылаются кнопки, GUID — это коллекция команд
+            // формы (у всех команд формы она одна).
+            const V8TextNode *reference = entry->child(1);
+            if (reference->children.size() >= 2) {
+                if (reference->child(0)->isInteger())
+                    command.id = static_cast<int>(reference->child(0)->toInteger());
+                if (reference->child(1)->isGuid())
+                    command.collectionGuid = reference->child(1)->normalizedGuid();
+            }
             command.name = findName(*entry, 2);
             if (command.name.isEmpty())
                 continue;
@@ -1493,6 +1642,15 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
     }
     collectStyleItems(document->items, styles, &document->styleItems);
     collectCommonPictures(document->items, pictures, document);
+    ButtonCommandContext commandContext;
+    for (const FormCommand &command : document->commands) {
+        if (command.id > 0)
+            commandContext.commandNames.insert(command.id, command.name);
+        if (!command.collectionGuid.isEmpty())
+            commandContext.collections.insert(command.collectionGuid.toLower());
+    }
+    collectItemNames(document->items, &commandContext.itemNames);
+    resolveButtonCommands(&document->items, commandContext, resolver);
     if (resolver && !resolver->isEmpty())
         resolver->applyToDocument(document);
     return true;
@@ -1614,6 +1772,28 @@ QByteArray FormReader::describeNodes(const QByteArray &data, QString *error)
             attributeList.append(attribute);
         }
         result.insert(QStringLiteral("attributes"), attributeList);
+    }
+    // РљРѕРјР°РЅРґС‹ С„РѕСЂРјС‹ вЂ” С‚РѕР¶Рµ РІРЅРµ РґРµСЂРµРІР° СЌР»РµРјРµРЅС‚РѕРІ. РљРЅРѕРїРєРё СЃСЃС‹Р»Р°СЋС‚СЃСЏ РЅР° РЅРёС… РЅРѕРјРµСЂРѕРј,
+    // РїРѕСЌС‚РѕРјСѓ РґР»СЏ СЃРІРµСЂРєРё В«РЅРѕРјРµСЂ -> РёРјСЏВ» РЅСѓР¶РµРЅ РґР°РјРї СЃС‹СЂС‹С… Р·Р°РїРёСЃРµР№.
+    const V8TextNode *commands = root.child(5);
+    if (commands && commands->isList()) {
+        QJsonArray commandList;
+        for (int i = 2; i < commands->children.size(); ++i) {
+            const V8TextNode *entry = commands->child(i);
+            if (!entry || !entry->isList())
+                continue;
+            QJsonObject command;
+            int nameIndex = -1;
+            command.insert(QStringLiteral("name"), findName(*entry, 2, &nameIndex));
+            if (nameIndex >= 0)
+                command.insert(QStringLiteral("nameIndex"), nameIndex);
+            QJsonArray slotValues;
+            for (const V8TextNode &slot : entry->children)
+                slotValues.append(slotToJson(slot, 4));
+            command.insert(QStringLiteral("slots"), slotValues);
+            commandList.append(command);
+        }
+        result.insert(QStringLiteral("commands"), commandList);
     }
     return QJsonDocument(result).toJson(QJsonDocument::Compact);
 }
