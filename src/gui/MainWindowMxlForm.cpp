@@ -326,12 +326,26 @@ bool MainWindow::selectFormForObject(const QString &objectQuery,
         return false;
 
     Configuration &configuration = m_reader->configuration();
+    // В запросе вида «Документ.АвансовыйОтчет» вид отделяется точкой и только
+    // уточняет поиск: с именем объекта он не сравнивается. Вид принимается и
+    // в единственном числе, и как название категории («Документы»).
+    QString nameQuery = objectQuery;
+    if (const int dot = objectQuery.indexOf(QLatin1Char('.')); dot > 0) {
+        const QString prefix = objectQuery.left(dot).trimmed();
+        for (const MetadataCategory &category : configuration.categories) {
+            if (category.title.compare(prefix, Qt::CaseInsensitive) == 0
+                || category.typeTitle.compare(prefix, Qt::CaseInsensitive) == 0) {
+                nameQuery = objectQuery.mid(dot + 1).trimmed();
+                break;
+            }
+        }
+    }
     for (MetadataCategory &category : configuration.categories) {
         for (MetadataObject &object : category.objects) {
             if (!objectQuery.isEmpty()) {
                 const bool matches = object.guid.compare(objectQuery, Qt::CaseInsensitive) == 0
-                    || object.name.compare(objectQuery, Qt::CaseInsensitive) == 0
-                    || object.synonym.compare(objectQuery, Qt::CaseInsensitive) == 0
+                    || object.name.compare(nameQuery, Qt::CaseInsensitive) == 0
+                    || object.synonym.compare(nameQuery, Qt::CaseInsensitive) == 0
                     || object.displayName().compare(objectQuery, Qt::CaseInsensitive) == 0;
                 if (!matches)
                     continue;

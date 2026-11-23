@@ -754,6 +754,24 @@ void TestForm::ownerMetadataAndTableColumns()
     QVERIFY(document.ownerMeta.stringLen.contains(QStringLiteral("Комментарий")));
     QVERIFY(document.ownerMeta.numberQ.contains(QStringLiteral("СуммаДокумента")));
 
+    // Проверка заполнения реквизитов читается из двоичных метаданных: по ней
+    // рендерер рисует красное точечное подчёркивание у незаполненного поля.
+    // Значения сверены с выгрузкой этой же конфигурации в XML.
+    QCOMPARE(document.ownerMeta.fillChecking.value(QStringLiteral("Организация")),
+             QStringLiteral("ShowError"));
+    QCOMPARE(document.ownerMeta.fillChecking.value(QStringLiteral("ФизЛицо")),
+             QStringLiteral("ShowError"));
+    QCOMPARE(document.ownerMeta.fillChecking.value(QStringLiteral("Склад")),
+             QStringLiteral("ShowError"));
+    QCOMPARE(document.ownerMeta.fillChecking.value(QStringLiteral("ПодразделениеОрганизации")),
+             QStringLiteral("DontCheck"));
+    QCOMPARE(document.ownerMeta.fillChecking.value(QStringLiteral("Комментарий")),
+             QStringLiteral("DontCheck"));
+    // Стандартный реквизит «Дата» документа платформа проверяет всегда, хотя
+    // отдельной записью в метаданных он не хранится.
+    QCOMPARE(document.ownerMeta.fillChecking.value(QStringLiteral("Date")),
+             QStringLiteral("ShowError"));
+
     // Путь колонки табличной части разобран до конца: имя табличной части
     // встало на место неопознанного сегмента.
     const FormItem *advance =
@@ -788,6 +806,16 @@ void TestForm::ownerMetadataAndTableColumns()
                 .contains(QStringLiteral("Организация")));
     QVERIFY(objectMeta.value(QStringLiteral("numberQ")).toObject()
                 .contains(QStringLiteral("СуммаДокумента")));
+    const QJsonObject fillChecking =
+        objectMeta.value(QStringLiteral("fillChecking")).toObject();
+    QCOMPARE(fillChecking.value(QStringLiteral("Организация")).toString(),
+             QStringLiteral("ShowError"));
+    QCOMPARE(fillChecking.value(QStringLiteral("Склад")).toString(),
+             QStringLiteral("ShowError"));
+    QCOMPARE(fillChecking.value(QStringLiteral("ПодразделениеОрганизации")).toString(),
+             QStringLiteral("DontCheck"));
+    QCOMPARE(fillChecking.value(QStringLiteral("Date")).toString(),
+             QStringLiteral("ShowError"));
     // Главный реквизит формы не дублируется.
     const QJsonArray attributes = model.value(QStringLiteral("attributes")).toArray();
     int mainAttributes = 0;

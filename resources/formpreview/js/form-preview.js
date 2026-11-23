@@ -6071,8 +6071,15 @@ function inputButtonKindsFromButtons(item, ctx, buttons) {
     var choiceInInput = representation !== 'showInDropList';
     var clean85 = isInterface85Context(ctx);
     if (clean85 && buttons.clearButton) kinds.push('x');
-    if (kind === 'date' && buttons.choiceButton)
+    if (!clean85 && kind === 'date') {
+        /* The date editor of the Taxi client always shows the platform calendar
+         * button; it is not the authored ChoiceButton, so ChoiceButton=false
+         * does not remove it, and an empty date still gets it. */
+        if (!isTrue(prop(item, ['ReadOnly', 'ТолькоПросмотр'])))
+            kinds.push('calendar');
+    } else if (kind === 'date' && buttons.choiceButton) {
         kinds.push(hasCalendarChoicePicture(item) ? 'calendar' : 'dots');
+    }
     /* ExtendedEditMultipleValues adds no chrome in the designer (Код and
      * strings have no «...», references keep open). */
     if (!clean85 && (buttons.dropListButton || buttons.choiceListButton)) kinds.push('caret-down');
@@ -9031,13 +9038,21 @@ function tableStdCommands(table, model) {
     }
     if (!isList && (!table || !isFalse(prop(table, ['ChangeRowOrder'])))) {
         /* Editable-table Add/Move actions use captions by default. An authored
-         * button can still explicitly request Picture. */
+         * button can still explicitly request Picture. In the Taxi interface
+         * the platform paints the row moves as the bare arrow buttons
+         * («Переместить вверх/вниз»), so the synthesized pair keeps the
+         * caption only as a tooltip. */
         /* CommandSet exclusions apply to the move pair too: a table excluding
          * MoveUp/MoveDown gets a bar with Добавить only. */
+        var movePictures = !isInterface85Mode(model && model.interfaceMode);
         if (!tableExcludes(table, ['MoveUp']))
-            out.push(syntheticBtn('_stdUp', 'Переместить вверх', '', 'Text'));
+            out.push(movePictures
+                ? syntheticBtn('_stdUp', 'Переместить вверх', 'StdPicture.MoveUp', 'Picture')
+                : syntheticBtn('_stdUp', 'Переместить вверх', '', 'Text'));
         if (!tableExcludes(table, ['MoveDown']))
-            out.push(syntheticBtn('_stdDown', 'Переместить вниз', '', 'Text'));
+            out.push(movePictures
+                ? syntheticBtn('_stdDown', 'Переместить вниз', 'StdPicture.MoveDown', 'Picture')
+                : syntheticBtn('_stdDown', 'Переместить вниз', '', 'Text'));
     }
     return out;
 }
@@ -10629,8 +10644,11 @@ function appendInputButtons(field, item, ctx) {
             choiceBtn.dataset.choiceParameters = JSON.stringify(runtime.choiceParameters);
         field.appendChild(choiceBtn);
         } else if (kind === 'calendar') {
-            var blankBtn = el('span', 'fp-input-btn fp-choice-button fp-choice-button-blank');
-            field.appendChild(blankBtn);
+            /* The calendar choice button of a date editor: the platform
+             * picture Календарь, not the «...» of a value choice button. */
+            var calendarBtn = el('span', 'fp-input-btn fp-choice-button');
+            appendPictureIcon(calendarBtn, 'StdPicture.Calendar', ctx, 'calendar', 'fp-btn-icon');
+            field.appendChild(calendarBtn);
         } else if (kind === 'spin') {
             /* SpinButton stacks the up/down pair at the right edge. */
             var spin = el('span', 'fp-spin');

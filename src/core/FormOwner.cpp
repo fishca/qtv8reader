@@ -171,6 +171,21 @@ bool sameTitle(const QString &left, const QString &right)
     return left.compare(right, Qt::CaseInsensitive) == 0;
 }
 
+// Значение проверки заполнения в терминах Form.xml.
+QString fillCheckingText(int code)
+{
+    switch (code) {
+    case 0:
+        return QStringLiteral("DontCheck");
+    case 1:
+        return QStringLiteral("ShowError");
+    case 2:
+        return QStringLiteral("ShowWarning");
+    default:
+        return QString();
+    }
+}
+
 bool containsListTable(const QVector<FormItem> &items, const QString &objectName)
 {
     for (const FormItem &item : items) {
@@ -255,6 +270,9 @@ void applyOwnerMetadata(const MetadataObject &object, FormDocument *document)
                 document->titles.insert(entry.name, entry.synonym);
             }
             mergeType(&meta, entry.name, entry.typeText);
+            const QString checking = fillCheckingText(entry.fillChecking);
+            if (!checking.isEmpty())
+                meta.fillChecking.insert(entry.name, checking);
             if (!tabular)
                 continue;
             for (const MetadataEntry &child : entry.children) {
@@ -266,6 +284,9 @@ void applyOwnerMetadata(const MetadataObject &object, FormDocument *document)
                     document->titles.insert(key, child.synonym);
                 }
                 mergeType(&meta, key, child.typeText);
+                const QString childChecking = fillCheckingText(child.fillChecking);
+                if (!childChecking.isEmpty())
+                    meta.fillChecking.insert(key, childChecking);
             }
         }
     }
@@ -274,6 +295,12 @@ void applyOwnerMetadata(const MetadataObject &object, FormDocument *document)
     const bool hasTable = containsListTable(document->items, objectName);
     const bool isDocument = sameTitle(kindTag, QStringLiteral("Document"));
     const bool isCatalog = sameTitle(kindTag, QStringLiteral("Catalog"));
+    // Стандартный реквизит «Дата» документа платформа проверяет на заполнение
+    // («Показывать ошибку»), поэтому в формах документов пустое поле даты
+    // подчёркнуто красным пунктиром. Сам реквизит в метаданных не записан:
+    // в выгрузке в XML значение одинаково у всех 402 документов конфигурации.
+    if (isDocument && !meta.fillChecking.contains(QStringLiteral("Date")))
+        meta.fillChecking.insert(QStringLiteral("Date"), QStringLiteral("ShowError"));
     document->runtimeListCommands = isDocument && hasTable;
     document->runtimeDocumentCommands = isDocument && !hasTable;
     document->runtimeCatalogCommands = isCatalog && !hasTable;

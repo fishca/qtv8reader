@@ -2131,7 +2131,7 @@ QJsonObject buildObjectMeta(const FormDocument &document)
     meta.insert(QStringLiteral("captions"), captions);
     meta.insert(QStringLiteral("stringLen"), stringLengths());
     meta.insert(QStringLiteral("types"), objectOf(owner.types));
-    meta.insert(QStringLiteral("fillChecking"), QJsonObject());
+    meta.insert(QStringLiteral("fillChecking"), objectOf(owner.fillChecking));
     meta.insert(QStringLiteral("numberQ"), numberQualifiers());
     meta.insert(QStringLiteral("dateFraction"), objectOf(owner.dateFraction));
     meta.insert(QStringLiteral("multiLine"), QJsonObject());

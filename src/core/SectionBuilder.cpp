@@ -11,6 +11,55 @@ namespace {
 
 constexpr int kMaxTableScanDepth = 10;
 
+// Проверка заполнения реквизита лежит в записи его свойств (узел с видом 27):
+// тринадцатое поле этой записи — 0 (не проверять), 1 (выдавать ошибку) или
+// 2 (выводить предупреждение). Запись ищется в элементе таблицы состава,
+// потому что у справочников она вложена в обёртку. Сверено с выгрузкой
+// конфигурации в XML: по 136 реквизитам документа «АвансовыйОтчет»
+// (28 реквизитов и их колонки), справочника «Банки» и регистра
+// сведений «КурсыВалют» расхождений нет.
+int fillCheckingFromEntry(const V8TextNode &node)
+{
+    if (node.isList() && node.children.size() > 13) {
+        const V8TextNode &recordKind = node.children.at(0);
+        const V8TextNode &head = node.children.at(1);
+        if (recordKind.isScalar() && recordKind.scalar().trimmed() == QLatin1String("27")
+            && head.isList() && head.children.size() >= 2) {
+            const V8TextNode &headKind = head.children.at(0);
+            const V8TextNode &descriptor = head.children.at(1);
+            const bool descriptorKind = descriptor.isList()
+                && descriptor.children.size() >= 3
+                && descriptor.children.at(0).isScalar()
+                && (descriptor.children.at(0).scalar().trimmed() == QLatin1String("2")
+                    || descriptor.children.at(0).scalar().trimmed() == QLatin1String("3"))
+                && descriptor.children.at(2).isString();
+            if (headKind.isScalar() && headKind.scalar().trimmed() == QLatin1String("2")
+                && descriptorKind) {
+                const V8TextNode &value = node.children.at(13);
+                if (value.isInteger()) {
+                    const qint64 code = value.toInteger();
+                    if (code >= 0 && code <= 2)
+                        return static_cast<int>(code);
+                }
+            }
+        }
+    }
+    for (const V8TextNode &child : node.children) {
+        const int found = fillCheckingFromEntry(child);
+        if (found >= 0)
+            return found;
+    }
+    return -1;
+}
+
+bool hasFillChecking(MetadataSectionKind kind)
+{
+    return kind == MetadataSectionKind::Attributes
+        || kind == MetadataSectionKind::TabularAttributes
+        || kind == MetadataSectionKind::Dimensions
+        || kind == MetadataSectionKind::Resources;
+}
+
 int sectionRank(MetadataSectionKind kind)
 {
     switch (kind) {
@@ -214,6 +263,11 @@ MetadataEntry SectionBuilder::entryFromItem(const V8TextNode &item,
         entry.comment = descriptor.comment;
         if (m_context.typeTextForItem)
             entry.typeText = m_context.typeTextForItem(item);
+        // Проверка заполнения читается только у тех таблиц состава, где
+        // раскладка записи сверена с выгрузкой в XML: у табличных частей,
+        // форм, макетов и команд запись устроена иначе.
+        if (hasFillChecking(kind))
+            entry.fillChecking = fillCheckingFromEntry(item);
         return entry;
     }
 

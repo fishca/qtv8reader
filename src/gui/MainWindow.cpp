@@ -48,6 +48,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QShortcut>
 #include <QMenu>
@@ -178,6 +179,14 @@ void MainWindow::setupUi()
     m_tree->setAlternatingRowColors(true);
     m_tree->setUniformRowHeights(true);
     m_tree->setSelectionMode(QAbstractItemView::SingleSelection);
+    // Строка дерева больше не заливается системным синим: такая заливка
+    // перекрывает значки и текст. Выбранный узел отмечается нейтральным
+    // светло-серым, а не цветом акцента Windows; полоса ветвления получает
+    // тот же цвет, поэтому синих полей и полоски слева не остаётся.
+    QPalette treePalette = m_tree->palette();
+    treePalette.setColor(QPalette::Highlight, QColor(0xe8, 0xe8, 0xe8));
+    treePalette.setColor(QPalette::HighlightedText, treePalette.color(QPalette::Text));
+    m_tree->setPalette(treePalette);
     leftLayout->addWidget(m_tree, 1);
 
     m_treeHint = new QLabel(QStringLiteral("Файл не открыт"), leftPanel);

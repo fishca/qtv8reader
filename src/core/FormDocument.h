@@ -611,6 +611,9 @@ struct FormOwnerMeta
     QHash<QString, QString> numberQ;     // «Товары.Сумма» → «15:2»
     QHash<QString, QString> stringLen;   // «Комментарий» → «100»
     QHash<QString, QString> dateFraction; // «Дата» → «Date»
+    // Проверка заполнения реквизитов («ShowError», «DontCheck»): по ней
+    // рендерер рисует красное точечное подчёркивание незаполненного поля.
+    QHash<QString, QString> fillChecking;
 };
 
 struct FormDocument
