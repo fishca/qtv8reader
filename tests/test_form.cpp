@@ -135,6 +135,7 @@ private slots:
     void formattedTitlesAndGroupFlags();
     void pageOrientation();
     void commandBarAutofillAndCompactGroups();
+    void formattedDocumentCommandBar();
 };
 
 void TestForm::parseSynthetic()
@@ -1584,6 +1585,7 @@ void TestForm::tableAndColumnProperties()
     table.enableDrag = false;
     table.commandBarLocation = 0;
     table.tableTitleLocation = 3;
+    table.allowGettingCurrentRowUrl = 1;
 
     FormItem column;
     column.type = FormItem::Type::Field;
@@ -1634,6 +1636,8 @@ void TestForm::tableAndColumnProperties()
              QStringLiteral("None"));
     QCOMPARE(tableProps.value(QStringLiteral("TitleLocation")).toString(),
              QStringLiteral("Top"));
+    QCOMPARE(tableProps.value(QStringLiteral("AllowGettingCurrentRowURL")).toString(),
+             QStringLiteral("true"));
 
     const QJsonObject columnNode = findModelNode(
         tableNode.value(QStringLiteral("childItems")).toArray(),
@@ -2429,6 +2433,14 @@ void TestForm::commandBarAutofillAndCompactGroups()
                  .value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("Autofill")).toString(),
              QStringLiteral("false"));
+    // Разрешить получение ссылки на текущую строку: в блоке настроек
+    // динамического списка это код 20 со значением ["B","1"]; в Form.xml
+    // свойство пишется только при включении.
+    QCOMPARE(findModelNode(model.value(QStringLiteral("childItemsRoot")).toArray(),
+                           QStringLiteral("Список"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("AllowGettingCurrentRowURL")).toString(),
+             QStringLiteral("true"));
 
     // Панель с автозаполнением (значение по умолчанию): свойства в модели нет,
     // рендерер сам подставляет стандартные команды.
@@ -2455,6 +2467,105 @@ void TestForm::commandBarAutofillAndCompactGroups()
                  .value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("Representation")).toString(),
              QStringLiteral("Compact"));
+}
+
+// Панель форматированного документа: в бинарной форме она пустая, а платформа
+// заполняет её командами форматирования по CommandSource поля. Модель
+// восстанавливает состав: «Шрифт» (шрифт, A+, A-), «Начертание», «Цвет»,
+// вставка картинки и зачеркивание с выравниванием в подменю «Ещё».
+void TestForm::formattedDocumentCommandBar()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    auto loadForm = [&reader, &error](const QString &typeTitle, const QString &objectName,
+                                      const QString &formName, FormDocument *document) {
+        MetadataObject *object = nullptr;
+        for (MetadataCategory &category : reader.configuration().categories) {
+            if (!category.typeTitle.startsWith(typeTitle))
+                continue;
+            for (MetadataObject &candidate : category.objects) {
+                if (candidate.name == objectName) {
+                    object = &candidate;
+                    break;
+                }
+            }
+            if (object)
+                break;
+        }
+        if (!object)
+            return false;
+        reader.loadSections(*object);
+        const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+        if (!forms)
+            return false;
+        const MetadataEntry *formEntry = nullptr;
+        for (const MetadataEntry &entry : forms->entries) {
+            if (entry.name.compare(formName, Qt::CaseInsensitive) == 0) {
+                formEntry = &entry;
+                break;
+            }
+        }
+        if (!formEntry)
+            return false;
+        const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+        if (!element)
+            return false;
+        QByteArray payload;
+        if (!reader.container().elementPayload(*element, &payload, nullptr, &error))
+            return false;
+        FormBindingResolver resolver;
+        resolver.addObject(*object);
+        if (!FormReader::parseBytes(payload, document, &error, &resolver))
+            return false;
+        applyOwnerMetadata(*object, document);
+        return true;
+    };
+
+    FormDocument document;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("Новости"),
+                      QStringLiteral("ФормаДокумента"), &document),
+             qPrintable(error));
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject bar =
+        findModelNode(roots, QStringLiteral("КоманднаяПанельФорматированныйТекст"));
+    QVERIFY(!bar.isEmpty());
+    QCOMPARE(bar.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("CommandSource")).toString(),
+             QStringLiteral("Item.ФорматированныйТекст"));
+
+    const QJsonArray children = bar.value(QStringLiteral("childItems")).toArray();
+    QCOMPARE(children.size(), 9);
+    const QJsonObject fontGroup = children.at(0).toObject();
+    QCOMPARE(fontGroup.value(QStringLiteral("tag")).toString(), QStringLiteral("ButtonGroup"));
+    QCOMPARE(fontGroup.value(QStringLiteral("name")).toString(), QStringLiteral("_fmtFont"));
+    const QJsonArray fontButtons = fontGroup.value(QStringLiteral("childItems")).toArray();
+    QCOMPARE(fontButtons.size(), 3);
+    const QJsonObject increase = fontButtons.at(1).toObject()
+                                     .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(increase.value(QStringLiteral("Title")).toString(),
+             QStringLiteral("Увеличить шрифт"));
+    QCOMPARE(increase.value(QStringLiteral("Picture")).toString(),
+             QStringLiteral("StdPicture.IncreaseFontSize"));
+    QCOMPARE(increase.value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("Picture"));
+    const QJsonObject bold = children.at(1).toObject()
+                                 .value(QStringLiteral("childItems")).toArray()
+                                 .at(0).toObject().value(QStringLiteral("properties")).toObject();
+    QCOMPARE(bold.value(QStringLiteral("CommandName")).toString(),
+             QStringLiteral("Item.ФорматированныйТекст.StandardCommand.Bold"));
+    // Зачеркивание и выравнивание платформа убирает из панели в подменю «Ещё».
+    const QJsonObject last = children.at(children.size() - 1).toObject();
+    QCOMPARE(last.value(QStringLiteral("name")).toString(), QStringLiteral("_fmtAlignJustify"));
+    QCOMPARE(last.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("LocationInCommandBar")).toString(),
+             QStringLiteral("InAdditionalSubmenu"));
 }
 
 } // namespace

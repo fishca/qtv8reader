@@ -513,6 +513,138 @@ void linkFormattedDocumentBars(QJsonArray *children)
     }
 }
 
+// Кнопка команды форматирования: платформа строит её из CommandSource панели
+// («Item.<поле>.StandardCommand.<команда>»), имя всегда «_fmt<команда>».
+// Вид картинки — только у команд шрифта и вставки картинки.
+QJsonObject makeFormatButton(const QString &command, const QString &title,
+                             const QString &fieldName,
+                             const QString &picture = QString())
+{
+    QJsonObject properties;
+    properties.insert(QStringLiteral("Title"), title);
+    properties.insert(QStringLiteral("Picture"), picture);
+    properties.insert(QStringLiteral("Representation"),
+                      picture.isEmpty() ? QStringLiteral("Text")
+                                        : QStringLiteral("Picture"));
+    properties.insert(QStringLiteral("CommandName"),
+                      QStringLiteral("Item.") + fieldName
+                          + QStringLiteral(".StandardCommand.") + command);
+    QJsonObject json;
+    json.insert(QStringLiteral("tag"), QStringLiteral("Button"));
+    json.insert(QStringLiteral("name"), QStringLiteral("_fmt") + command);
+    json.insert(QStringLiteral("id"), QString());
+    json.insert(QStringLiteral("properties"), properties);
+    json.insert(QStringLiteral("childItems"), QJsonArray());
+    return json;
+}
+
+QJsonObject makeFormatGroup(const QString &name, const QJsonArray &children)
+{
+    QJsonObject json;
+    json.insert(QStringLiteral("tag"), QStringLiteral("ButtonGroup"));
+    json.insert(QStringLiteral("name"), name);
+    json.insert(QStringLiteral("id"), QString());
+    json.insert(QStringLiteral("properties"), QJsonObject());
+    json.insert(QStringLiteral("childItems"), children);
+    return json;
+}
+
+// Состав панели форматированного документа как у платформы: группы «Шрифт»
+// (шрифт, A+, A-), «Начертание» (полужирный, курсив, подчеркивание), «Цвет»
+// (фон, текст), вставка картинки и вынесенные в подменю «Ещё» зачеркивание и
+// выравнивание. Сверено с эталонной отрисовкой формы «Новости/ФормаДокумента»:
+// 9 узлов панели, 17 кнопок вместе с вложенными.
+QJsonArray makeFormattingCommands(const QString &fieldName)
+{
+    QJsonArray kids;
+    kids.append(makeFormatGroup(
+        QStringLiteral("_fmtFont"),
+        QJsonArray{makeFormatButton(QStringLiteral("Font"), QStringLiteral("Шрифт"), fieldName),
+                   makeFormatButton(QStringLiteral("IncreaseFontSize"),
+                                    QStringLiteral("Увеличить шрифт"), fieldName,
+                                    QStringLiteral("StdPicture.IncreaseFontSize")),
+                   makeFormatButton(QStringLiteral("DecreaseFontSize"),
+                                    QStringLiteral("Уменьшить шрифт"), fieldName,
+                                    QStringLiteral("StdPicture.DecreaseFontSize"))}));
+    kids.append(makeFormatGroup(
+        QStringLiteral("_fmtStyle"),
+        QJsonArray{makeFormatButton(QStringLiteral("Bold"), QStringLiteral("Полужирный"), fieldName),
+                   makeFormatButton(QStringLiteral("Italic"), QStringLiteral("Курсив"), fieldName),
+                   makeFormatButton(QStringLiteral("Underline"),
+                                    QStringLiteral("Подчеркивание"), fieldName)}));
+    kids.append(makeFormatGroup(
+        QStringLiteral("_fmtColor"),
+        QJsonArray{makeFormatButton(QStringLiteral("BackColor"),
+                                   QStringLiteral("Цвет фона"), fieldName),
+                   makeFormatButton(QStringLiteral("TextColor"),
+                                    QStringLiteral("Цвет текста"), fieldName)}));
+    kids.append(makeFormatButton(QStringLiteral("InsertPicture"),
+                                 QStringLiteral("Вставить картинку"), fieldName,
+                                 QStringLiteral("StdPicture.InsertPicture")));
+    const std::pair<const char *, const char *> extras[] = {
+        {"Strikeout", "Зачеркнутый"},
+        {"AlignLeft", "По левому краю"},
+        {"AlignCenter", "По центру"},
+        {"AlignRight", "По правому краю"},
+        {"AlignJustify", "По ширине"},
+    };
+    for (const auto &extra : extras) {
+        QJsonObject button = makeFormatButton(QString::fromUtf8(extra.first),
+                                              QString::fromUtf8(extra.second), fieldName);
+        QJsonObject properties = button.value(QStringLiteral("properties")).toObject();
+        // Платформа убирает эти команды из панели, оставляя их в подменю «Ещё».
+        properties.insert(QStringLiteral("LocationInCommandBar"),
+                          QStringLiteral("InAdditionalSubmenu"));
+        button.insert(QStringLiteral("properties"), properties);
+        kids.append(button);
+    }
+    return kids;
+}
+
+// Панель с CommandSource=Item.<поле форматированного документа> платформа
+// наполняет командами форматирования. В бинарной форме панель пустая, поэтому
+// состав восстанавливается здесь; панель с собственными кнопками не трогаем.
+void fillFormattedDocumentCommandBars(QJsonArray *items)
+{
+    QStringList fields;
+    std::function<void(const QJsonArray &)> collect = [&collect, &fields](const QJsonArray &nodes) {
+        for (const QJsonValue &value : nodes) {
+            const QJsonObject node = value.toObject();
+            if (node.value(QStringLiteral("tag")).toString()
+                == QLatin1String("FormattedDocumentField"))
+                fields.append(node.value(QStringLiteral("name")).toString());
+            collect(node.value(QStringLiteral("childItems")).toArray());
+        }
+    };
+    collect(*items);
+    if (fields.isEmpty())
+        return;
+    std::function<void(QJsonArray *)> visit = [&visit, &fields](QJsonArray *nodes) {
+        for (int i = 0; i < nodes->size(); ++i) {
+            QJsonObject node = nodes->at(i).toObject();
+            QJsonArray children = node.value(QStringLiteral("childItems")).toArray();
+            if (node.value(QStringLiteral("tag")).toString() == QLatin1String("CommandBar")
+                && children.isEmpty()) {
+                const QJsonObject properties = node.value(QStringLiteral("properties")).toObject();
+                const QString source = properties.value(QStringLiteral("CommandSource")).toString();
+                const bool autofilled = properties.value(QStringLiteral("Autofill")).toString()
+                    != QLatin1String("false");
+                if (autofilled && source.startsWith(QLatin1String("Item."))) {
+                    const QString field = source.mid(5);
+                    if (fields.contains(field))
+                        children = makeFormattingCommands(field);
+                }
+            }
+            if (children.isEmpty())
+                continue;
+            visit(&children);
+            node.insert(QStringLiteral("childItems"), children);
+            (*nodes)[i] = node;
+        }
+    };
+    visit(items);
+}
+
 void appendChildren(const QVector<FormItem> &items, const FormDocument &document,
                     QJsonArray *target)
 {
@@ -1182,6 +1314,10 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("UpdateOnDataChange"), QStringLiteral("Auto"));
     if (item.hasTopLevelParent)
         properties.insert(QStringLiteral("TopLevelParent"), item.topLevelParent);
+    // Разрешить получение ссылки на текущую строку: платформа пишет свойство
+    // в Form.xml, только когда оно включено.
+    if (item.allowGettingCurrentRowUrl > 0)
+        properties.insert(QStringLiteral("AllowGettingCurrentRowURL"), boolText(true));
 
     QJsonArray columns;
     const FormItem *tableBar = nullptr;
@@ -1827,6 +1963,7 @@ QByteArray formWebModelJson(const FormDocument &document)
         rootItems.append(makeItem(item, document));
     }
     linkFormattedDocumentBars(&rootItems);
+    fillFormattedDocumentCommandBars(&rootItems);
     model.insert(QStringLiteral("childItemsRoot"), rootItems);
     model.insert(QStringLiteral("autoCommandBar"),
                  buildAutoCommandBar(document, autoBar, authoredBarPresent));

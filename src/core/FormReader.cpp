@@ -1549,6 +1549,12 @@ void readDynamicListSettings(const V8TextNode &node, FormItem *item)
         case 14:
             item->updateOnDataChange = ordinal();
             break;
+        case 20:
+            // AllowGettingCurrentRowURL: платформа пишет в XML только true
+            // (99 форм корпуса — 17 таблиц динамических списков, и у всех
+            // кладётся код 20 со значением ["B","1"]).
+            item->allowGettingCurrentRowUrl = boolean() ? 1 : 0;
+            break;
         default:
             break;
         }

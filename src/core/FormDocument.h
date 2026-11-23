@@ -288,6 +288,7 @@ struct FormItem
     int allowRootChoice = -1;            // AllowRootChoice
     bool hasRowFilter = false;           // RowFilter (пустая структура отбора)
     int updateOnDataChange = -1;         // UpdateOnDataChange: 0 — Auto
+    int allowGettingCurrentRowUrl = -1;  // AllowGettingCurrentRowURL
     bool hasTopLevelParent = false;      // TopLevelParent (строка, обычно пустая)
     QString topLevelParent;
     // Кнопка: вид (Type), отображение (Representation), пропуск при вводе и
