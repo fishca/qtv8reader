@@ -190,17 +190,34 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
         return binding;
 
     // Односегментный путь адресует реквизит формы. Номер реквизита в записи
-    // пути не совпадает с порядком реквизитов (сверено по форме «Авансовый
-    // отчет»), поэтому привязку определяем по имени элемента: если среди
-    // реквизитов формы есть элемент с тем же именем, путь ведёт к нему.
-    // Иначе путь не расшифровывается — лучше показать поле без привязки,
-    // чем привязать его к чужому реквизиту с другим типом.
+    // пути отсчитывается с единицы и совпадает с порядком объявления, поэтому
+    // сначала пробуем номер: по корпусу из 26 форм это совпало во всех
+    // случаях, где элемент назван не так, как реквизит (поле «ПереносОстатков1»
+    // привязано к реквизиту «ПереносОстатков»). Если номер вне списка,
+    // остаётся привязка по имени элемента.
     if (path.size() == 1 && path.at(0).kind == FormPathSegment::Kind::Index) {
-        if (fallbackName.isEmpty())
-            return binding;
-        for (const FormAttribute &attribute : document.attributes) {
-            if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) != 0)
-                continue;
+        if (!fallbackName.isEmpty()) {
+            for (const FormAttribute &attribute : document.attributes) {
+                if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) != 0)
+                    continue;
+                binding.text = attribute.name;
+                binding.title = attribute.synonym;
+                if (!attribute.typeHint.isEmpty()) {
+                    binding.typeText = attribute.typeHint;
+                    binding.kind = kindForTypeText(attribute.typeHint);
+                    binding.chars = charsForType(attribute.typeHint, binding.kind);
+                }
+                return binding;
+            }
+        }
+        // Имя элемента не совпало ни с одним реквизитом (поле названо иначе,
+        // чем реквизит). Тогда номер в пути — единственная зацепка: он
+        // отсчитывается с единицы и в этом случае совпадает с порядком
+        // объявления. Так поле «ПереносОстатков1» привязывается к реквизиту
+        // «ПереносОстатков».
+        const int index = path.at(0).code - 1;
+        if (index >= 0 && index < document.attributes.size()) {
+            const FormAttribute &attribute = document.attributes.at(index);
             binding.text = attribute.name;
             binding.title = attribute.synonym;
             if (!attribute.typeHint.isEmpty()) {
@@ -209,23 +226,6 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                 binding.chars = charsForType(attribute.typeHint, binding.kind);
             }
             return binding;
-        }
-        // Реквизит не опознан по имени. Односегментный путь таблицы ведёт
-        // к главному реквизиту формы («Список»): имя таблицы не совпадает
-        // с именем реквизита, поэтому привязку уточняем по карте полей —
-        // у динамического списка она заполнена. Номер в пути отсчитывается
-        // с единицы и совпадает с порядком объявления реквизитов.
-        const int index = path.at(0).code - 1;
-        if (index >= 0 && index < document.attributes.size()) {
-            const FormAttribute &attribute = document.attributes.at(index);
-            const bool mainReference = attribute.dynamicList
-                || attribute.name.compare(QStringLiteral("Список"), Qt::CaseInsensitive) == 0
-                || attribute.name.compare(QStringLiteral("Объект"), Qt::CaseInsensitive) == 0;
-            if (mainReference) {
-                binding.text = attribute.name;
-                binding.title = attribute.synonym;
-                return binding;
-            }
         }
         // Реквизит не опознан: рендерер показывает поле только с путём
         // к данным, поэтому оставляем путь по имени элемента — тип остаётся
