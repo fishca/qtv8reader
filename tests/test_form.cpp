@@ -440,6 +440,22 @@ void TestForm::realBpForm()
         document.items, QStringLiteral("ФормаПоказатьКонтекстныеНовости"));
     QVERIFY(submenuButton);
     QVERIFY(!submenuButton->onCommandBar);
+
+    // Видимость групп, декораций и кнопок записана «хвостом» записи —
+    // перед расширенной подсказкой. В Form.xml у баннера Visible=false,
+    // а декорация-крестик внутри него видима.
+    const FormItem *banner = findItemById(document.items, 782);
+    QVERIFY(banner);
+    QCOMPARE(banner->type, FormItem::Type::Group);
+    QVERIFY(!banner->visible);
+    const FormItem *bannerText = findItemById(document.items, 784);
+    QVERIFY(bannerText);
+    QCOMPARE(bannerText->type, FormItem::Type::Decoration);
+    QVERIFY(bannerText->visible);
+    // Второй баннер (id 774) в форме видим.
+    const FormItem *visibleBanner = findItemById(document.items, 774);
+    QVERIFY(visibleBanner);
+    QVERIFY(visibleBanner->visible);
 }
 
 void TestForm::realBpListFormGeometry()

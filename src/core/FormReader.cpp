@@ -398,6 +398,24 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
     }
 }
 
+// Смещение признака видимости от расширенной подсказки в «хвосте» записи
+// элемента. Перед подсказкой идут служебные поля, и их число зависит от вида
+// элемента: у группы — три, у декорации — пять, у кнопки — шесть. Значения
+// сверены с Form.xml на формах БП (265 групп, 326 декораций, 44 кнопки).
+int visibleOffsetFromTooltip(int typeCode)
+{
+    switch (typeCode) {
+    case 22:
+        return 3;
+    case 12:
+        return 5;
+    case 31:
+        return 6;
+    default:
+        return -1;
+    }
+}
+
 FormItem parseItem(const V8TextNode &node)
 {
     FormItem item;
@@ -432,6 +450,31 @@ FormItem parseItem(const V8TextNode &node)
         const V8TextNode *visible = node.child(nameIndex + 37);
         if (visible && visible->isInteger())
             item.visible = visible->toInteger() != 0;
+    }
+
+    // Видимость групп, декораций и кнопок записана не сразу после имени, а в
+    // «хвосте» записи — перед расширенной подсказкой (она всегда последний
+    // дочерний элемент). Смещение зависит от вида элемента.
+    const int visibleOffset = visibleOffsetFromTooltip(item.typeCode);
+    if (visibleOffset > 0) {
+        int tooltipIndex = -1;
+        for (int i = 0; i < node.children.size(); ++i) {
+            const V8TextNode *child = node.child(i);
+            if (!child || !isItemNode(*child))
+                continue;
+            const QString childName = findName(*child, 2);
+            if (childName.endsWith(QStringLiteral("РасширеннаяПодсказка"))
+                || childName.endsWith(QStringLiteral("ExtendedTooltip"))) {
+                tooltipIndex = i;
+            }
+        }
+        if (tooltipIndex >= visibleOffset) {
+            const V8TextNode *visible = node.child(tooltipIndex - visibleOffset);
+            if (visible && visible->isInteger())
+                item.visible = visible->toInteger() != 0;
+            else if (visible && visible->isScalar())
+                item.visible = visible->scalar().trimmed() != QLatin1String("0");
+        }
     }
 
     for (const V8TextNode &child : node.children) {
