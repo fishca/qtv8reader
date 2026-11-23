@@ -603,9 +603,28 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
     }
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), boolText(false));
-    if (!item.onCommandBar)
+    // Размещение кнопки: платформа пишет LocationInCommandBar только при
+    // отличии от значения по умолчанию (кнопка на панели).
+    switch (item.commandBarLocationCode) {
+    case 1:
         properties.insert(QStringLiteral("LocationInCommandBar"),
                           QStringLiteral("InAdditionalSubmenu"));
+        break;
+    case 2:
+        properties.insert(QStringLiteral("LocationInCommandBar"),
+                          QStringLiteral("InCommandBar"));
+        break;
+    case 3:
+        properties.insert(QStringLiteral("LocationInCommandBar"),
+                          QStringLiteral("InCommandBarAndInAdditionalSubmenu"));
+        break;
+    default:
+        if (!item.onCommandBar) {
+            properties.insert(QStringLiteral("LocationInCommandBar"),
+                              QStringLiteral("InAdditionalSubmenu"));
+        }
+        break;
+    }
     addStyleProperties(item, &properties);
 
     QJsonObject json;
@@ -873,6 +892,14 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         !align.isEmpty()) {
         properties.insert(QStringLiteral("GroupVerticalAlign"), align);
     }
+    // Выравнивание содержимого группы (HorizontalAlign и VerticalAlign):
+    // 3 — Auto, значение по умолчанию, платформа свойства не пишет.
+    if (const QString align = alignText(item.contentHorizontalAlign); !align.isEmpty())
+        properties.insert(QStringLiteral("HorizontalAlign"), align);
+    if (const QString align = verticalAlignText(item.contentVerticalAlign);
+        !align.isEmpty()) {
+        properties.insert(QStringLiteral("VerticalAlign"), align);
+    }
     // Размеры группы и растяжение записаны в самой форме: ширина и высота — в
     // единицах формы, растяжение — кодами 0 (нет), 1 (да) и 2 (авто, значение
     // по умолчанию, в Form.xml не пишется). Сверено с Form.xml по всем 361
@@ -900,7 +927,23 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("PagesRepresentation"),
                           pagesRepresentationText(item.pagesRepresentation));
     } else if (tag == QLatin1String("Page")) {
-        // Заголовок страницы уже в Title.
+        // Ориентация страницы из блока {18,…}: 0 — вертикальная, значение по
+        // умолчанию, платформа Group не пишет; 2 — HorizontalIfPossible.
+        switch (item.pageMode) {
+        case 1:
+            properties.insert(QStringLiteral("Group"), QStringLiteral("Horizontal"));
+            break;
+        case 2:
+            properties.insert(QStringLiteral("Group"),
+                              QStringLiteral("HorizontalIfPossible"));
+            break;
+        case 3:
+            properties.insert(QStringLiteral("Group"),
+                              QStringLiteral("AlwaysHorizontal"));
+            break;
+        default:
+            break;
+        }
     } else if (tag == QLatin1String("CommandBar")) {
         // Своя командная панель формы: платформа хранит у неё только заголовок,
         // группировка и оформление у неё не настраиваются.
@@ -1281,6 +1324,14 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         // Перетаскивание картинки файлом: 0 — AsFile (в XML пишется только оно).
         if (item.fileDragMode == 0)
             properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));
+        // Выравнивание текста внутри декорации: у горизонтального 0 — Left,
+        // значение по умолчанию, у вертикального 0 — Top.
+        if (const QString align = alignText(item.contentHorizontalAlign); !align.isEmpty())
+            properties.insert(QStringLiteral("HorizontalAlign"), align);
+        if (const QString align = verticalAlignText(item.contentVerticalAlign);
+            !align.isEmpty()) {
+            properties.insert(QStringLiteral("VerticalAlign"), align);
+        }
         // Картинка декорации: имя общей картинки конфигурации
         // («CommonPicture.Имя») или стандартной картинки платформы
         // («StdPicture.Имя»); сами данные общих картинок уходят в узел

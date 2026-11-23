@@ -171,6 +171,11 @@ struct FormItem
     // 1 — горизонтально, 2 — горизонтально, если помещается (платформа
     // в этом случае не пишет Group в Form.xml), 3 — всегда горизонтально.
     int groupMode = -1;
+    // Ориентация страницы (тег Page) из её записи макета {18,…}: 0 —
+    // вертикальная (значение по умолчанию, Group в Form.xml не пишется),
+    // 1 — Horizontal, 2 — HorizontalIfPossible, 3 — AlwaysHorizontal.
+    // У страницы нет узла {29,…} обычной группы, поэтому код читается отдельно.
+    int pageMode = -1;
     // Группировка группы колонок таблицы из записи {2, режим, …}: 0 —
     // Horizontal, 2 — InCell (в ячейке); 1 — значение по умолчанию, платформа
     // Group в Form.xml не пишет. Заголовок группы (ShowInHeader) и закрепление
@@ -331,6 +336,16 @@ struct FormItem
     // группе корпуса: расхождений нет.
     int groupHorizontalAlign = -1;
     int groupVerticalAlign = -1;
+    // Выравнивание содержимого внутри элемента (HorizontalAlign и
+    // VerticalAlign в Form.xml). У группы коды лежат в узле макета {29,…} —
+    // 17-е и 18-е поля (0 — Left/Top, 1 — Center, 2 — Right/Bottom,
+    // 3 — Auto, значение по умолчанию), у декорации — в записи оформления
+    // {5,…} 2-е и 3-е поля (у горизонтального 0 — Left, значение по
+    // умолчанию; у вертикального 0 — Top, а умолчание — 3).
+    // −1 — не задано, в модель не идёт. Сверено с Form.xml по 524 группам и
+    // 73 надписям корпуса.
+    int contentHorizontalAlign = -1;
+    int contentVerticalAlign = -1;
 
     QString guid;
     QString name;
@@ -338,6 +353,10 @@ struct FormItem
     // Кнопка выводится на командную панель (LocationInCommandBar); иначе
     // она живёт только в подменю «Еще».
     bool onCommandBar = true;
+    // Код LocationInCommandBar из записи кнопки: 1 — InAdditionalSubmenu,
+    // 2 — InCommandBar, 3 — InCommandBarAndInAdditionalSubmenu; −1 — свойство
+    // не задано (значение по умолчанию — на панели).
+    int commandBarLocationCode = -1;
     // Ссылка кнопки на команду в бинарной форме: {номер, GUID}. Номер — это
     // идентификатор команды формы, 0 — стандартная команда платформы или
     // общая команда конфигурации, иное — идентификатор элемента-владельца

@@ -943,6 +943,24 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
     if (!tag || !tag->isScalar())
         return;
     const bool pictured = tag->scalar().trimmed() == QLatin1String("4");
+    // Выравнивание содержимого декорации: в записи оформления {5,…} второе
+    // поле — горизонтальное (0 — Left, значение по умолчанию; 1 — Center,
+    // 2 — Right), третье — вертикальное (0 — Top, 1 — Center, 2 — Bottom,
+    // 3 — значение по умолчанию). Сверено с Form.xml по 73 надписям корпуса.
+    if (!pictured) {
+        if (const V8TextNode *horizontal = appearance->child(2);
+            horizontal && horizontal->isInteger()) {
+            const int value = static_cast<int>(horizontal->toInteger());
+            if (value == 1 || value == 2)
+                item->contentHorizontalAlign = value;
+        }
+        if (const V8TextNode *vertical = appearance->child(3);
+            vertical && vertical->isInteger()) {
+            const int value = static_cast<int>(vertical->toInteger());
+            if (value >= 0 && value <= 2)
+                item->contentVerticalAlign = value;
+        }
+    }
     const V8TextNode *flag = appearance->child(pictured ? 2 : 1);
     if (flag && flag->isInteger())
         item->hyperlink = flag->toInteger() != 0;
@@ -1898,6 +1916,26 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
 
     readGeometry(node, nameIndex, &item);
 
+    // Ориентация страницы: у тега Page нет узла макета {29,…} обычной группы,
+    // вместо него в записи лежит блок {18,…}, семнадцатое поле которого и
+    // задаёт Group: 0 — вертикальная (по умолчанию), 1 — Horizontal,
+    // 2 — HorizontalIfPossible, 3 — AlwaysHorizontal. Сверено с Form.xml по
+    // 76 страницам корпуса: расхождений нет.
+    if (item.typeCode == 22 && item.groupKind == 4) {
+        for (const V8TextNode &child : node.children) {
+            if (!child.isList() || child.children.isEmpty())
+                continue;
+            const V8TextNode *tag = child.child(0);
+            if (!tag || !tag->isScalar() || tag->scalar() != QLatin1String("18"))
+                continue;
+            if (const V8TextNode *mode = child.child(17)) {
+                if (mode->isInteger())
+                    item.pageMode = static_cast<int>(mode->toInteger());
+            }
+            break;
+        }
+    }
+
     // Прочие свойства полей и таблиц, которые платформа пишет в Form.xml
     // только при отличии от значения по умолчанию.
     if (isFieldCode(item.typeCode) && nameIndex >= 0) {
@@ -1950,6 +1988,17 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 item.behavior = FormGroupBehavior::Usual;
                 item.hasBehavior = true;
             }
+            // Выравнивание содержимого группы: 17-е поле — горизонтальное
+            // (0 — Left, 1 — Center, 2 — Right), 18-е — вертикальное
+            // (0 — Top, 1 — Center, 2 — Bottom); 3 — Auto, значение по
+            // умолчанию, платформа свойства не пишет. Сверено с Form.xml по
+            // 524 группам корпуса: 24 расхождения было, расхождений нет.
+            const int contentHorizontal = layoutInteger(*layout, 17);
+            if (contentHorizontal >= 0 && contentHorizontal <= 2)
+                item.contentHorizontalAlign = contentHorizontal;
+            const int contentVertical = layoutInteger(*layout, 18);
+            if (contentVertical >= 0 && contentVertical <= 2)
+                item.contentVerticalAlign = contentVertical;
         }
     }
 
@@ -2022,6 +2071,18 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         if (const V8TextNode *importance = node.child(nameIndex + 43);
             importance && importance->isInteger()) {
             item.displayImportance = static_cast<int>(importance->toInteger());
+        }
+        // Размещение в командной панели (LocationInCommandBar): 44-е поле
+        // после имени — 0 — по умолчанию (на панели), 1 — только в подменю
+        // «Ещё», 2 — InCommandBar, 3 — и на панели, и в подменю.
+        // Сверено с Form.xml по 294 кнопкам корпуса: 77 из 79 кнопок с
+        // заданным свойством совпали (у двух кнопок «Справка» запись на поле
+        // короче и код лежит сдвинутым).
+        if (const V8TextNode *location = node.child(nameIndex + 44);
+            location && location->isInteger()) {
+            const int value = static_cast<int>(location->toInteger());
+            if (value >= 1 && value <= 3)
+                item.commandBarLocationCode = value;
         }
         // Выравнивание кнопки в группе: 3 — Auto (по умолчанию).
         if (const V8TextNode *align = node.child(nameIndex + 36);

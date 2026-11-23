@@ -133,6 +133,7 @@ private slots:
     void groupAlignment();
     void sizesStretchAndPages();
     void formattedTitlesAndGroupFlags();
+    void pageOrientation();
 };
 
 void TestForm::parseSynthetic()
@@ -2258,6 +2259,19 @@ void TestForm::formattedTitlesAndGroupFlags()
                  .value(QStringLiteral("properties")).toObject()
                  .contains(QStringLiteral("Behavior")));
 
+    // Выравнивание содержимого группы и размещение кнопки в командной панели.
+    QCOMPARE(findModelNode(cardsRoots, QStringLiteral("ГруппаПодвалКанбан"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("HorizontalAlign")).toString(),
+             QStringLiteral("Right"));
+    const FormItem *create = findItemByName(cards.items, QStringLiteral("ФормаСоздать"));
+    QVERIFY(create);
+    QCOMPARE(create->commandBarLocationCode, 3);
+    QCOMPARE(findModelNode(cardsRoots, QStringLiteral("ФормаСоздать"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("LocationInCommandBar")).toString(),
+             QStringLiteral("InCommandBarAndInAdditionalSubmenu"));
+
     // Размеченный заголовок декорации: шрифт и ссылка остаются в тексте,
     // TitleFormatted — true.
     FormDocument processing;
@@ -2281,6 +2295,67 @@ void TestForm::formattedTitlesAndGroupFlags()
         findItemByName(documentForm.items, QStringLiteral("НадписьВсегоПредыдущийАванс"));
     QVERIFY(total);
     QCOMPARE(total->dataPathText, QStringLiteral("ИтогоПредыдущийАванс"));
+}
+
+// Ориентация страницы: у тега Page нет узла макета обычной группы, вместо него
+// в записи лежит блок {18,…}, 17-е поле которого задаёт Group.
+void TestForm::pageOrientation()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        if (!category.typeTitle.startsWith(QStringLiteral("Справочник")))
+            continue;
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name == QStringLiteral("Новости")) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаДокумента")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+    const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+    FormBindingResolver resolver;
+    resolver.addObject(*object);
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error, &resolver), qPrintable(error));
+
+    // Страница с горизонтальным содержимым: код 1 в семнадцатом поле блока.
+    const FormItem *page = findItemByName(
+        document.items, QStringLiteral("СтраницаПростоТекстДляВнешнихИсточников"));
+    QVERIFY(page);
+    QCOMPARE(page->pageMode, 1);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    QCOMPARE(findModelNode(roots, QStringLiteral("СтраницаПростоТекстДляВнешнихИсточников"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Group")).toString(),
+             QStringLiteral("Horizontal"));
 }
 
 } // namespace
