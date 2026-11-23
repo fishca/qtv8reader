@@ -151,8 +151,8 @@ Microsoft Edge WebView2. Данные берутся из контейнера: 
 
 Самодостаточные сборки публикуются в разделе
 [Releases](https://github.com/fishca/qtv8reader/releases).
-Актуальная версия — **0.9.0**; что нового — в [CHANGELOG.md](CHANGELOG.md)
-и в [описании релиза](docs/release-notes-v0.9.0.md).
+Актуальная версия — **0.10.0**; что нового — в [CHANGELOG.md](CHANGELOG.md)
+и в [описании релиза](docs/release-notes-v0.10.0.md).
 
 - **Windows 10/11 x64** — `qtv8reader-<версия>-windows-x86_64.zip`:
   Qt и все библиотеки внутри, установка не нужна. Распаковать и запустить
@@ -172,9 +172,9 @@ Microsoft Edge WebView2. Данные берутся из контейнера: 
 Релиз собирается автоматически при отправке тега:
 
 ```sh
-git tag v0.9.0
+git tag v0.10.0
 git push origin main
-git push origin v0.9.0
+git push origin v0.10.0
 ```
 
 ## Требования
