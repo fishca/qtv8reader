@@ -48,6 +48,74 @@ enum class FormValueKind {
     Picture
 };
 
+// Вид поля управляемой формы. В бинарной форме код вида записан целым числом
+// непосредственно перед именем элемента; значения совпадают с порядком классов
+// платформы. Сверено с Form.xml по 583 полям 26 форм (input, label, checkbox,
+// picture, radio, spreadsheet, text document, calendar, progress bar, track
+// bar, chart, graphical schema, HTML document, formatted document, planner,
+// PDF document).
+enum class FormFieldKind {
+    Unknown = 0,
+    Label = 1,               // LabelField — только текст, без поля ввода
+    Input = 2,               // InputField
+    CheckBox = 3,            // CheckBoxField
+    Picture = 4,             // PictureField
+    RadioButton = 5,         // RadioButtonField
+    SpreadSheetDocument = 6, // SpreadSheetDocumentField
+    TextDocument = 7,        // TextDocumentField
+    Calendar = 8,            // CalendarField
+    ProgressBar = 9,         // ProgressBarField
+    TrackBar = 10,           // TrackBarField
+    Chart = 11,              // ChartField
+    GraphicalSchema = 14,    // GraphicalSchemaField
+    HTMLDocument = 15,       // HTMLDocumentField
+    FormattedDocument = 17,  // FormattedDocumentField
+    Planner = 19,            // PlannerField
+    PDFDocument = 20         // PDFDocumentField
+};
+
+// Код вида поля из бинарной формы → перечисление.
+inline FormFieldKind formFieldKindFromCode(int code)
+{
+    switch (code) {
+    case 1:
+        return FormFieldKind::Label;
+    case 2:
+        return FormFieldKind::Input;
+    case 3:
+        return FormFieldKind::CheckBox;
+    case 4:
+        return FormFieldKind::Picture;
+    case 5:
+        return FormFieldKind::RadioButton;
+    case 6:
+        return FormFieldKind::SpreadSheetDocument;
+    case 7:
+        return FormFieldKind::TextDocument;
+    case 8:
+        return FormFieldKind::Calendar;
+    case 9:
+        return FormFieldKind::ProgressBar;
+    case 10:
+        return FormFieldKind::TrackBar;
+    case 11:
+        return FormFieldKind::Chart;
+    case 14:
+        return FormFieldKind::GraphicalSchema;
+    case 15:
+        return FormFieldKind::HTMLDocument;
+    case 17:
+        return FormFieldKind::FormattedDocument;
+    case 19:
+        return FormFieldKind::Planner;
+    case 20:
+        return FormFieldKind::PDFDocument;
+    default:
+        break;
+    }
+    return FormFieldKind::Unknown;
+}
+
 // Один сегмент пути к данным (DataPath) элемента формы. В бинарной форме
 // путь записан не текстом, а ссылками на реквизиты метаданных:
 // {длина, {индекс реквизита формы}, сегменты...}. Сегмент — это либо GUID
@@ -89,6 +157,10 @@ struct FormItem
     bool visible = true;
     bool showTitle = true;      // TitleLocation != None
     bool labelOnly = false;     // LabelField/PictureField без поля ввода
+    // Вид поля из самой формы (LabelField, CheckBoxField, PictureField, ...).
+    // Unknown — в сборке кода вида нет, тогда вид выводится из типа реквизита.
+    FormFieldKind fieldKind = FormFieldKind::Unknown;
+    int fieldKindCode = 0;      // исходный код вида из бинарной формы
     // Положение заголовка поля: в конфигураторе подпись может стоять слева,
     // сверху, справа или снизу от поля ввода.
     FormTitleLocation titleLocation = FormTitleLocation::Auto;

@@ -113,6 +113,7 @@ private slots:
     void resolvedFieldTypes();
     void ownerMetadataAndTableColumns();
     void dynamicListColumns();
+    void fieldKindsFromForm();
 };
 
 void TestForm::parseSynthetic()
@@ -856,6 +857,141 @@ void TestForm::dynamicListColumns()
     QCOMPARE(table.value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("CommandBarLocation")).toString(),
              QStringLiteral("None"));
+}
+
+void TestForm::fieldKindsFromForm()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    // Разбирает форму объекта так же, как это делает приложение: реквизиты
+    // объекта известны до разбора, метаданные владельца применяются после.
+    auto loadForm = [&reader, &error](const QString &typeTitle, const QString &objectName,
+                                      const QString &formName, FormDocument *document) {
+        MetadataObject *object = nullptr;
+        for (MetadataCategory &category : reader.configuration().categories) {
+            if (!category.typeTitle.startsWith(typeTitle))
+                continue;
+            for (MetadataObject &candidate : category.objects) {
+                if (candidate.name == objectName) {
+                    object = &candidate;
+                    break;
+                }
+            }
+            if (object)
+                break;
+        }
+        if (!object)
+            return false;
+        reader.loadSections(*object);
+        const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+        if (!forms)
+            return false;
+        const MetadataEntry *formEntry = nullptr;
+        for (const MetadataEntry &entry : forms->entries) {
+            if (entry.name.compare(formName, Qt::CaseInsensitive) == 0) {
+                formEntry = &entry;
+                break;
+            }
+        }
+        if (!formEntry)
+            return false;
+        const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+        if (!element)
+            return false;
+        QByteArray payload;
+        if (!reader.container().elementPayload(*element, &payload, nullptr, &error))
+            return false;
+        FormBindingResolver resolver;
+        resolver.addObject(*object);
+        if (!FormReader::parseBytes(payload, document, &error, &resolver))
+            return false;
+        applyOwnerMetadata(*object, document);
+        return true;
+    };
+
+    // Вид поля записан в самой форме отдельным кодом, поэтому переключатель,
+    // флажок и картинка больше не выводятся из типа реквизита: до этого
+    // «Способ установки курса» рисовался полем ввода, а колонка-картинка —
+    // надписью.
+    FormDocument catalogForm;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("Валюты"),
+                      QStringLiteral("ФормаЭлемента"), &catalogForm),
+             qPrintable(error));
+
+    const FormItem *radio =
+        findItemByName(catalogForm.items, QStringLiteral("КурсВалютыВводитсяВручную"));
+    QVERIFY(radio);
+    QVERIFY(radio->fieldKind == FormFieldKind::RadioButton);
+    QCOMPARE(radio->fieldKindCode, 5);
+
+    // Стандартные реквизиты: код -2 у справочника — это «Код», код -3 —
+    // «Наименование»; у документа те же коды означают «Номер» и «Дата».
+    const FormItem *code = findItemByName(catalogForm.items, QStringLiteral("Код"));
+    QVERIFY(code);
+    QVERIFY(code->fieldKind == FormFieldKind::Input);
+    QCOMPARE(code->dataPathText, QStringLiteral("Объект.Code"));
+    const FormItem *description =
+        findItemByName(catalogForm.items, QStringLiteral("Наименование"));
+    QVERIFY(description);
+    QCOMPARE(description->dataPathText, QStringLiteral("Объект.Description"));
+
+    const QJsonObject catalogModel =
+        QJsonDocument::fromJson(formWebModelJson(catalogForm)).object();
+    const QJsonObject radioNode = findModelNode(
+        catalogModel.value(QStringLiteral("childItemsRoot")).toArray(),
+        QStringLiteral("КурсВалютыВводитсяВручную"));
+    QVERIFY(!radioNode.isEmpty());
+    QCOMPARE(radioNode.value(QStringLiteral("tag")).toString(),
+             QStringLiteral("RadioButtonField"));
+
+    // Форма списка задач: флажок «Выполнена», поля-картинки в первой колонке
+    // и надписи «Ссылка»/«Предмет» — тоже по коду вида.
+    FormDocument taskForm;
+    QVERIFY2(loadForm(QStringLiteral("Задача"), QStringLiteral("ЗадачаИсполнителя"),
+                      QStringLiteral("ФормаСписка"), &taskForm),
+             qPrintable(error));
+
+    const FormItem *executed = findItemByName(taskForm.items, QStringLiteral("Выполнена"));
+    QVERIFY(executed);
+    QVERIFY(executed->fieldKind == FormFieldKind::CheckBox);
+    const FormItem *stopped = findItemByName(taskForm.items, QStringLiteral("Остановлена"));
+    QVERIFY(stopped);
+    QVERIFY(stopped->fieldKind == FormFieldKind::Picture);
+    QVERIFY(stopped->labelOnly);
+    const FormItem *link = findItemByName(taskForm.items, QStringLiteral("Ссылка"));
+    QVERIFY(link);
+    QVERIFY(link->fieldKind == FormFieldKind::Label);
+
+    const QJsonObject taskModel =
+        QJsonDocument::fromJson(formWebModelJson(taskForm)).object();
+    const QJsonArray taskRoot = taskModel.value(QStringLiteral("childItemsRoot")).toArray();
+    QCOMPARE(findModelNode(taskRoot, QStringLiteral("Выполнена"))
+                 .value(QStringLiteral("tag")).toString(),
+             QStringLiteral("CheckBoxField"));
+    QCOMPARE(findModelNode(taskRoot, QStringLiteral("Остановлена"))
+                 .value(QStringLiteral("tag")).toString(),
+             QStringLiteral("PictureField"));
+    QCOMPARE(findModelNode(taskRoot, QStringLiteral("Ссылка"))
+                 .value(QStringLiteral("tag")).toString(),
+             QStringLiteral("LabelField"));
+
+    // А у документа те же коды дают «Номер» и «Дата».
+    FormDocument documentForm;
+    QVERIFY2(loadForm(QStringLiteral("Документ"), QStringLiteral("АвансовыйОтчет"),
+                      QStringLiteral("ФормаДокумента"), &documentForm),
+             qPrintable(error));
+    const FormItem *number = findItemById(documentForm.items, 236);
+    QVERIFY(number);
+    QCOMPARE(number->dataPathText, QStringLiteral("Объект.Number"));
+    const FormItem *date = findItemById(documentForm.items, 238);
+    QVERIFY(date);
+    QCOMPARE(date->dataPathText, QStringLiteral("Объект.Date"));
 }
 
 } // namespace

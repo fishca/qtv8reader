@@ -452,6 +452,18 @@ FormItem parseItem(const V8TextNode &node)
             item.visible = visible->toInteger() != 0;
     }
 
+    // Вид поля (InputField, LabelField, CheckBoxField, PictureField, ...) лежит
+    // целым числом непосредственно перед именем элемента. Сверено с Form.xml
+    // по 583 полям 26 форм: коды 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 17,
+    // 19, 20 совпали во всех полях без исключений.
+    if (item.typeCode == 37 && nameIndex >= 2) {
+        const V8TextNode *kind = node.child(nameIndex - 1);
+        if (kind && kind->isInteger()) {
+            item.fieldKindCode = static_cast<int>(kind->toInteger());
+            item.fieldKind = formFieldKindFromCode(item.fieldKindCode);
+        }
+    }
+
     // Видимость групп, декораций и кнопок записана не сразу после имени, а в
     // «хвосте» записи — перед расширенной подсказкой (она всегда последний
     // дочерний элемент). Смещение зависит от вида элемента.
@@ -516,6 +528,14 @@ FormItem parseItem(const V8TextNode &node)
     }
 
     readGeometry(node, nameIndex, &item);
+
+    // Известный вид поля решает, есть ли у него редактор: у надписи и поля
+    // картинки его нет. Запись макета (36/11) остаётся запасным вариантом для
+    // сборок, где код вида не читается.
+    if (item.fieldKind == FormFieldKind::Label || item.fieldKind == FormFieldKind::Picture)
+        item.labelOnly = true;
+    else if (item.fieldKind != FormFieldKind::Unknown)
+        item.labelOnly = false;
 
     // Группа: в узле макета {29,...} лежат выделение (3), показ заголовка (4)
     // и поведение (10–12). Обычные группы БП дают 0/1, раскрываемые — 1/1/1,
@@ -754,6 +774,14 @@ void appendNodeDescription(const V8TextNode &node, QJsonArray *target, int depth
         item.insert(QStringLiteral("name"), findName(child, 2, &nameIndex));
         if (nameIndex >= 0)
             item.insert(QStringLiteral("nameIndex"), nameIndex);
+        // Код вида поля стоит перед именем — отдаём и его, чтобы отладочный
+        // дамп можно было сверять с Form.xml напрямую.
+        if (nameIndex >= 1) {
+            const V8TextNode *kind = child.child(nameIndex - 1);
+            if (kind && kind->isInteger())
+                item.insert(QStringLiteral("kindCode"),
+                            static_cast<int>(kind->toInteger()));
+        }
         if (child.child(1)->children.size() >= 1
             && child.child(1)->child(0)->isInteger()) {
             item.insert(QStringLiteral("id"),

@@ -30,12 +30,18 @@ bool looksComposite(const QString &typeText)
 
 void FormBindingResolver::clear()
 {
+    m_ownerKind.clear();
     m_byGuid.clear();
     m_byName.clear();
 }
 
 void FormBindingResolver::addObject(const MetadataObject &object)
 {
+    // Вид объекта нужен расшифровке стандартных реквизитов: код -2 — это «Код»
+    // у справочников и «Номер» у документов, код -3 — «Наименование» и «Дата»
+    // соответственно. Владелец формы известен только здесь, поэтому вид
+    // запоминаем сразу: заголовок владельца заполняется позже разбора формы.
+    m_ownerKind = ownerKindTag(object.typeTitle);
     auto insert = [this](const MetadataEntry &entry, bool tabularSection) {
         if (entry.guid.isEmpty())
             return;
@@ -236,7 +242,8 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
     // Реквизит формы, с которого начинается путь: для динамического списка
     // в нём лежит карта полей, по которой расшифровываются номера.
     const FormAttribute *rootAttribute = nullptr;
-    const QString kind = ownerKindTag(document.ownerTitle);
+    const QString kind = m_ownerKind.isEmpty() ? ownerKindTag(document.ownerTitle)
+                                               : m_ownerKind;
     for (int i = 0; i < path.size(); ++i) {
         const FormPathSegment &segment = path.at(i);
         switch (segment.kind) {
@@ -330,16 +337,29 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
             break;
         }
         case FormPathSegment::Kind::StandardAttribute: {
+            // Коды стандартных реквизитов нумеруются в общем для всех объектов
+            // пространстве, а имя зависит от вида объекта: у справочника пара
+            // — «Код»/«Наименование», у документа — «Номер»/«Дата».
+            // Сверено с Form.xml по 26 формам: код -2 даёт Code/Number,
+            // код -3 — Description/Date, в таблице -2 — LineNumber.
+            const bool catalogLike = kind == QLatin1String("Catalog")
+                || kind == QLatin1String("ChartOfCharacteristicTypes");
+            const bool documentLike = kind == QLatin1String("Document")
+                || kind == QLatin1String("DocumentJournal")
+                || kind == QLatin1String("BusinessProcess")
+                || kind == QLatin1String("Task");
             QString standardName;
             if (segment.code == -2) {
                 if (insideTable)
                     standardName = QStringLiteral("LineNumber");
-                else if (kind == QLatin1String("Catalog"))
+                else if (catalogLike)
                     standardName = QStringLiteral("Code");
                 else
                     standardName = QStringLiteral("Number");
             } else if (segment.code == -3) {
-                standardName = QStringLiteral("Date");
+                standardName = (catalogLike || !documentLike)
+                    ? QStringLiteral("Description")
+                    : QStringLiteral("Date");
             } else {
                 standardName = typeTextForStandardCode(segment.code);
             }

@@ -219,6 +219,45 @@ QString elementTag(const FormItem &item, bool insideTable = false)
         }
         return insideTable ? QStringLiteral("ColumnGroup") : QStringLiteral("UsualGroup");
     case FormItem::Type::Field:
+        // Вид поля берём из самой формы: код вида записан в ней отдельным
+        // числом. Это точнее вывода из типа реквизита — им пользуемся только
+        // когда код не прочитался.
+        switch (item.fieldKind) {
+        case FormFieldKind::Label:
+            return QStringLiteral("LabelField");
+        case FormFieldKind::Input:
+            return QStringLiteral("InputField");
+        case FormFieldKind::CheckBox:
+            return QStringLiteral("CheckBoxField");
+        case FormFieldKind::Picture:
+            return QStringLiteral("PictureField");
+        case FormFieldKind::RadioButton:
+            return QStringLiteral("RadioButtonField");
+        case FormFieldKind::SpreadSheetDocument:
+            return QStringLiteral("SpreadSheetDocumentField");
+        case FormFieldKind::TextDocument:
+            return QStringLiteral("TextDocumentField");
+        case FormFieldKind::Calendar:
+            return QStringLiteral("CalendarField");
+        case FormFieldKind::ProgressBar:
+            return QStringLiteral("ProgressBarField");
+        case FormFieldKind::TrackBar:
+            return QStringLiteral("TrackBarField");
+        case FormFieldKind::Chart:
+            return QStringLiteral("ChartField");
+        case FormFieldKind::GraphicalSchema:
+            return QStringLiteral("GraphicalSchemaField");
+        case FormFieldKind::HTMLDocument:
+            return QStringLiteral("HTMLDocumentField");
+        case FormFieldKind::FormattedDocument:
+            return QStringLiteral("FormattedDocumentField");
+        case FormFieldKind::Planner:
+            return QStringLiteral("PlannerField");
+        case FormFieldKind::PDFDocument:
+            return QStringLiteral("PDFDocumentField");
+        default:
+            break;
+        }
         // Порядок важен: булево значение рисуется флажком даже если у элемента
         // нет поля ввода (labelOnly), а картинка — PictureField.
         if (item.valueKind == FormValueKind::Boolean)
