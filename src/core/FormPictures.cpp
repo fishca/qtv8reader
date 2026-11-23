@@ -86,6 +86,9 @@ QString FormPictureTable::stdPictureName(const QString &guid)
         {"283ecabd-aaed-41d1-ad46-6cca91c29120", "LoadReportSettings"},
         {"4b54770b-d069-4c0e-9b17-5cc2a01134d9", "Information"},
         {"78da2c47-172f-4d57-ab52-a06e40548136", "Message"},
+        // Подменю «Создать» формы списка «Авансового отчёта»: в записи
+        // картинки — этот GUID, в выгрузке — StdPicture.CreateListItem.
+        {"977e831a-0e73-4d60-af51-091a6fa8612e", "CreateListItem"},
     };
     for (const PlatformPicture &picture : kPlatformPictures) {
         if (guid == QLatin1String(picture.guid))
@@ -123,6 +126,10 @@ QString FormPictureTable::standardPictureName(int code)
         return QStringLiteral("StdPicture.CheckAll");
     case -11:
         return QStringLiteral("StdPicture.UncheckAll");
+    case -13:
+        // Подменю «Печать» формы «АвансовыйОтчет/ФормаДокумента»: в записи
+        // картинки стоит код −13, в выгрузке — StdPicture.Print.
+        return QStringLiteral("StdPicture.Print");
     default:
         return QString();
     }

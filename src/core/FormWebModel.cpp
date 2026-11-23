@@ -1189,9 +1189,18 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
 
     if (tag == QLatin1String("Popup")) {
-        // Отображение всплывающей группы (Text/Picture/PictureAndText) в
-        // бинарной форме не читается: умолчание не подставляем, иначе
+        // Подменю: отображение (Text/Picture/PictureAndText) и картинка читаются
+        // из записи оформления {7, …} (см. readPopupAppearance). Auto (3)
+        // платформа в Form.xml не пишет, поэтому не подставляем: иначе
         // картинка заголовка заменялась бы текстом.
+        if (item.buttonRepresentation >= 0 && item.buttonRepresentation <= 2) {
+            static const char *const representations[] = {"Text", "Picture",
+                                                          "PictureAndText"};
+            properties.insert(QStringLiteral("Representation"),
+                              QString::fromLatin1(representations[item.buttonRepresentation]));
+        }
+        if (!item.pictureRef.isEmpty())
+            properties.insert(QStringLiteral("Picture"), item.pictureRef);
     } else if (tag == QLatin1String("Pages")) {
         // Представление страниц: 0 — None, 1 — TabsOnTop (по умолчанию),
         // 2 — TabsOnBottom. Код лежит в записи самой группы.

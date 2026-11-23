@@ -1995,6 +1995,51 @@ void readButtonPictures(const V8TextNode &node, int nameIndex,
     }
 }
 
+// Подменю (вид группы 1): картинка и отображение лежат в записи оформления
+// {7, {4, …}, …}: первый элемент записи — код 7, второй — картинка в той же
+// записи {4, вид, ссылка, …}, что у декораций и кнопок, пятый —
+// Representation (0 — Text, 1 — Picture, 2 — PictureAndText, 3 — Auto,
+// значение по умолчанию, платформа свойство не пишет). Запись ищется по
+// составу, а не по смещению: у подменю её место зависит от вида группы.
+// Сверено с Form.xml на форме «АвансовыйОтчет/ФормаДокумента»: «ПодменюПечать»
+// → StdPicture.Print + PictureAndText, «ПодменюЗаполнить» →
+// CommonPicture.ЗаполнитьФорму + PictureAndText, «КомандыЭДО» — без картинки
+// и без свойства.
+void readPopupAppearance(const V8TextNode &node, const FormPictureTable *pictures,
+                         FormItem *item)
+{
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList() || child.children.size() < 5)
+            continue;
+        const V8TextNode *tag = child.child(0);
+        if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("7"))
+            continue;
+        const V8TextNode *picture = child.child(1);
+        if (!picture || !picture->isList() || picture->children.size() < 3)
+            continue;
+        const V8TextNode *pictureTag = picture->child(0);
+        if (!pictureTag || !pictureTag->isScalar()
+            || pictureTag->scalar().trimmed() != QLatin1String("4"))
+            continue;
+
+        const ParsedPicture parsed = pictureFromRecord(*picture, pictures);
+        if (!parsed.reference.isEmpty()) {
+            item->pictureRef = parsed.reference;
+        } else if (!parsed.inlineData.isEmpty()) {
+            item->inlinePictures.insert(QStringLiteral("Picture.bmp"), parsed.inlineData);
+            item->pictureRef = QStringLiteral("Abs:Picture.bmp");
+        }
+
+        const V8TextNode *representation = child.child(4);
+        if (representation && representation->isInteger()) {
+            const int value = static_cast<int>(representation->toInteger());
+            if (value >= 0 && value <= 3)
+                item->buttonRepresentation = value;
+        }
+        return;
+    }
+}
+
 // Смещение признака видимости от расширенной подсказки в «хвосте» записи
 // элемента. Перед подсказкой идут служебные поля, и их число зависит от вида
 // элемента: у группы — три, у декорации — пять, у кнопки — шесть. Значения
@@ -2308,6 +2353,10 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     if (item.typeCode == 22) {
         if (const V8TextNode *layout = findLayoutNode(node))
             item.orientation = layoutInteger(*layout, 1);
+        // Подменю: картинка и отображение лежат не в узле макета, а в записи
+        // оформления {7, …} — см. readPopupAppearance.
+        if (item.groupKind == 1)
+            readPopupAppearance(node, pictures, &item);
         // Отступы внутри группы: пятнадцатое поле записи макета —
         // HorizontalSpacing, шестнадцатое — VerticalSpacing (1 None, 2 Half,
         // 3 Single; 0 — Auto, значение по умолчанию). Сверено с Form.xml по

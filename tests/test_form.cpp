@@ -142,6 +142,7 @@ private slots:
     void collapsedPageTitleCommandBarAndSource();
     void tableSearchLocations();
     void layoutNodeIsNotItemReference();
+    void popupPictureAndRepresentation();
 };
 
 void TestForm::parseSynthetic()
@@ -3204,6 +3205,45 @@ void TestForm::layoutNodeIsNotItemReference()
     QCOMPARE(horizontal->id, 30);
     QCOMPARE(horizontal->orientation, 1);
     QVERIFY(horizontal->showTitle);
+}
+
+// Подменю (вид группы 1): картинка и отображение лежат в записи оформления
+// {7, {4, …}, …}, а не в узле макета. Без разбора рендерер не рисовал
+// пиктограммы подменю «Печать»/«Заполнить» на командной панели.
+void TestForm::popupPictureAndRepresentation()
+{
+    const QString text = QStringLiteral(
+        "{4,{50,0,"
+        "{22,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"1\","
+        "\"ПодменюПечать\",{1,1,{\"ru\",\"Печать\"}},"
+        // {7, картинка, …}: картинка — запись {4, вид, {код}}, отображение —
+        // пятое поле записи (2 — PictureAndText).
+        "{7,{4,\"1\",{\"-1\"}},\"0\",\"2\",\"2\",\"0\",\"0\"}"
+        "}"
+        "},"
+        "\"\",{4,\"0\"},{0,0},{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error), qPrintable(error));
+
+    const FormItem *popup =
+        findItemByName(document.items, QStringLiteral("ПодменюПечать"));
+    QVERIFY(popup);
+    QCOMPARE(popup->groupKind, 1);
+    QCOMPARE(popup->pictureRef, QStringLiteral("StdPicture.InputFieldSelect"));
+    QCOMPARE(popup->buttonRepresentation, 2);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonObject node = findModelNode(
+        model.value(QStringLiteral("childItemsRoot")).toArray(),
+        QStringLiteral("ПодменюПечать"));
+    QVERIFY(!node.isEmpty());
+    const QJsonObject properties = node.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(properties.value(QStringLiteral("Picture")).toString(),
+             QStringLiteral("StdPicture.InputFieldSelect"));
+    QCOMPARE(properties.value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("PictureAndText"));
 }
 
 } // namespace
