@@ -1016,6 +1016,27 @@ void TestForm::fieldKindsFromForm()
     const FormItem *date = findItemById(documentForm.items, 238);
     QVERIFY(date);
     QCOMPARE(date->dataPathText, QStringLiteral("Объект.Date"));
+
+    // Колонки таблицы значений и списка значений, объявленных реквизитами
+    // формы, адресуются номером колонки. Состав таблицы записан в её
+    // реквизите, состав списка значений задан платформой.
+    FormDocument tableForm;
+    QVERIFY2(loadForm(QStringLiteral("Обработка"),
+                      QStringLiteral("WildberriesПереходРВБ"),
+                      QStringLiteral("Форма"), &tableForm),
+             qPrintable(error));
+    const FormItem *goods = findItemByName(tableForm.items,
+                                           QStringLiteral("ТаблицаТоваровНоменклатура"));
+    QVERIFY(goods);
+    QCOMPARE(goods->dataPathText, QStringLiteral("ТаблицаТоваров.Номенклатура"));
+    const FormItem *mark = findItemByName(tableForm.items,
+                                          QStringLiteral("СписокДокументовПометка"));
+    QVERIFY(mark);
+    QCOMPARE(mark->dataPathText, QStringLiteral("СписокДокументов.Check"));
+    const FormItem *value = findItemByName(tableForm.items,
+                                           QStringLiteral("СписокДокументовЗначение"));
+    QVERIFY(value);
+    QCOMPARE(value->dataPathText, QStringLiteral("СписокДокументов.Value"));
 }
 
 } // namespace

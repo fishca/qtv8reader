@@ -213,6 +213,12 @@ struct FormAttribute
     QHash<int, QString> listFields;
     QString listQuery;         // текст запроса списка (QueryText)
     bool listManualQuery = false; // запрос задан вручную (ManualQuery)
+    // Колонки таблицы значений, объявленной реквизитом формы: номер колонки →
+    // имя, заголовок и тип. Путь колонки в бинарной форме записан номером
+    // («ТаблицаТоваров.#1»), как и путь поля динамического списка.
+    QHash<int, QString> columnNames;
+    QHash<int, QString> columnTitles;
+    QHash<int, QString> columnTypes;
 };
 
 struct FormCommand

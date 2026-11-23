@@ -394,6 +394,100 @@ void readListSettings(const V8TextNode &settings, FormAttribute *attribute)
     }
 }
 
+// Описание типа колонки таблицы значений: в записи колонки лежит образец
+// значения («N, 15, 3» — число, «S, 40» — строка, «B» — булево, «D» — дата).
+QString columnTypeText(const V8TextNode &pattern)
+{
+    if (!pattern.isList() || pattern.children.size() < 2)
+        return QString();
+    const V8TextNode *tag = pattern.child(0);
+    if (!tag || !tag->isScalar())
+        return QString();
+    const QString code = tag->scalar().trimmed();
+    if (code == QLatin1String("N") && pattern.children.size() >= 3) {
+        const V8TextNode *digits = pattern.child(1);
+        const V8TextNode *fraction = pattern.child(2);
+        if (digits && digits->isInteger() && fraction && fraction->isInteger())
+            return QStringLiteral("Число(%1,%2)")
+                .arg(digits->toInteger())
+                .arg(fraction->toInteger());
+    }
+    if (code == QLatin1String("S") && pattern.children.size() >= 2) {
+        const V8TextNode *length = pattern.child(1);
+        if (length && length->isInteger())
+            return QStringLiteral("Строка(%1)").arg(length->toInteger());
+    }
+    if (code == QLatin1String("B"))
+        return QStringLiteral("Булево");
+    if (code == QLatin1String("D"))
+        return QStringLiteral("Дата");
+    return QString();
+}
+
+// Колонки таблицы значений лежат в записи реквизита отдельными элементами
+// {5, номер, 0, имя, синоним, образец значения, ...}. Номер совпадает с
+// номером в пути колонки («ТаблицаТоваров.#1»), поэтому по нему и
+// расшифровываем путь.
+void readTableColumns(const V8TextNode &entry, FormAttribute *attribute)
+{
+    for (const V8TextNode &child : entry.children) {
+        if (!child.isList() || child.children.size() < 6)
+            continue;
+        const V8TextNode *code = child.child(0);
+        const V8TextNode *index = child.child(1);
+        const V8TextNode *name = child.child(3);
+        if (!code || !code->isScalar() || code->scalar() != QLatin1String("5"))
+            continue;
+        if (!index || !index->isInteger() || !name || !name->isScalar())
+            continue;
+        const int number = static_cast<int>(index->toInteger());
+        const QString columnName = name->scalar().trimmed();
+        if (number <= 0 || columnName.isEmpty())
+            continue;
+        attribute->columnNames.insert(number, columnName);
+        const V8TextNode *title = child.child(4);
+        if (title) {
+            const QString text = localizedText(*title);
+            if (!text.isEmpty())
+                attribute->columnTitles.insert(number, text);
+        }
+        const V8TextNode *pattern = child.child(5);
+        if (pattern && pattern->isList()) {
+            const QString type = columnTypeText(*pattern);
+            if (!type.isEmpty())
+                attribute->columnTypes.insert(number, type);
+        }
+    }
+    if (!attribute->columnNames.isEmpty())
+        return;
+    // Список значений: состав колонок задан платформой — значение (0),
+    // представление (1) и пометка (2), поэтому в форме они не записаны.
+    // Вид значения распознаём по идентификатору типа в образце значения —
+    // он один и тот же во всех конфигурациях.
+    static const QString kValueListType =
+        QStringLiteral("4772b3b4-f4a3-49c0-a1a5-8cb5961511a3");
+    for (const V8TextNode &child : entry.children) {
+        if (!child.isList() || child.children.size() != 2)
+            continue;
+        const V8TextNode *code = child.child(0);
+        const V8TextNode *pattern = child.child(1);
+        if (!code || !code->isScalar() || code->scalar() != QLatin1String("Pattern"))
+            continue;
+        if (!pattern || !pattern->isList() || pattern->children.size() != 2)
+            continue;
+        const V8TextNode *tag = pattern->child(0);
+        const V8TextNode *type = pattern->child(1);
+        if (!tag || !type || !tag->isScalar() || !type->isScalar())
+            continue;
+        if (tag->scalar() != QLatin1String("#") || !type->scalar().endsWith(kValueListType))
+            continue;
+        attribute->columnNames.insert(0, QStringLiteral("Value"));
+        attribute->columnNames.insert(1, QStringLiteral("Presentation"));
+        attribute->columnNames.insert(2, QStringLiteral("Check"));
+        break;
+    }
+}
+
 void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
 {
     auto integerSlot = [](const V8TextNode &record, int index) {
@@ -776,6 +870,7 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             attribute.typeHint = typeHintFromAttributes(*entry);
             if (const V8TextNode *settings = findListSettings(*entry))
                 readListSettings(*settings, &attribute);
+            readTableColumns(*entry, &attribute);
             if (!attribute.name.isEmpty() && !attribute.synonym.isEmpty())
                 document->titles.insert(attribute.name, attribute.synonym);
             document->attributes.append(attribute);

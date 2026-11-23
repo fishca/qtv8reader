@@ -296,11 +296,29 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                 QString fieldName;
                 if (rootAttribute && !rootAttribute->listFields.isEmpty())
                     fieldName = rootAttribute->listFields.value(segment.code);
+                const bool tableColumn = rootAttribute
+                    && rootAttribute->columnNames.contains(segment.code);
+                if (fieldName.isEmpty() && tableColumn)
+                    fieldName = rootAttribute->columnNames.value(segment.code);
                 if (fieldName.isEmpty()) {
                     parts.append(QStringLiteral("#%1").arg(segment.code));
                     break;
                 }
                 parts.append(fieldName);
+                if (tableColumn) {
+                    // Колонка таблицы значений: заголовок и тип объявлены
+                    // в самой форме, метаданные объекта тут не при чём.
+                    binding.title = rootAttribute->columnTitles.value(segment.code);
+                    const QString columnType =
+                        rootAttribute->columnTypes.value(segment.code);
+                    if (!columnType.isEmpty()) {
+                        binding.typeText = columnType;
+                        binding.kind = kindForTypeText(columnType);
+                        binding.chars = charsForType(columnType, binding.kind);
+                    }
+                    last = nullptr;
+                    break;
+                }
                 // Тип и заголовок поля — из метаданных объекта, если такое
                 // имя там есть (стандартные реквизиты — «Ссылка», «Код» —
                 // описаны в stdCaptions и здесь не находятся).
