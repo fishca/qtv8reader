@@ -161,6 +161,10 @@ struct FormItem
     // Unknown — в сборке кода вида нет, тогда вид выводится из типа реквизита.
     FormFieldKind fieldKind = FormFieldKind::Unknown;
     int fieldKindCode = 0;      // исходный код вида из бинарной формы
+    // Представления списка выбора, заданные в самой форме. Пустые строки —
+    // значения, у которых представление берётся из метаданных.
+    QStringList choiceItems;
+    QString tooltip;            // подсказка элемента (ToolTip)
     // Положение заголовка поля: в конфигураторе подпись может стоять слева,
     // сверху, справа или снизу от поля ввода.
     FormTitleLocation titleLocation = FormTitleLocation::Auto;

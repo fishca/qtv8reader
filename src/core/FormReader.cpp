@@ -93,6 +93,71 @@ int integerChild(const V8TextNode &node, int index)
     return static_cast<int>(child->toInteger());
 }
 
+// Представление значения из списка выбора: локализованный текст лежит глубже,
+// чем в свойствах элемента ({1, 1, {"ru", "..."}} внутри типизированной
+// ссылки), поэтому идём по вложенным спискам до самого значения.
+void collectLocalizedDeep(const V8TextNode &node, QString *out, int depth = 0)
+{
+    if (depth > 8 || !out->isEmpty() || !node.isList())
+        return;
+    if (node.children.size() == 3) {
+        const V8TextNode *first = node.child(0);
+        const V8TextNode *second = node.child(1);
+        const V8TextNode *pair = node.child(2);
+        if (first && first->isInteger() && second && second->isInteger()
+            && pair && pair->isList() && pair->children.size() == 2) {
+            const V8TextNode *lang = pair->child(0);
+            const V8TextNode *text = pair->child(1);
+            if (lang && text && lang->isScalar() && text->isScalar()
+                && lang->scalar() == QLatin1String("ru") && !text->scalar().isEmpty()) {
+                *out = text->scalar();
+                return;
+            }
+        }
+    }
+    for (const V8TextNode &child : node.children) {
+        collectLocalizedDeep(child, out, depth + 1);
+        if (!out->isEmpty())
+            return;
+    }
+}
+
+// Список выбора поля хранится в записи макета блоком
+// {3, количество, "", значение, флаги, "" , значение, флаги, ...}.
+// Представления заданы в самой форме, поэтому подписи переключателей можно
+// взять отсюда: у остальных элементов представления приходят из метаданных
+// и в форме не записаны (их в контейнере нет вовсе).
+bool readChoiceBlock(const V8TextNode &node, QStringList *target, int depth = 0)
+{
+    if (!node.isList() || depth > 6)
+        return false;
+    if (node.children.size() >= 5) {
+        const V8TextNode *code = node.child(0);
+        const V8TextNode *count = node.child(1);
+        if (code && code->isScalar() && code->scalar() == QLatin1String("3")
+            && count && count->isInteger()) {
+            const int items = static_cast<int>(count->toInteger());
+            if (items > 0 && node.children.size() == 2 + 3 * items) {
+                QStringList names;
+                for (int i = 1; i <= items; ++i) {
+                    QString text;
+                    const V8TextNode *value = node.child(2 * i + 1);
+                    if (value)
+                        collectLocalizedDeep(*value, &text);
+                    names.append(text);
+                }
+                *target = names;
+                return true;
+            }
+        }
+    }
+    for (const V8TextNode &child : node.children) {
+        if (readChoiceBlock(child, target, depth + 1))
+            return true;
+    }
+    return false;
+}
+
 // Узел макета группы {29, ...}: в нём лежат ориентация (1), выделение
 // (3), показ заголовка (4) и поведение (10–12). Значения сверены
 // с Form.xml на формах БП.
@@ -450,6 +515,16 @@ FormItem parseItem(const V8TextNode &node)
         const V8TextNode *visible = node.child(nameIndex + 37);
         if (visible && visible->isInteger())
             item.visible = visible->toInteger() != 0;
+        // Заголовок и подсказка поля стоят на фиксированных местах после
+        // TitleLocation: +3 — Title, +4 — ToolTip. Искать первый
+        // локализованный текст по всему узлу нельзя: если заголовка в форме
+        // нет, он подставит подсказку (так «Наценка» получала своё длинное
+        // описание вместо названия).
+        item.synonym.clear();
+        if (const V8TextNode *titleNode = node.child(nameIndex + 3))
+            item.synonym = localizedText(*titleNode);
+        if (const V8TextNode *tooltipNode = node.child(nameIndex + 4))
+            item.tooltip = localizedText(*tooltipNode);
     }
 
     // Вид поля (InputField, LabelField, CheckBoxField, PictureField, ...) лежит
@@ -462,6 +537,8 @@ FormItem parseItem(const V8TextNode &node)
             item.fieldKindCode = static_cast<int>(kind->toInteger());
             item.fieldKind = formFieldKindFromCode(item.fieldKindCode);
         }
+        // Подписи списка выбора (у переключателей — по одной на элемент).
+        readChoiceBlock(node, &item.choiceItems);
     }
 
     // Видимость групп, декораций и кнопок записана не сразу после имени, а в
@@ -788,8 +865,10 @@ void appendNodeDescription(const V8TextNode &node, QJsonArray *target, int depth
                         static_cast<int>(child.child(1)->child(0)->toInteger()));
         }
         QJsonArray slotValues;
+        // Глубина 6: до вложенных списков выбора и картинок (они лежат в
+        // записи элемента на третьем-четвёртом уровне вложенности).
         for (const V8TextNode &slot : child.children)
-            slotValues.append(slotToJson(slot, 3));
+            slotValues.append(slotToJson(slot, 6));
         item.insert(QStringLiteral("slots"), slotValues);
         QJsonArray children;
         if (depth > 1)

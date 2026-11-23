@@ -929,6 +929,16 @@ void TestForm::fieldKindsFromForm()
     QVERIFY(radio);
     QVERIFY(radio->fieldKind == FormFieldKind::RadioButton);
     QCOMPARE(radio->fieldKindCode, 5);
+    // Подпись переключателя задана в форме списком выбора.
+    QCOMPARE(radio->choiceItems, QStringList{QStringLiteral("вводится вручную")});
+
+    // Заголовок поля лежит отдельно от подсказки: у «Наценки» в форме есть
+    // только подсказка, поэтому заголовок берётся из метаданных, а длинный
+    // текст остаётся подсказкой.
+    const FormItem *markup = findItemByName(catalogForm.items, QStringLiteral("Наценка"));
+    QVERIFY(markup);
+    QVERIFY(markup->synonym.isEmpty());
+    QVERIFY(!markup->tooltip.isEmpty());
 
     // Стандартные реквизиты: код -2 у справочника — это «Код», код -3 —
     // «Наименование»; у документа те же коды означают «Номер» и «Дата».
@@ -949,6 +959,20 @@ void TestForm::fieldKindsFromForm()
     QVERIFY(!radioNode.isEmpty());
     QCOMPARE(radioNode.value(QStringLiteral("tag")).toString(),
              QStringLiteral("RadioButtonField"));
+    const QJsonArray choiceItems = radioNode.value(QStringLiteral("properties")).toObject()
+                                       .value(QStringLiteral("ChoiceListItems")).toArray();
+    QCOMPARE(choiceItems.size(), 1);
+    QCOMPARE(choiceItems.at(0).toString(), QStringLiteral("вводится вручную"));
+    const QJsonObject markupNode = findModelNode(
+        catalogModel.value(QStringLiteral("childItemsRoot")).toArray(),
+        QStringLiteral("Наценка"));
+    QVERIFY(!markupNode.isEmpty());
+    const QJsonObject markupProperties =
+        markupNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(markupProperties.value(QStringLiteral("Title")).toString(),
+             QStringLiteral("Наценка"));
+    QVERIFY(markupProperties.value(QStringLiteral("ToolTip")).toString()
+                .startsWith(QStringLiteral("Коэффициент")));
 
     // Форма списка задач: флажок «Выполнена», поля-картинки в первой колонке
     // и надписи «Ссылка»/«Предмет» — тоже по коду вида.

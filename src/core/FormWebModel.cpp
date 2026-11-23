@@ -421,6 +421,8 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         title = item.dataTitle;
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
+    if (!item.tooltip.isEmpty())
+        properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (item.valueKind == FormValueKind::Boolean) {
         properties.insert(QStringLiteral("CheckBoxType"), QStringLiteral("Auto"));
     } else if (item.valueKind != FormValueKind::Unknown) {
@@ -443,6 +445,20 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
+
+    // Подписи списка выбора: у переключателя по ним рисуется одна радиокнопка
+    // на элемент (список без представлений приходит из метаданных — его не
+    // отдаём, иначе рендерер нарисует пустые подписи).
+    if (!item.choiceItems.isEmpty()) {
+        QJsonArray choiceItems;
+        bool hasText = false;
+        for (const QString &text : item.choiceItems) {
+            choiceItems.append(text);
+            hasText = hasText || !text.isEmpty();
+        }
+        if (hasText)
+            properties.insert(QStringLiteral("ChoiceListItems"), choiceItems);
+    }
 
     QJsonObject json;
     json.insert(QStringLiteral("tag"), elementTag(item));
