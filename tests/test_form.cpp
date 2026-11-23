@@ -132,6 +132,7 @@ private slots:
     void columnGroupModes();
     void groupAlignment();
     void sizesStretchAndPages();
+    void formattedTitlesAndGroupFlags();
 };
 
 void TestForm::parseSynthetic()
@@ -2127,10 +2128,164 @@ void TestForm::sizesStretchAndPages()
              QStringLiteral("false"));
 }
 
+// Форматированные заголовки, пределы авторазмера, перетаскивание файлов в
+// таблицу, поведение групп и путь к данным по номеру реквизита формы.
+void TestForm::formattedTitlesAndGroupFlags()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    auto loadForm = [&reader, &error](const QString &typeTitle, const QString &objectName,
+                                      const QString &formName, FormDocument *document) {
+        MetadataObject *object = nullptr;
+        for (MetadataCategory &category : reader.configuration().categories) {
+            if (!category.typeTitle.startsWith(typeTitle))
+                continue;
+            for (MetadataObject &candidate : category.objects) {
+                if (candidate.name == objectName) {
+                    object = &candidate;
+                    break;
+                }
+            }
+            if (object)
+                break;
+        }
+        if (!object)
+            return false;
+        reader.loadSections(*object);
+        const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+        if (!forms)
+            return false;
+        const MetadataEntry *formEntry = nullptr;
+        for (const MetadataEntry &entry : forms->entries) {
+            if (entry.name.compare(formName, Qt::CaseInsensitive) == 0) {
+                formEntry = &entry;
+                break;
+            }
+        }
+        if (!formEntry)
+            return false;
+        const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+        if (!element)
+            return false;
+        QByteArray payload;
+        if (!reader.container().elementPayload(*element, &payload, nullptr, &error))
+            return false;
+        FormBindingResolver resolver;
+        resolver.addObject(*object);
+        if (!FormReader::parseBytes(payload, document, &error, &resolver))
+            return false;
+        applyOwnerMetadata(*object, document);
+        return true;
+    };
+
+    FormDocument calendar;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("Календари"),
+                      QStringLiteral("ФормаЭлемента"), &calendar),
+             qPrintable(error));
+
+    // Заголовок «Период заполнения графика» задан как неформатированный: флаг
+    // в записи есть, разметки нет.
+    const FormItem *period =
+        findItemByName(calendar.items, QStringLiteral("НадписьПериодЗаполнения"));
+    QVERIFY(period);
+    QVERIFY(period->hasTitleFormatted);
+    QVERIFY(!period->titleFormatted);
+
+    // Предел авторазмера надписи задан явно (AutoMaxWidth false).
+    const FormItem *text =
+        findItemByName(calendar.items, QStringLiteral("ЗаполненностьИнформационныйТекст"));
+    QVERIFY(text);
+    QVERIFY(!text->autoMaxWidth);
+
+    // Перетаскивание файлов в таблицу: код 0 — AsFile.
+    const FormItem *table = findItemByName(calendar.items, QStringLiteral("ШаблонЗаполнения"));
+    QVERIFY(table);
+    QCOMPARE(table->fileDragMode, 0);
+
+    // Поведение группы: у «Настройки группа» задано обычное, а отображение —
+    // None. У «Настройка заполнения» отображение не задано (значение по
+    // умолчанию), поэтому свойства в модели нет.
+    const FormItem *plainGroup =
+        findItemByName(calendar.items, QStringLiteral("НастройкаЗаполненияГруппа"));
+    QVERIFY(plainGroup);
+    const FormItem *settingsGroup =
+        findItemByName(calendar.items, QStringLiteral("НастройкиГруппа"));
+    QVERIFY(settingsGroup);
+    QVERIFY(settingsGroup->hasBehavior);
+    QCOMPARE(static_cast<int>(settingsGroup->representation), 0);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(calendar)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    auto propertiesOf = [&roots](const QString &name) {
+        return findModelNode(roots, name).value(QStringLiteral("properties")).toObject();
+    };
+    QCOMPARE(propertiesOf(QStringLiteral("НадписьПериодЗаполнения"))
+                 .value(QStringLiteral("TitleFormatted")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(propertiesOf(QStringLiteral("ЗаполненностьИнформационныйТекст"))
+                 .value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(propertiesOf(QStringLiteral("ШаблонЗаполнения"))
+                 .value(QStringLiteral("FileDragMode")).toString(),
+             QStringLiteral("AsFile"));
+    QCOMPARE(propertiesOf(QStringLiteral("НастройкиГруппа"))
+                 .value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("None"));
+    QCOMPARE(propertiesOf(QStringLiteral("НастройкиГруппа"))
+                 .value(QStringLiteral("Behavior")).toString(),
+             QStringLiteral("Usual"));
+
+    // Группа без поведения: «ГруппаМетки» не всплывающая — раньше читатель
+    // считал её всплывающей по десятому полю записи макета.
+    FormDocument cards;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("КонтактныеЛица"),
+                      QStringLiteral("ФормаЛиды"), &cards),
+             qPrintable(error));
+    const FormItem *marks = findItemByName(cards.items, QStringLiteral("ГруппаМетки"));
+    QVERIFY(marks);
+    QVERIFY(!marks->hasBehavior);
+    const QJsonObject cardsModel =
+        QJsonDocument::fromJson(formWebModelJson(cards)).object();
+    const QJsonArray cardsRoots =
+        cardsModel.value(QStringLiteral("childItemsRoot")).toArray();
+    QVERIFY(!findModelNode(cardsRoots, QStringLiteral("ГруппаМетки"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .contains(QStringLiteral("Behavior")));
+
+    // Размеченный заголовок декорации: шрифт и ссылка остаются в тексте,
+    // TitleFormatted — true.
+    FormDocument processing;
+    QVERIFY2(loadForm(QStringLiteral("Обработка"),
+                      QStringLiteral("WildberriesПереходРВБ"),
+                      QStringLiteral("Форма"), &processing),
+             qPrintable(error));
+    const FormItem *banner = findItemByName(processing.items, QStringLiteral("Декорация1"));
+    QVERIFY(banner);
+    QVERIFY(banner->hasTitleFormatted);
+    QVERIFY(banner->titleFormatted);
+    QVERIFY(banner->synonym.contains(QStringLiteral("<link ")));
+
+    // Путь к данным разрешается по номеру реквизита формы: у «Итого предыдущий
+    // аванс» номер 3, и поле называется иначе, чем реквизит.
+    FormDocument documentForm;
+    QVERIFY2(loadForm(QStringLiteral("Документ"), QStringLiteral("АвансовыйОтчет"),
+                      QStringLiteral("ФормаДокумента"), &documentForm),
+             qPrintable(error));
+    const FormItem *total =
+        findItemByName(documentForm.items, QStringLiteral("НадписьВсегоПредыдущийАванс"));
+    QVERIFY(total);
+    QCOMPARE(total->dataPathText, QStringLiteral("ИтогоПредыдущийАванс"));
+}
+
 } // namespace
 
-int runFormTests(int argc, char **argv){    TestForm test;
-    return QTest::qExec(&test, argc, argv);
+int runFormTests(int argc, char **argv){    TestForm test;    return QTest::qExec(&test, argc, argv);
 }
 
 #include "test_form.moc"

@@ -916,6 +916,29 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
     const V8TextNode *appearance = node.child(nameIndex + 12);
     if (!appearance || !appearance->isList() || appearance->children.size() < 3)
         return;
+    // Форматированный заголовок: через 17 полей после имени лежит запись
+    // {1, <заголовок>, признак}. В ней же хранится размеченный вариант
+    // заголовка (шрифт, цвет, ссылки), поэтому при признаке true заголовком
+    // становится именно он. Сверено с Form.xml по 100 декорациям корпуса:
+    // признак совпал во всех, размеченный текст есть у 20 из них.
+    if (const V8TextNode *formatted = node.child(nameIndex + 17)) {
+        if (formatted->isList() && formatted->children.size() == 3) {
+            const V8TextNode *flag = formatted->child(2);
+            if (flag && flag->isScalar()
+                && (flag->scalar() == QLatin1String("0")
+                    || flag->scalar() == QLatin1String("1"))) {
+                const QString text = localizedText(*formatted);
+                // Признак «не форматированный» при пустом заголовке платформа
+                // не пишет вовсе: оформлять нечего (12 декораций корпуса).
+                if (!text.isEmpty() || flag->scalar() == QLatin1String("1")) {
+                    item->hasTitleFormatted = true;
+                    item->titleFormatted = flag->scalar() == QLatin1String("1");
+                    if (item->titleFormatted && !text.isEmpty())
+                        item->synonym = text;
+                }
+            }
+        }
+    }
     const V8TextNode *tag = appearance->child(0);
     if (!tag || !tag->isScalar())
         return;
@@ -1344,7 +1367,7 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         const V8TextNode *child = layout->child(index);
         return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
     };
-    if (code == QLatin1String("36")) {
+    if (code == QLatin1String("36") || code == QLatin1String("32")) {
         item->autoMaxWidth = intAt(49) != 0;
         item->autoMaxHeight = intAt(52) != 0;
         item->maxWidth = qMax(0, intAt(50));
@@ -1367,6 +1390,12 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         // Поле-картинка: режим перетаскивания файлов и признак гиперссылки.
         item->fileDragMode = intAt(22);
         item->hyperlink = intAt(8) == 1;
+    } else if (code == QLatin1String("11")) {
+        // Надпись и флажок: ширина, высота и растяжение стоят в начале записи,
+        // а пределы авторазмера — пятнадцатым и восемнадцатым полями.
+        // Сверено с Form.xml: AutoMaxWidth — 15 надписей, AutoMaxHeight — 3.
+        item->autoMaxWidth = intAt(15) != 0;
+        item->autoMaxHeight = intAt(18) != 0;
     }
 }
 
@@ -1527,6 +1556,18 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
     item->autoInsertNewRow = codeAt(32) == 1;
     item->enableStartDrag = codeAt(47) == 1;
     item->enableDrag = codeAt(48) == 1;
+    // Перетаскивание файлов в таблицу: 0 — AsFile, 1 — UseAsFile (по
+    // умолчанию). Признак стоит вторым с конца записи, потому что после него
+    // идут только необязательные вложенные узлы. Сверено с Form.xml по
+    // 54 таблицам корпуса: 42 таблицы с AsFile совпали.
+    const int count = static_cast<int>(node.children.size());
+    if (count >= 3) {
+        const V8TextNode *drag = node.child(count - 2);
+        if (drag && drag->isInteger() && drag->toInteger() == 1)
+            item->fileDragMode = 1;
+        else if (drag && drag->isInteger())
+            item->fileDragMode = 0;
+    }
     readDynamicListSettings(node, item);
 }
 
@@ -1895,11 +1936,19 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 item.showTitle = showTitle != 0;
             const int behaviorFlag = layoutInteger(*layout, 10);
             const int collapsible = layoutInteger(*layout, 11);
-            const int collapsibleSecond = layoutInteger(*layout, 12);
-            if (behaviorFlag == 1) {
-                item.behavior = (collapsible == 1 && collapsibleSecond == 1)
-                    ? FormGroupBehavior::Collapsible
-                    : FormGroupBehavior::PopUp;
+            const int popUp = layoutInteger(*layout, 12);
+            // Поведение группы: всплывающее задано двенадцатым полем записи,
+            // раскрываемое — им же вместе с одиннадцатым. Обычное поведение
+            // платформа пишет в Form.xml только когда оно задано явно (десятое
+            // поле равно нулю); у 24 групп корпуса десятое поле равно единице
+            // и Behavior в XML отсутствует, поэтому умолчание не подставляем.
+            if (popUp == 1) {
+                item.behavior = collapsible == 1 ? FormGroupBehavior::Collapsible
+                                                 : FormGroupBehavior::PopUp;
+                item.hasBehavior = true;
+            } else if (behaviorFlag == 0) {
+                item.behavior = FormGroupBehavior::Usual;
+                item.hasBehavior = true;
             }
         }
     }
@@ -2150,6 +2199,15 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             attribute.name = findName(*entry, 2);
             if (attribute.name.isEmpty())
                 continue;
+            // Номер реквизита лежит в записи {вид, {номер}, …} сразу после вида.
+            if (const V8TextNode *reference = entry->child(1)) {
+                if (reference->isList() && reference->children.size() >= 1
+                    && reference->child(0)->isInteger()) {
+                    attribute.id = static_cast<int>(reference->child(0)->toInteger());
+                } else if (reference->isInteger()) {
+                    attribute.id = static_cast<int>(reference->toInteger());
+                }
+            }
             attribute.synonym = localizedText(*entry);
             attribute.typeHint = typeHintFromAttributes(*entry);
             if (const V8TextNode *settings = findListSettings(*entry))

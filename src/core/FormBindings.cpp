@@ -26,6 +26,41 @@ bool looksComposite(const QString &typeText)
     return false;
 }
 
+// Реквизит формы по номеру, на который ссылается сегмент пути: в бинарной
+// форме путь записан номером реквизита, а не порядком объявления (у
+// «Авансового отчёта» «Объект» — 1, «Итого предыдущий аванс» — 3,
+// «Состояние документа» — 8).
+const FormAttribute *attributeById(const FormDocument &document, int id)
+{
+    if (id < 0)
+        return nullptr;
+    for (const FormAttribute &attribute : document.attributes) {
+        if (attribute.id == id)
+            return &attribute;
+    }
+    return nullptr;
+}
+
+// Реквизит формы, с которого начинается путь: сначала по номеру реквизита,
+// затем по имени элемента (поле обычно названо как реквизит) и только потом
+// по порядку объявления.
+const FormAttribute *findRootAttribute(const FormDocument &document, int id,
+                                       const QString &fallbackName)
+{
+    if (const FormAttribute *byId = attributeById(document, id))
+        return byId;
+    if (!fallbackName.isEmpty()) {
+        for (const FormAttribute &attribute : document.attributes) {
+            if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) == 0)
+                return &attribute;
+        }
+    }
+    const int index = id - 1;
+    if (index >= 0 && index < document.attributes.size())
+        return &document.attributes.at(index);
+    return nullptr;
+}
+
 } // namespace
 
 void FormBindingResolver::clear()
@@ -208,41 +243,21 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
     if (path.isEmpty())
         return binding;
 
-    // Односегментный путь адресует реквизит формы. Номер реквизита в записи
-    // пути отсчитывается с единицы и совпадает с порядком объявления, поэтому
-    // сначала пробуем номер: по корпусу из 26 форм это совпало во всех
-    // случаях, где элемент назван не так, как реквизит (поле «ПереносОстатков1»
-    // привязано к реквизиту «ПереносОстатков»). Если номер вне списка,
-    // остаётся привязка по имени элемента.
+    // Односегментный путь адресует реквизит формы; номер в пути — это номер
+    // реквизита в контейнере формы, он же лежит в записи реквизита. Номер не
+    // совпадает с порядком объявления, поэтому расшифровываем по номеру, а имя
+    // элемента — лишь вторая зацепка (поле «ПереносОстатков1» привязано к
+    // реквизиту «ПереносОстатков»).
     if (path.size() == 1 && path.at(0).kind == FormPathSegment::Kind::Index) {
-        if (!fallbackName.isEmpty()) {
-            for (const FormAttribute &attribute : document.attributes) {
-                if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) != 0)
-                    continue;
-                binding.text = attribute.name;
-                binding.title = attribute.synonym;
-                if (!attribute.typeHint.isEmpty()) {
-                    binding.typeText = attribute.typeHint;
-                    binding.kind = kindForTypeText(attribute.typeHint);
-                    binding.chars = charsForType(attribute.typeHint, binding.kind);
-                }
-                return binding;
-            }
-        }
-        // Имя элемента не совпало ни с одним реквизитом (поле названо иначе,
-        // чем реквизит). Тогда номер в пути — единственная зацепка: он
-        // отсчитывается с единицы и в этом случае совпадает с порядком
-        // объявления. Так поле «ПереносОстатков1» привязывается к реквизиту
-        // «ПереносОстатков».
-        const int index = path.at(0).code - 1;
-        if (index >= 0 && index < document.attributes.size()) {
-            const FormAttribute &attribute = document.attributes.at(index);
-            binding.text = attribute.name;
-            binding.title = attribute.synonym;
-            if (!attribute.typeHint.isEmpty()) {
-                binding.typeText = attribute.typeHint;
-                binding.kind = kindForTypeText(attribute.typeHint);
-                binding.chars = charsForType(attribute.typeHint, binding.kind);
+        const FormAttribute *attribute =
+            findRootAttribute(document, path.at(0).code, fallbackName);
+        if (attribute) {
+            binding.text = attribute->name;
+            binding.title = attribute->synonym;
+            if (!attribute->typeHint.isEmpty()) {
+                binding.typeText = attribute->typeHint;
+                binding.kind = kindForTypeText(attribute->typeHint);
+                binding.chars = charsForType(attribute->typeHint, binding.kind);
             }
             return binding;
         }
@@ -268,44 +283,16 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
         switch (segment.kind) {
         case FormPathSegment::Kind::Index: {
             if (i == 0) {
-                // Односегментный путь адресует реквизит формы. Номер реквизита
-                // в бинарной форме нумеруется не так, как в Form.xml, поэтому
-                // привязку уточняем по имени элемента: поле с именем реквизита
-                // привязано именно к нему.
-                if (path.size() == 1 && !fallbackName.isEmpty()) {
-                    for (const FormAttribute &attribute : document.attributes) {
-                        if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) != 0)
-                            continue;
-                        parts.append(attribute.name);
-                        if (!attribute.typeHint.isEmpty()) {
-                            binding.typeText = attribute.typeHint;
-                            binding.kind = kindForTypeText(attribute.typeHint);
-                            binding.chars = charsForType(attribute.typeHint, binding.kind);
-                        }
-                        binding.title = attribute.synonym;
-                        break;
-                    }
-                }
-                if (parts.isEmpty()) {
-                    // Корневой реквизит формы: «Объект», «Список», «Отчет» …
-                    // Идентификаторы реквизитов формы нумеруются с единицы,
-                    // а в документе они лежат в порядке объявления.
-                    const int index = segment.code - 1;
-                    if (index >= 0 && index < document.attributes.size()) {
-                        const FormAttribute &attribute = document.attributes.at(index);
-                        rootAttribute = &attribute;
-                        parts.append(attribute.name);
-                        // Путь из одного сегмента — это сам реквизит формы:
-                        // его тип объявлен в самой форме (например, «Булево»).
-                        if (path.size() == 1 && !attribute.typeHint.isEmpty()) {
-                            binding.typeText = attribute.typeHint;
-                            binding.kind = kindForTypeText(attribute.typeHint);
-                            binding.chars = charsForType(attribute.typeHint, binding.kind);
-                            binding.title = attribute.synonym;
-                        }
-                    } else {
-                        parts.append(QStringLiteral("Объект"));
-                    }
+                // Корневой реквизит формы («Объект», «Список», «Отчет»):
+                // номер сегмента — это номер реквизита в контейнере формы.
+                const FormAttribute *root = findRootAttribute(document, segment.code, QString());
+                if (root) {
+                    rootAttribute = root;
+                    parts.append(root->name);
+                    if (!root->typeHint.isEmpty() && path.size() == 1)
+                        binding.typeText = root->typeHint;
+                } else {
+                    parts.append(QStringLiteral("Объект"));
                 }
             } else {
                 // Второй и следующие сегменты-номера адресуют поле

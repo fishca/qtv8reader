@@ -176,15 +176,17 @@ QString representationText(FormGroupRepresentation representation)
 {
     switch (representation) {
     case FormGroupRepresentation::Strong:
-        return QStringLiteral("Strong");
-    case FormGroupRepresentation::Weak:
-        return QStringLiteral("Weak");
+        return QStringLiteral("StrongSeparation");
     case FormGroupRepresentation::Normal:
-        return QStringLiteral("Normal");
+        return QStringLiteral("NormalSeparation");
     case FormGroupRepresentation::None:
+        return QStringLiteral("None");
+    case FormGroupRepresentation::Weak:
         break;
     }
-    return QStringLiteral("None");
+    // Слабое выделение у платформы — значение по умолчанию: в Form.xml оно
+    // не пишется.
+    return QString();
 }
 
 QString behaviorText(FormGroupBehavior behavior)
@@ -889,7 +891,9 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
 
     if (tag == QLatin1String("Popup")) {
-        properties.insert(QStringLiteral("Representation"), QStringLiteral("Text"));
+        // Отображение всплывающей группы (Text/Picture/PictureAndText) в
+        // бинарной форме не читается: умолчание не подставляем, иначе
+        // картинка заголовка заменялась бы текстом.
     } else if (tag == QLatin1String("Pages")) {
         // Представление страниц: 0 — None, 1 — TabsOnTop (по умолчанию),
         // 2 — TabsOnBottom. Код лежит в записи самой группы.
@@ -903,9 +907,13 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
     } else if (tag == QLatin1String("AutoCommandBar")) {
-        properties.insert(QStringLiteral("Autofill"), boolText(false));
+        // Автозаполнение командной панели: в Form.xml платформа его не пишет
+        // (значение по умолчанию — истина), поэтому и в модели свойства нет:
+        // рендерер без Autofill сам подставляет стандартные команды.
     } else if (tag == QLatin1String("ButtonGroup")) {
-        properties.insert(QStringLiteral("Representation"), QStringLiteral("None"));
+        // У группы кнопок платформа пишет Representation только при
+        // «компактном» отображении, а в бинарной форме этот признак не
+        // читается — значение по умолчанию не подставляем.
     } else if (tag == QLatin1String("ColumnGroup")) {
         // Группа колонок таблицы: группировка, закрепление и заголовок.
         // Группировка группы колонок: Horizontal (0) или InCell (2). Значение
@@ -932,9 +940,12 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
             !group.isEmpty()) {
             properties.insert(QStringLiteral("Group"), group);
         }
-        properties.insert(QStringLiteral("Representation"),
-                          representationText(item.representation));
-        properties.insert(QStringLiteral("Behavior"), behaviorText(item.behavior));
+        if (const QString representation = representationText(item.representation);
+            !representation.isEmpty()) {
+            properties.insert(QStringLiteral("Representation"), representation);
+        }
+        if (item.hasBehavior)
+            properties.insert(QStringLiteral("Behavior"), behaviorText(item.behavior));
         if (!item.showTitle)
             properties.insert(QStringLiteral("ShowTitle"), boolText(false));
         if (!item.visible)
@@ -1048,6 +1059,9 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("EnableStartDrag"), boolText(true));
     if (item.enableDrag)
         properties.insert(QStringLiteral("EnableDrag"), boolText(true));
+    // Перетаскивание файлов в таблицу: платформа пишет только AsFile.
+    if (item.fileDragMode == 0)
+        properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));
     if (const QString location = commandBarLocationText(item.commandBarLocation);
         !location.isEmpty()) {
         properties.insert(QStringLiteral("CommandBarLocation"), location);
@@ -1227,6 +1241,11 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         const QString text = item.titleText();
         if (!text.isEmpty())
             properties.insert(QStringLiteral("Title"), text);
+        // Признак форматированного заголовка: платформа пишет его только при
+        // явно заданном значении, а рендерер по нему решает, разбирать ли
+        // разметку заголовка (шрифт, цвет, ссылки).
+        if (item.hasTitleFormatted)
+            properties.insert(QStringLiteral("TitleFormatted"), boolText(item.titleFormatted));
         if (!item.tooltip.isEmpty())
             properties.insert(QStringLiteral("ToolTip"), item.tooltip);
         if (!item.visible)
