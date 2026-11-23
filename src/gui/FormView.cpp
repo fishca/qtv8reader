@@ -2221,6 +2221,11 @@ FormView::FormView(QWidget *parent)
     m_exactMessage->setContentsMargins(12, 8, 12, 8);
     m_exactMessage->hide();
     exactLayout->addWidget(m_exactMessage);
+    // Страница могла загрузиться после прерванной попытки: сообщение об
+    // ошибке относится к прошлому переходу и на готовой странице лишнее.
+    connect(m_exactHost, &WebView2Host::ready, this, [this] {
+        m_exactMessage->hide();
+    });
     m_views->addWidget(m_exactPage);
 
     m_splitter->addWidget(m_tree);
@@ -2525,11 +2530,11 @@ void FormView::setExactFormModel(const QByteArray &modelJson, const QString &cap
 {
     m_exactModel = modelJson;
     m_exactCaption = caption;
-    if (m_exactHost) {
+    if (m_exactHost)
         m_exactHost->setStartUrl(exactStartUrl());
-        if (m_exactEnabled)
-            m_exactHost->load();
-    }
+    // Загрузку делает applyExactViewState(): повторный вызов load() сразу
+    // после него отменял только что начатый переход, и WebView2 сообщал
+    // об ошибке «код 9» (CONNECTION_ABORTED) на уже готовой странице.
     applyExactViewState();
 }
 
