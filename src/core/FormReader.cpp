@@ -2879,6 +2879,20 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
         return false;
     }
 
+    // Положение командной панели формы: семнадцатое поле заголовка —
+    // 0 None, 1 Auto (по умолчанию), 2 Top, 3 Bottom. Сверено с Form.xml по
+    // формам корпуса: «Новости/ФормаВводаГиперссылки» (Bottom) даёт 3,
+    // «КонтактныеЛица/ФормаЛиды» (None) — 0, «Новости/ФормаДокумента» без
+    // свойства — 1, формы с Top — 2. Это поле начала записи, поэтому у
+    // коротких форм его просто нет: тогда остаётся значение по умолчанию.
+    if (const V8TextNode *location = header->child(17)) {
+        if (location->isInteger()) {
+            const int value = static_cast<int>(location->toInteger());
+            if (value >= 0 && value <= 3)
+                document->commandBarLocation = value;
+        }
+    }
+
     const V8TextNode *module = root.child(2);
     if (module && module->isScalar())
         document->moduleText = module->scalar();
@@ -3081,6 +3095,18 @@ QByteArray FormReader::describeNodes(const QByteArray &data, QString *error)
     appendNodeDescription(*header, &items, 40);
     result.insert(QStringLiteral("items"), items);
 
+    // Заголовок формы — корневая запись, тоже вне дерева элементов: в ней лежат
+    // свойства самой формы (положение командной панели, прокрутка, ширина).
+    // Дамп с номерами полей нужен, чтобы находить их при разборе свойств.
+    QJsonArray headerSlots;
+    for (int i = 0; i < header->children.size(); ++i) {
+        QJsonObject slot;
+        slot.insert(QStringLiteral("index"), i);
+        slot.insert(QStringLiteral("value"), slotToJson(header->children.at(i), 2));
+        headerSlots.append(slot);
+    }
+    result.insert(QStringLiteral("header"), headerSlots);
+
     // Раздел реквизитов формы — вне дерева элементов, поэтому в отладочный
     // дамп попадает отдельным списком: по нему видно, как записаны типы
     // реквизитов и настройки динамических списков.
@@ -3104,8 +3130,8 @@ QByteArray FormReader::describeNodes(const QByteArray &data, QString *error)
         }
         result.insert(QStringLiteral("attributes"), attributeList);
     }
-    // РљРѕРјР°РЅРґС‹ С„РѕСЂРјС‹ вЂ” С‚РѕР¶Рµ РІРЅРµ РґРµСЂРµРІР° СЌР»РµРјРµРЅС‚РѕРІ. РљРЅРѕРїРєРё СЃСЃС‹Р»Р°СЋС‚СЃСЏ РЅР° РЅРёС… РЅРѕРјРµСЂРѕРј,
-    // РїРѕСЌС‚РѕРјСѓ РґР»СЏ СЃРІРµСЂРєРё В«РЅРѕРјРµСЂ -> РёРјСЏВ» РЅСѓР¶РµРЅ РґР°РјРї СЃС‹СЂС‹С… Р·Р°РїРёСЃРµР№.
+    // Команды формы — тоже вне дерева элементов. Кнопки ссылаются на них номером,
+    // поэтому для сверки «номер -> имя» нужен дамп сырых записей.
     const V8TextNode *commands = root.child(5);
     if (commands && commands->isList()) {
         QJsonArray commandList;

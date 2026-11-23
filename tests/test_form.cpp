@@ -143,6 +143,7 @@ private slots:
     void tableSearchLocations();
     void layoutNodeIsNotItemReference();
     void popupPictureAndRepresentation();
+    void formCommandBarLocation();
 };
 
 void TestForm::parseSynthetic()
@@ -3244,6 +3245,46 @@ void TestForm::popupPictureAndRepresentation()
              QStringLiteral("StdPicture.InputFieldSelect"));
     QCOMPARE(properties.value(QStringLiteral("Representation")).toString(),
              QStringLiteral("PictureAndText"));
+}
+
+// Положение командной панели формы лежит семнадцатым полем заголовка:
+// 0 — None, 1 — Auto (по умолчанию), 2 — Top, 3 — Bottom. Рендерер ставит
+// панель сверху, когда свойства нет, поэтому Auto в модель не пишется — так же
+// поступает платформа в Form.xml.
+void TestForm::formCommandBarLocation()
+{
+    auto parse = [](const QString &code, FormDocument *document) {
+        const QString text = QStringLiteral(
+            "{4,{50,0,0,0,0,1,0,0,\"00000000-0000-0000-0000-000000000000\",0,{1,0},"
+            "\"0\",\"0\",\"1\",\"1\",\"1\",\"0\",\"%1\","
+            "{22,{29,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+            "\"Группа\",{1,0},{29,\"0\",\"0\",\"0\",\"0\"}}},"
+            "\"\",{4,\"0\"},{0,0},{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}}")
+            .arg(code);
+        QString error;
+        return FormReader::parseBytes(text.toUtf8(), document, &error);
+    };
+    auto locationProperty = [](const FormDocument &document) {
+        const QJsonObject model =
+            QJsonDocument::fromJson(formWebModelJson(document)).object();
+        return model.value(QStringLiteral("properties")).toObject()
+            .value(QStringLiteral("CommandBarLocation"));
+    };
+
+    FormDocument bottom;
+    QVERIFY(parse(QStringLiteral("3"), &bottom));
+    QCOMPARE(bottom.commandBarLocation, 3);
+    QCOMPARE(locationProperty(bottom).toString(), QStringLiteral("Bottom"));
+
+    FormDocument none;
+    QVERIFY(parse(QStringLiteral("0"), &none));
+    QCOMPARE(none.commandBarLocation, 0);
+    QCOMPARE(locationProperty(none).toString(), QStringLiteral("None"));
+
+    FormDocument automatic;
+    QVERIFY(parse(QStringLiteral("1"), &automatic));
+    QCOMPARE(automatic.commandBarLocation, 1);
+    QVERIFY(locationProperty(automatic).isUndefined());
 }
 
 } // namespace

@@ -650,6 +650,11 @@ struct FormDocument
     bool runtimeCatalogCommands = false;
     // Форма списка справочника: ключевые колонки по умолчанию.
     bool runtimeCatalogListCommands = false;
+    // Положение командной панели формы: 0 — None, 1 — Auto (по умолчанию),
+    // 2 — Top, 3 — Bottom. Это семнадцатое поле заголовка формы (записи
+    // верхнего уровня), а не свойство таблицы с тем же именем: там поле
+    // лежит в записи самой таблицы и разбирается отдельно.
+    int commandBarLocation = 1;
 
     int itemCount() const;
     int fieldCount() const;

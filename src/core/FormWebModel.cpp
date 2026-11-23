@@ -2226,6 +2226,13 @@ QByteArray formWebModelJson(const FormDocument &document)
     QJsonObject properties;
     properties.insert(QStringLiteral("Title"), caption);
     properties.insert(QStringLiteral("AutoTitle"), QStringLiteral("false"));
+    // Положение командной панели формы. Рендерер ставит панель сверху, когда
+    // свойство не задано, поэтому Auto не пишется — так же поступает и
+    // платформа в Form.xml.
+    if (const QString location = commandBarLocationText(document.commandBarLocation);
+        !location.isEmpty()) {
+        properties.insert(QStringLiteral("CommandBarLocation"), location);
+    }
     if (document.runtimeDocumentCommands) {
         properties.insert(QStringLiteral("UsePostingMode"), QStringLiteral("Auto"));
         properties.insert(QStringLiteral("RepostOnWrite"), QStringLiteral("true"));
