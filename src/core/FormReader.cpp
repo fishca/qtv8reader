@@ -1208,10 +1208,19 @@ const V8TextNode *findTableSettingsBlock(const V8TextNode &node, int *start)
         if (!count || !count->isInteger())
             continue;
         const int n = static_cast<int>(count->toInteger());
-        // Блок стоит после общих полей записи таблицы; пара из одного кода
-        // встречается и в самих полях, поэтому требуем минимум два кода.
-        if (n < 2 || i < 30 || i + 2 * n >= node.children.size())
+        // Блок стоит после общих полей записи таблицы; встречаются и блоки
+        // из одной пары (только RowFilter), поэтому пара из одного кода
+        // допускается, но только с кодом из известного набора.
+        if (n < 1 || i < 30 || i + 2 * n >= node.children.size())
             continue;
+        if (n == 1) {
+            const V8TextNode *key = node.child(i + 1);
+            if (!key || !key->isInteger())
+                continue;
+            const int keyCode = static_cast<int>(key->toInteger());
+            if (keyCode != 13 && keyCode != 19)
+                continue;
+        }
         int previous = -1;
         bool ok = true;
         for (int j = 0; j < n && ok; ++j) {
