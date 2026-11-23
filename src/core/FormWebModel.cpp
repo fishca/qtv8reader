@@ -510,6 +510,25 @@ QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
     return json;
 }
 
+// Имя главного реквизита формы: «Список» у формы списка, «Объект» у формы
+// элемента. Таблица, привязанная к нему, — основная: своей командной панели
+// у неё нет, команды живут в панели формы.
+QString mainAttributeName(const FormDocument &document)
+{
+    for (const FormAttribute &attribute : document.attributes) {
+        if (attribute.dynamicList)
+            return attribute.name;
+    }
+    for (const FormAttribute &attribute : document.attributes) {
+        if (attribute.name.compare(QStringLiteral("Список"), Qt::CaseInsensitive) == 0
+            || attribute.name.compare(QStringLiteral("Объект"), Qt::CaseInsensitive) == 0
+            || attribute.name.compare(QStringLiteral("Object"), Qt::CaseInsensitive) == 0) {
+            return attribute.name;
+        }
+    }
+    return QString();
+}
+
 QJsonObject makeTable(const FormItem &item, const FormDocument &document)
 {
     QJsonObject properties;
@@ -531,9 +550,11 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     QString tableName;
     {
         const QStringList segments = item.dataPathText.split(QLatin1Char('.'));
-        if (segments.size() >= 2)
+        if (!segments.isEmpty())
             tableName = segments.last();
     }
+    const bool mainList = !tableName.isEmpty()
+        && tableName.compare(mainAttributeName(document), Qt::CaseInsensitive) == 0;
     for (const FormItem &child : item.children) {
         if (!isRenderable(child))
             continue;
@@ -559,6 +580,13 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         appendChildren({child}, document, &columns);
     }
 
+    // Свою командную панель таблица показывает только если она описана в форме.
+    // Иначе платформа кладёт команды таблицы в общую панель формы, и отдельная
+    // панель вроде «Создать» у списка была бы лишней. У основной таблицы списка
+    // («Список») своей панели нет — команды живут в панели формы.
+    if (mainList)
+        properties.insert(QStringLiteral("CommandBarLocation"), QStringLiteral("None"));
+
     QJsonObject json;
     json.insert(QStringLiteral("tag"), QStringLiteral("Table"));
     json.insert(QStringLiteral("name"), item.name);
@@ -567,14 +595,6 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     json.insert(QStringLiteral("authoredProperties"), properties);
     json.insert(QStringLiteral("childItems"), columns);
     json.insert(QStringLiteral("events"), QJsonArray());
-    // Свою командную панель таблица показывает только если она описана в форме.
-    // Иначе платформа кладёт команды таблицы в общую панель формы, и отдельная
-    // панель вроде «Создать» у списка была бы лишней. У основной таблицы списка
-    // («Список») своей панели нет — команды живут в панели формы.
-    const bool mainList = tableName.compare(QStringLiteral("Список"),
-                                            Qt::CaseInsensitive) == 0;
-    if (mainList)
-        properties.insert(QStringLiteral("CommandBarLocation"), QStringLiteral("None"));
     if (tableBar && !mainList) {
         json.insert(QStringLiteral("autoCommandBar"),
                     buildCommandBarNode(tableBar, document, QJsonArray(), true,
@@ -786,10 +806,11 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
             QStringLiteral("_stdWrite"), QStringLiteral("Записать"),
             QStringLiteral("Form.StandardCommand.Write")));
     }
-    // «Создать на основании» платформа добавляет только документам
-    // и справочникам; в формах отчётов и обработок этой команды нет.
+    // «Создать на основании» платформа добавляет только документам: в формах
+    // справочников подменю создания на основании нет, а у отчётов и обработок
+    // нет и создания.
     const QString kind = kindTagFor(document.ownerTitle);
-    if (kind == QLatin1String("Document") || kind == QLatin1String("Catalog")) {
+    if (kind == QLatin1String("Document")) {
         standard.append(makePopup(QStringLiteral("_global_create_based_on"),
                                   QStringLiteral("Создать на основании"), QJsonArray()));
     }
@@ -947,7 +968,8 @@ QJsonObject buildObjectMeta(const FormDocument &document)
 }
 
 QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHint,
-                           bool mainAttribute = false)
+                           bool mainAttribute = false,
+                           const QString &mainTable = QString())
 {
     QJsonObject properties;
     QString type = typeHint;
@@ -972,6 +994,17 @@ QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHi
     json.insert(QStringLiteral("stringLen"), 0);
     json.insert(QStringLiteral("numberQ"), QJsonValue::Null);
     json.insert(QStringLiteral("dateFraction"), QString());
+    // Настройки динамического списка: рендерер выводит из них заголовки
+    // колонок для полей запроса, которых нет в метаданных объекта.
+    if (attribute.dynamicList) {
+        QJsonObject settings;
+        settings.insert(QStringLiteral("type"), QStringLiteral("DynamicList"));
+        settings.insert(QStringLiteral("mainTable"), mainTable);
+        settings.insert(QStringLiteral("manualQuery"), attribute.listManualQuery);
+        settings.insert(QStringLiteral("queryText"), attribute.listQuery);
+        settings.insert(QStringLiteral("fieldTitles"), QJsonObject());
+        json.insert(QStringLiteral("settings"), settings);
+    }
     return json;
 }
 
@@ -1050,6 +1083,19 @@ QByteArray formWebModelJson(const FormDocument &document)
                  buildAutoCommandBar(document, authoredBar));
 
     QJsonArray attributes;
+    // Основная таблица динамического списка — для настроек реквизита.
+    const QString mainTable = document.ownerMeta.valid
+        ? document.ownerMeta.kindTag + QLatin1Char('.') + document.ownerMeta.name
+        : QString();
+    const QString objectType = QStringLiteral("cfg:%1Object.%2")
+        .arg(kindTagFor(document.ownerTitle), ownerName(document));
+    auto objectAttribute = [&objectType](const QString &synonym) {
+        FormAttribute attribute;
+        attribute.name = QStringLiteral("Объект");
+        attribute.synonym = synonym;
+        attribute.typeHint = objectType;
+        return attribute;
+    };
     // Главный реквизит формы («Объект»/«Список») сама форма уже объявляет:
     // дублировать его нельзя — от порядка реквизитов зависят пути к данным.
     bool mainAttributeFound = false;
@@ -1059,25 +1105,17 @@ QByteArray formWebModelJson(const FormDocument &document)
             || attribute.name.compare(QStringLiteral("Object"), Qt::CaseInsensitive) == 0;
         if (main && !mainAttributeFound) {
             mainAttributeFound = true;
-            attributes.append(buildAttribute(
-                FormAttribute{QStringLiteral("Объект"),
-                              attribute.synonym,
-                              QStringLiteral("cfg:%1Object.%2")
-                                  .arg(kindTagFor(document.ownerTitle),
-                                       ownerName(document))},
-                QStringLiteral("cfg:%1Object.%2")
-                    .arg(kindTagFor(document.ownerTitle), ownerName(document)),
-                true));
+            attributes.append(buildAttribute(objectAttribute(attribute.synonym),
+                                             objectType, true));
             continue;
         }
-        attributes.append(buildAttribute(attribute, attribute.typeHint));
+        // Реквизит динамического списка тоже главный: по нему рендерер
+        // подставляет заголовки стандартных полей списка («Ссылка», «Код»).
+        attributes.append(buildAttribute(attribute, attribute.typeHint,
+                                         attribute.dynamicList, mainTable));
     }
     if (!mainAttributeFound) {
-        attributes.prepend(buildAttribute(
-            FormAttribute{QStringLiteral("Объект"), QString(), QString()},
-            QStringLiteral("cfg:%1Object.%2")
-                .arg(kindTagFor(document.ownerTitle), ownerName(document)),
-            true));
+        attributes.prepend(buildAttribute(objectAttribute(QString()), objectType, true));
     }
     model.insert(QStringLiteral("attributes"), attributes);
     model.insert(QStringLiteral("baseAttributes"), QJsonArray());

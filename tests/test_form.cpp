@@ -112,6 +112,7 @@ private slots:
     void realBpListFormGeometry();
     void resolvedFieldTypes();
     void ownerMetadataAndTableColumns();
+    void dynamicListColumns();
 };
 
 void TestForm::parseSynthetic()
@@ -721,6 +722,124 @@ void TestForm::ownerMetadataAndTableColumns()
     };
     scan(model.value(QStringLiteral("childItemsRoot")).toArray());
     QVERIFY(sawColumnGroup);
+}
+
+// Форма списка справочника: путь колонки динамического списка записан в
+// бинарной форме номером поля («Список.#5»). Номер расшифровывается картой
+// полей реквизита «Список» (FieldsMapItemIdN / FieldsMapItemNameN), и колонка
+// получает настоящее имя поля — по нему рендерер берёт заголовок и тип.
+void TestForm::dynamicListColumns()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        if (category.typeTitle != QStringLiteral("Справочник"))
+            continue;
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name == QStringLiteral("Валюты")) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name.compare(QStringLiteral("ФормаСписка"), Qt::CaseInsensitive) == 0) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+
+    FormBindingResolver resolver;
+    resolver.addObject(*object);
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error, &resolver),
+             qPrintable(error));
+    applyOwnerMetadata(*object, &document);
+
+    // Реквизит динамического списка и карта его полей.
+    const FormAttribute *listAttribute = nullptr;
+    for (const FormAttribute &attribute : document.attributes) {
+        if (attribute.name == QStringLiteral("Список"))
+            listAttribute = &attribute;
+    }
+    QVERIFY(listAttribute);
+    QVERIFY(listAttribute->dynamicList);
+    QCOMPARE(listAttribute->listFields.value(5), QStringLiteral("НаименованиеПолное"));
+    QCOMPARE(listAttribute->listFields.value(6), QStringLiteral("Код"));
+    QCOMPARE(listAttribute->listFields.value(14), QStringLiteral("Ссылка"));
+    QVERIFY(listAttribute->listQuery.startsWith(QStringLiteral("ВЫБРАТЬ")));
+    QVERIFY(listAttribute->listManualQuery);
+
+    // Колонки таблицы получили имена полей вместо номеров.
+    const FormItem *code = findItemByName(document.items, QStringLiteral("Код"));
+    QVERIFY(code);
+    QCOMPARE(code->dataPathText, QStringLiteral("Список.Код"));
+    const FormItem *fullName =
+        findItemByName(document.items, QStringLiteral("НаименованиеПолное"));
+    QVERIFY(fullName);
+    QCOMPARE(fullName->dataPathText, QStringLiteral("Список.НаименованиеПолное"));
+    // Реквизит объекта: заголовок и тип берутся из метаданных.
+    QCOMPARE(fullName->dataTitle, QStringLiteral("Наименование валюты"));
+    const FormItem *rate = findItemByName(document.items, QStringLiteral("Курс"));
+    QVERIFY(rate);
+    QCOMPARE(rate->dataPathText, QStringLiteral("Список.Курс"));
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    // Реквизит списка — главный, вид — динамический список, настройки списка
+    // (основная таблица и текст запроса) отданы рендереру.
+    bool sawDynamicAttribute = false;
+    const QJsonArray attributes = model.value(QStringLiteral("attributes")).toArray();
+    for (const QJsonValue &value : attributes) {
+        const QJsonObject attribute = value.toObject();
+        if (attribute.value(QStringLiteral("name")).toString() != QStringLiteral("Список"))
+            continue;
+        sawDynamicAttribute = true;
+        const QJsonObject properties =
+            attribute.value(QStringLiteral("properties")).toObject();
+        QCOMPARE(properties.value(QStringLiteral("MainAttribute")).toString(),
+                 QStringLiteral("true"));
+        QCOMPARE(properties.value(QStringLiteral("Type")).toString(),
+                 QStringLiteral("cfg:DynamicList"));
+        const QJsonObject settings = attribute.value(QStringLiteral("settings")).toObject();
+        QCOMPARE(settings.value(QStringLiteral("type")).toString(),
+                 QStringLiteral("DynamicList"));
+        QCOMPARE(settings.value(QStringLiteral("mainTable")).toString(),
+                 QStringLiteral("Catalog.Валюты"));
+    }
+    QVERIFY(sawDynamicAttribute);
+
+    // У основной таблицы списка своей командной панели нет: команды живут
+    // в панели формы.
+    const QJsonObject table = findModelNode(
+        model.value(QStringLiteral("childItemsRoot")).toArray(), QStringLiteral("Валюты"));
+    QVERIFY(!table.isEmpty());
+    QCOMPARE(table.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("CommandBarLocation")).toString(),
+             QStringLiteral("None"));
 }
 
 } // namespace

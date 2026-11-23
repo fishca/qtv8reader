@@ -72,6 +72,9 @@ QString referenceTypeName(const QString &typeText)
          QStringLiteral("cfg:ExternalDataSourceRef.")},
         {QStringLiteral("ОпределяемыйТип."), QStringLiteral("cfg:DefinedType.")},
         {QStringLiteral("ХранилищеЗначения"), QStringLiteral("xs:base64Binary")},
+        // Динамический список — не тип значения, а вид реквизита формы:
+        // рендерер узнаёт его по имени типа и включает режим списка.
+        {QStringLiteral("ДинамическийСписок"), QStringLiteral("cfg:DynamicList")},
     };
     for (const auto &entry : prefixes) {
         if (typeText.startsWith(entry.first))

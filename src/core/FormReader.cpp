@@ -224,6 +224,111 @@ QString typeHintFromAttributes(const V8TextNode &node)
     return QString();
 }
 
+// Настройки динамического списка лежат в записи реквизита формы плоским
+// набором пар «ключ, значение»: "QueryText", ["S", "ВЫБРАТЬ …"], "MainTable",
+// ["#", …], "FieldsMapItemId0", ["N", "5"], "FieldsMapItemName0",
+// ["S", "Наименование"]. Ищем список, в котором есть ключ карты полей; часть
+// сборок пишет его с опечаткой («FiledsMapItem…»).
+bool isListFieldMapKey(const QString &key)
+{
+    return key.startsWith(QLatin1String("FieldsMapItemId"))
+        || key.startsWith(QLatin1String("FiledsMapItemId"));
+}
+
+const V8TextNode *findListSettings(const V8TextNode &node, int depth = 0)
+{
+    if (!node.isList() || depth > 5)
+        return nullptr;
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList())
+            continue;
+        for (const V8TextNode &slot : child.children) {
+            if (slot.isScalar() && isListFieldMapKey(slot.scalar()))
+                return &child;
+        }
+        if (const V8TextNode *nested = findListSettings(child, depth + 1))
+            return nested;
+    }
+    return nullptr;
+}
+
+// Значение настройки записано парой «вид, текст»: ["N", "5"], ["S", "…"],
+// ["B", "1"]; иногда встречается просто скаляр.
+QString settingValue(const V8TextNode &node)
+{
+    if (node.isScalar())
+        return node.scalar();
+    if (node.isList() && node.children.size() >= 2 && node.child(1)
+        && node.child(1)->isScalar()) {
+        return node.child(1)->scalar();
+    }
+    return QString();
+}
+
+// Номер в конце ключа карты полей: «FieldsMapItemId12» → 12.
+int settingKeyIndex(const QString &key, const QString &prefix)
+{
+    if (!key.startsWith(prefix))
+        return -1;
+    const QString tail = key.mid(prefix.size());
+    if (tail.isEmpty())
+        return -1;
+    for (const QChar ch : tail) {
+        if (!ch.isDigit())
+            return -1;
+    }
+    return tail.toInt();
+}
+
+// Разбирает настройки динамического списка: карту полей (номер → имя) и
+// текст запроса. Номер поля — это второй сегмент пути к данным колонки.
+void readListSettings(const V8TextNode &settings, FormAttribute *attribute)
+{
+    QHash<int, int> fieldIds;      // номер записи карты → номер поля
+    QHash<int, QString> fieldNames; // номер записи карты → имя поля
+    for (int i = 0; i + 1 < settings.children.size(); ++i) {
+        const V8TextNode *key = settings.child(i);
+        if (!key || !key->isScalar())
+            continue;
+        const QString text = key->scalar();
+        const QString value = settingValue(*settings.child(i + 1));
+        if (value.isEmpty())
+            continue;
+        int index = settingKeyIndex(text, QStringLiteral("FieldsMapItemId"));
+        if (index < 0)
+            index = settingKeyIndex(text, QStringLiteral("FiledsMapItemId"));
+        if (index >= 0) {
+            fieldIds.insert(index, value.toInt());
+            continue;
+        }
+        index = settingKeyIndex(text, QStringLiteral("FieldsMapItemName"));
+        if (index < 0)
+            index = settingKeyIndex(text, QStringLiteral("FiledsMapItemName"));
+        if (index >= 0) {
+            fieldNames.insert(index, value);
+            continue;
+        }
+        if (text == QLatin1String("QueryText")) {
+            attribute->listQuery = value;
+        } else if (text == QLatin1String("ManualQuery")) {
+            attribute->listManualQuery = value != QLatin1String("0")
+                && value.compare(QLatin1String("false"), Qt::CaseInsensitive) != 0;
+        }
+    }
+    for (auto it = fieldNames.constBegin(); it != fieldNames.constEnd(); ++it) {
+        const int fieldId = fieldIds.value(it.key(), -1);
+        if (fieldId < 0)
+            continue;
+        attribute->listFields.insert(fieldId, it.value());
+    }
+    if (!attribute->listFields.isEmpty()) {
+        attribute->dynamicList = true;
+        // Вид реквизита в терминах рендерера: по нему он понимает, что
+        // таблица — динамический список (команды, поиск, настройки).
+        attribute->typeHint = QStringLiteral("ДинамическийСписок");
+    }
+}
+
 void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
 {
     auto integerSlot = [](const V8TextNode &record, int index) {
@@ -402,8 +507,11 @@ FormItem parseItem(const V8TextNode &node)
 
     // Путь к данным поля: в бинарной форме он записан ссылками на реквизиты
     // метаданных и всегда лежит в нескольких полях после имени элемента.
-    if (item.typeCode == 37 && nameIndex >= 0) {
-        const int last = std::min<int>(node.children.size() - 1, nameIndex + 8);
+    // Таблица тоже привязана к данным («Список», «Объект.Товары»), но её
+    // описание пути стоит дальше — сразу за заголовком и его расположением.
+    if ((item.typeCode == 37 || item.typeCode == 55) && nameIndex >= 0) {
+        const int last = std::min<int>(node.children.size() - 1,
+                                       nameIndex + (item.typeCode == 55 ? 12 : 8));
         for (int j = nameIndex + 3; j <= last; ++j) {
             const V8TextNode *candidate = node.child(j);
             if (!candidate || !isPathDescriptor(*candidate))
@@ -526,6 +634,8 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
                 continue;
             attribute.synonym = localizedText(*entry);
             attribute.typeHint = typeHintFromAttributes(*entry);
+            if (const V8TextNode *settings = findListSettings(*entry))
+                readListSettings(*settings, &attribute);
             if (!attribute.name.isEmpty() && !attribute.synonym.isEmpty())
                 document->titles.insert(attribute.name, attribute.synonym);
             document->attributes.append(attribute);
@@ -641,6 +751,30 @@ QByteArray FormReader::describeNodes(const QByteArray &data, QString *error)
     QJsonArray items;
     appendNodeDescription(*header, &items, 40);
     result.insert(QStringLiteral("items"), items);
+
+    // Раздел реквизитов формы — вне дерева элементов, поэтому в отладочный
+    // дамп попадает отдельным списком: по нему видно, как записаны типы
+    // реквизитов и настройки динамических списков.
+    const V8TextNode *attributes = root.child(3);
+    if (attributes && attributes->isList()) {
+        QJsonArray attributeList;
+        for (int i = 2; i < attributes->children.size(); ++i) {
+            const V8TextNode *entry = attributes->child(i);
+            if (!entry || !entry->isList())
+                continue;
+            QJsonObject attribute;
+            int nameIndex = -1;
+            attribute.insert(QStringLiteral("name"), findName(*entry, 2, &nameIndex));
+            if (nameIndex >= 0)
+                attribute.insert(QStringLiteral("nameIndex"), nameIndex);
+            QJsonArray slotValues;
+            for (const V8TextNode &slot : entry->children)
+                slotValues.append(slotToJson(slot, 4));
+            attribute.insert(QStringLiteral("slots"), slotValues);
+            attributeList.append(attribute);
+        }
+        result.insert(QStringLiteral("attributes"), attributeList);
+    }
     return QJsonDocument(result).toJson(QJsonDocument::Compact);
 }
 

@@ -127,6 +127,16 @@ struct FormAttribute
     QString name;
     QString synonym;
     QString typeHint;
+    // Реквизит-динамический список: в бинарной форме рядом с ним лежат
+    // настройки списка (текст запроса и карта полей), по которым колонки
+    // таблицы получают имена и заголовки.
+    bool dynamicList = false;
+    // Карта полей списка: номер поля в пути к данным (DataPath) → имя поля.
+    // В бинарной форме путь колонки записан номером: «Список.#5», — а имена
+    // лежат в настройках реквизита (FieldsMapItemIdN / FieldsMapItemNameN).
+    QHash<int, QString> listFields;
+    QString listQuery;         // текст запроса списка (QueryText)
+    bool listManualQuery = false; // запрос задан вручную (ManualQuery)
 };
 
 struct FormCommand

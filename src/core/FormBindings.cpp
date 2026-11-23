@@ -31,6 +31,7 @@ bool looksComposite(const QString &typeText)
 void FormBindingResolver::clear()
 {
     m_byGuid.clear();
+    m_byName.clear();
 }
 
 void FormBindingResolver::addObject(const MetadataObject &object)
@@ -45,6 +46,20 @@ void FormBindingResolver::addObject(const MetadataObject &object)
         value.tabularSection = tabularSection;
         m_byGuid.insert(entry.guid.toLower(), value);
     };
+    // Поле динамического списка адресуется номером, поэтому имя — единственный
+    // ключ, по которому его можно сопоставить с метаданными. В индекс попадают
+    // только реквизиты верхнего уровня: колонки табличных частей адресуются
+    // путём «ТабличнаяЧасть.Колонка» и одноимённым полям списка не мешают.
+    auto insertName = [this](const MetadataEntry &entry) {
+        if (entry.name.isEmpty() || entry.typeText.isEmpty())
+            return;
+        Entry value;
+        value.name = entry.name;
+        value.synonym = entry.synonym;
+        value.typeText = entry.typeText;
+        value.tabularSection = false;
+        m_byName.insert(entry.name, value);
+    };
     for (const MetadataSection &section : object.sections) {
         const bool tabular = section.kind == MetadataSectionKind::TabularSections;
         for (const MetadataEntry &entry : section.entries) {
@@ -52,6 +67,8 @@ void FormBindingResolver::addObject(const MetadataObject &object)
             // адресуется через них («Объект.Товары.Количество»), хотя типа
             // у самой табличной части нет.
             insert(entry, tabular);
+            if (!tabular)
+                insertName(entry);
             for (const MetadataEntry &child : entry.children)
                 insert(child, false);
         }
@@ -187,6 +204,23 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
             }
             return binding;
         }
+        // Реквизит не опознан по имени. Односегментный путь таблицы ведёт
+        // к главному реквизиту формы («Список»): имя таблицы не совпадает
+        // с именем реквизита, поэтому привязку уточняем по карте полей —
+        // у динамического списка она заполнена. Номер в пути отсчитывается
+        // с единицы и совпадает с порядком объявления реквизитов.
+        const int index = path.at(0).code - 1;
+        if (index >= 0 && index < document.attributes.size()) {
+            const FormAttribute &attribute = document.attributes.at(index);
+            const bool mainReference = attribute.dynamicList
+                || attribute.name.compare(QStringLiteral("Список"), Qt::CaseInsensitive) == 0
+                || attribute.name.compare(QStringLiteral("Объект"), Qt::CaseInsensitive) == 0;
+            if (mainReference) {
+                binding.text = attribute.name;
+                binding.title = attribute.synonym;
+                return binding;
+            }
+        }
         // Реквизит не опознан: рендерер показывает поле только с путём
         // к данным, поэтому оставляем путь по имени элемента — тип остаётся
         // неизвестным, но поле и его заголовок не пропадают.
@@ -199,6 +233,9 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
     // Признак того, что предыдущий сегмент — табличная часть: стандартный
     // реквизит «-2» внутри неё означает номер строки, а не номер/код.
     bool insideTable = false;
+    // Реквизит формы, с которого начинается путь: для динамического списка
+    // в нём лежит карта полей, по которой расшифровываются номера.
+    const FormAttribute *rootAttribute = nullptr;
     const QString kind = ownerKindTag(document.ownerTitle);
     for (int i = 0; i < path.size(); ++i) {
         const FormPathSegment &segment = path.at(i);
@@ -230,6 +267,7 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                     const int index = segment.code - 1;
                     if (index >= 0 && index < document.attributes.size()) {
                         const FormAttribute &attribute = document.attributes.at(index);
+                        rootAttribute = &attribute;
                         parts.append(attribute.name);
                         // Путь из одного сегмента — это сам реквизит формы:
                         // его тип объявлен в самой форме (например, «Булево»).
@@ -244,7 +282,29 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                     }
                 }
             } else {
-                parts.append(QStringLiteral("#%1").arg(segment.code));
+                // Второй и следующие сегменты-номера адресуют поле
+                // динамического списка: номер расшифровывается картой полей
+                // реквизита формы. Иначе остаётся номер — лучше показать его,
+                // чем потерять привязку колонки.
+                QString fieldName;
+                if (rootAttribute && !rootAttribute->listFields.isEmpty())
+                    fieldName = rootAttribute->listFields.value(segment.code);
+                if (fieldName.isEmpty()) {
+                    parts.append(QStringLiteral("#%1").arg(segment.code));
+                    break;
+                }
+                parts.append(fieldName);
+                // Тип и заголовок поля — из метаданных объекта, если такое
+                // имя там есть (стандартные реквизиты — «Ссылка», «Код» —
+                // описаны в stdCaptions и здесь не находятся).
+                const auto byName = m_byName.constFind(fieldName);
+                if (byName != m_byName.constEnd()) {
+                    binding.title = byName->synonym;
+                    binding.typeText = byName->typeText;
+                    binding.kind = kindForTypeText(byName->typeText);
+                    binding.chars = charsForType(byName->typeText, binding.kind);
+                    last = &byName.value();
+                }
             }
             break;
         }

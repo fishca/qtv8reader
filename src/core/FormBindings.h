@@ -53,6 +53,9 @@ private:
     };
 
     QHash<QString, Entry> m_byGuid;
+    // Имена реквизитов верхнего уровня: нужны полям динамических списков,
+    // которые в форме адресуются номером, а в метаданных — именем.
+    QHash<QString, Entry> m_byName;
 };
 
 } // namespace v8reader
