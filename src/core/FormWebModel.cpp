@@ -1215,11 +1215,27 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         default:
             break;
         }
+        // Заголовок и видимость страницы: у Page своего узла макета нет, оба
+        // признака лежат в блоке {18,…} и в «хвосте» записи, но выводятся теми
+        // же свойствами, что у групп. Без этого скрытая страница («Новости»,
+        // «ФорматированныйДокумент») показывалась, а страницы с
+        // ShowTitle=false («ЗагрузкаИзПочты», «ГруппаЗавершен») рисовали
+        // заголовок.
+        if (!item.showTitle)
+            properties.insert(QStringLiteral("ShowTitle"), boolText(false));
+        if (!item.visible)
+            properties.insert(QStringLiteral("Visible"), boolText(false));
     } else if (tag == QLatin1String("CommandBar")) {
         // Своя командная панель формы: платформа хранит у неё только заголовок,
         // группировка и оформление у неё не настраиваются.
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
+        // Положение панели (HorizontalLocation): платформа пишет только Right —
+        // так стоят панели «ГруппаДополнительнаяКоманднаяПанель» и
+        // «ГруппаПоказатьБыстрыеНастройки» в формах отчётов.
+        if (item.commandBarHorizontalLocation == 2)
+            properties.insert(QStringLiteral("HorizontalLocation"),
+                              QStringLiteral("Right"));
     } else if (tag == QLatin1String("AutoCommandBar")) {
         // Автозаполнение командной панели: в Form.xml платформа его не пишет
         // (значение по умолчанию — истина), поэтому и в модели свойства нет:
@@ -1230,6 +1246,14 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         // записи группы это четвёртое поле блока {2, …, 2, вид}.
         if (item.compactButtonGroup)
             properties.insert(QStringLiteral("Representation"), QStringLiteral("Compact"));
+        // Источник команд группы (CommandSource): платформа пишет его, когда
+        // группа собирает команды формы или глобальные, — так в списках
+        // «Банков», «ЗадачиИсполнителя» и «КонтактныхЛиц».
+        if (item.commandSource == 0)
+            properties.insert(QStringLiteral("CommandSource"), QStringLiteral("Form"));
+        else if (item.commandSource == 1)
+            properties.insert(QStringLiteral("CommandSource"),
+                              QStringLiteral("FormCommandPanelGlobalCommands"));
     } else if (tag == QLatin1String("ColumnGroup")) {
         // Группа колонок таблицы: группировка, закрепление и заголовок.
         // Группировка группы колонок: Horizontal (0) или InCell (2). Значение
@@ -1266,6 +1290,11 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("ShowTitle"), boolText(false));
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
+        // Начальное состояние раскрытия группы (Collapsed): платформа пишет
+        // свойство только значением true — и у раскрываемой группы
+        // «ИспользуетсяБанкДляРасчетов», и у всплывающей «ГруппаПодсказка».
+        if (item.collapsed)
+            properties.insert(QStringLiteral("Collapsed"), boolText(true));
     }
 
     addStyleProperties(item, &properties);

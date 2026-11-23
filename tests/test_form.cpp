@@ -138,6 +138,7 @@ private slots:
     void formattedDocumentCommandBar();
     void tableRepresentationAndRowFlags();
     void userVisiblePageAlignAndRowsPicture();
+    void collapsedPageTitleCommandBarAndSource();
 };
 
 void TestForm::parseSynthetic()
@@ -2987,6 +2988,95 @@ void TestForm::userVisiblePageAlignAndRowsPicture()
                  .value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("RowsPicture")).toString(),
              QStringLiteral("CommonPicture.Пиктограммы"));
+}
+
+// Начальное раскрытие группы (Collapsed), скрытый заголовок страницы (ShowTitle),
+// положение своей командной панели (HorizontalLocation) и источник команд группы
+// кнопок (CommandSource).
+void TestForm::collapsedPageTitleCommandBarAndSource()
+{
+    const QString text = QStringLiteral(
+        "{4,"
+        "{50,0,"
+        // Раскрываемая группа со свёрнутым начальным состоянием: двенадцатое
+        // поле узла макета {29,…} — Collapsed, одиннадцатое — признак
+        // раскрываемой группы.
+        "{22,{10,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+        "\"ГруппаСвернутая\",{1,0},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"29\",\"0\",\"0\",\"0\",\"1\",{\"0\"},{\"1\",\"0\"},{\"Pattern\"},\"\","
+        "{\"3\",\"4\",{\"0\"}},\"1\",\"1\",\"1\",\"1\",{\"1\",\"0\"},\"0\",\"0\",\"3\",\"3\","
+        "\"2\",\"0\",\"1\",\"0\",{\"3\",\"4\",{\"0\"}},\"0\",\"2\",\"0\",\"0\",\"0\"}},"
+        // Та же раскрываемая группа без Collapsed.
+        "{22,{11,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+        "\"ГруппаРаскрытая\",{1,0},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"29\",\"0\",\"0\",\"0\",\"1\",{\"0\"},{\"1\",\"0\"},{\"Pattern\"},\"\","
+        "{\"3\",\"4\",{\"0\"}},\"1\",\"1\",\"0\",\"1\",{\"1\",\"0\"},\"0\",\"0\",\"3\",\"3\","
+        "\"2\",\"0\",\"1\",\"0\",{\"3\",\"4\",{\"0\"}},\"0\",\"2\",\"0\",\"0\",\"0\"}},"
+        // Своя командная панель: список из трёх чисел через 14 полей после
+        // имени, второе число 2 — HorizontalLocation=Right.
+        "{22,{12,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"ПанельСправа\",{1,0},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"1\",\"2\",{\"0\"}}},"
+        // Группа кнопок: источник команд — сама форма (GUID формы из записи имени).
+        "{22,{13,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"6\","
+        "\"ГруппаКнопок\",{1,0},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"2\",{0,02023637-7868-4a5f-8576-835a76e0c9ba},\"2\",\"0\"}},"
+        // Страница со скрытым заголовком: седьмое поле блока {18,…} равно нулю.
+        "{22,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"4\","
+        "\"СтраницаБезЗаголовка\",{1,0},{1,0},\"0\",\"1\",\"0\",\"0\",\"0\",\"2\",\"2\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"},{\"0\",\"0\",\"0\"},\"1\","
+        "{\"18\",{\"4\",\"0\",{\"0\"}},\"0\",\"0\",{\"0\"},{\"1\",\"0\"},\"0\",\"Pattern\",\"\","
+        "{\"3\",\"4\",{\"0\"}},\"0\",\"0\",\"1\",\"1\",\"0\",\"0\",\"0\",\"0\","
+        "{\"3\",\"4\",{\"0\"}},{\"7\",\"3\",\"0\",\"1\",\"100\"}}}"
+        "},"
+        "\"Процедура Тест()\\nКонецПроцедуры\","
+        "{4,\"2\",{9,{\"1\"},\"0\",\"Атрибут1\",{1,1,{\"ru\",\"Атрибут 1\"}},"
+        "{\"Pattern\",{\"S\"}}}},"
+        "{0,0},"
+        "{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}"
+        "}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error), qPrintable(error));
+
+    const FormItem *collapsed = findItemByName(document.items, QStringLiteral("ГруппаСвернутая"));
+    QVERIFY(collapsed);
+    QVERIFY(collapsed->collapsed);
+    QCOMPARE(collapsed->behavior, FormGroupBehavior::Collapsible);
+    const FormItem *expanded = findItemByName(document.items, QStringLiteral("ГруппаРаскрытая"));
+    QVERIFY(expanded);
+    QVERIFY(!expanded->collapsed);
+    const FormItem *bar = findItemByName(document.items, QStringLiteral("ПанельСправа"));
+    QVERIFY(bar);
+    QCOMPARE(bar->commandBarHorizontalLocation, 2);
+    const FormItem *buttons = findItemByName(document.items, QStringLiteral("ГруппаКнопок"));
+    QVERIFY(buttons);
+    QCOMPARE(buttons->commandSource, 0);
+    const FormItem *page = findItemByName(document.items, QStringLiteral("СтраницаБезЗаголовка"));
+    QVERIFY(page);
+    QVERIFY(!page->showTitle);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    auto props = [&roots](const QString &name) {
+        return findModelNode(roots, name).value(QStringLiteral("properties")).toObject();
+    };
+    QCOMPARE(props(QStringLiteral("ГруппаСвернутая")).value(QStringLiteral("Collapsed")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(props(QStringLiteral("ГруппаСвернутая")).value(QStringLiteral("Behavior")).toString(),
+             QStringLiteral("Collapsible"));
+    QVERIFY(!props(QStringLiteral("ГруппаРаскрытая")).contains(QStringLiteral("Collapsed")));
+    QCOMPARE(props(QStringLiteral("ПанельСправа")).value(QStringLiteral("HorizontalLocation")).toString(),
+             QStringLiteral("Right"));
+    QCOMPARE(props(QStringLiteral("ГруппаКнопок")).value(QStringLiteral("CommandSource")).toString(),
+             QStringLiteral("Form"));
+    QCOMPARE(props(QStringLiteral("СтраницаБезЗаголовка")).value(QStringLiteral("ShowTitle")).toString(),
+             QStringLiteral("false"));
 }
 
 } // namespace

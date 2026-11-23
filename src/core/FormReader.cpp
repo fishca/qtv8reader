@@ -2359,6 +2359,15 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 if (mode->isInteger())
                     item.pageMode = static_cast<int>(mode->toInteger());
             }
+            // Показ заголовка страницы (ShowTitle) — седьмое поле блока: 1 —
+            // значение по умолчанию (Form.xml свойства не пишет), 0 — заголовок
+            // скрыт. У обычной группы тот же признак лежит в узле макета, а у
+            // страницы своего узла макета нет. Сверено с Form.xml по всем 32
+            // страницам корпуса, из них у двух заголовок скрыт.
+            if (const V8TextNode *showTitle = child.child(6)) {
+                if (showTitle->isInteger())
+                    item.showTitle = showTitle->toInteger() != 0;
+            }
             // Путь к данным заголовка страницы (TitleDataPath) — четвёртое поле
             // того же блока; пустой путь записан как {0}. Сверено с Form.xml по
             // десяти страницам корпуса с этим свойством и по 88 без него.
@@ -2436,13 +2445,20 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 item.showTitle = showTitle != 0;
             const int behaviorFlag = layoutInteger(*layout, 10);
             const int collapsible = layoutInteger(*layout, 11);
-            const int popUp = layoutInteger(*layout, 12);
+            const int collapsedSwitch = layoutInteger(*layout, 12);
+            // Начальное состояние раскрытия группы (Collapsed) — двенадцатое
+            // поле узла макета: 1 — группа свёрнута при открытии формы, 0 —
+            // раскрыта; платформа пишет свойство только значением true.
+            // Сверено с Form.xml по 115 группам десяти форм корпуса (у 26
+            // задано Collapsed=true) — расхождений нет.
+            if (collapsedSwitch == 1)
+                item.collapsed = true;
             // Поведение группы: всплывающее задано двенадцатым полем записи,
             // раскрываемое — им же вместе с одиннадцатым. Обычное поведение
             // платформа пишет в Form.xml только когда оно задано явно (десятое
             // поле равно нулю); у 24 групп корпуса десятое поле равно единице
             // и Behavior в XML отсутствует, поэтому умолчание не подставляем.
-            if (popUp == 1) {
+            if (collapsedSwitch == 1) {
                 item.behavior = collapsible == 1 ? FormGroupBehavior::Collapsible
                                                  : FormGroupBehavior::PopUp;
                 item.hasBehavior = true;
@@ -2502,6 +2518,20 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 }
             }
         }
+        // Положение своей командной панели (HorizontalLocation): тот же список
+        // из трёх чисел через 14 полей после имени, что и у панели,
+        // заполняемой платформой, — второй элемент равен 2 при Right и нулю при
+        // значении по умолчанию. Сверено с Form.xml по 27 командным панелям
+        // корпуса, у пяти из них задано Right.
+        if (item.groupKind == 0 && nameIndex >= 0) {
+            const V8TextNode *flags = node.child(nameIndex + 14);
+            if (flags && flags->isList() && flags->children.size() >= 3) {
+                const V8TextNode *location = flags->child(1);
+                if (location && location->isInteger())
+                    item.commandBarHorizontalLocation =
+                        static_cast<int>(location->toInteger());
+            }
+        }
         // Компактное отображение группы кнопок: блок {2, […], 2, вид} в записи
         // группы, четвёртое поле равно 2 при «компактно» и нулю при обычном
         // отображении. Сверено с Form.xml по 62 группам кнопок корпуса.
@@ -2525,6 +2555,20 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                     continue;
                 if (view->toInteger() == 2)
                     item.compactButtonGroup = true;
+                // Источник команд группы (CommandSource) — второй элемент той
+                // же записи {0, GUID}: GUID самой формы (он же второй элемент
+                // записи имени каждого элемента) — Form, платформенный GUID
+                // 2ef6d6fa-847a-485e-8684-d37a3ab5efb8 — глобальные команды.
+                // Сверено с Form.xml по 62 группам кнопок корпуса: у 6 задан
+                // источник, все 62 совпали.
+                if (payload->children.size() == 2 && payload->child(1)->isGuid()) {
+                    const QString source = payload->child(1)->normalizedGuid();
+                    if (source == item.guid)
+                        item.commandSource = 0;
+                    else if (source == QLatin1String(
+                                 "2ef6d6fa-847a-485e-8684-d37a3ab5efb8"))
+                        item.commandSource = 1;
+                }
                 break;
             }
         }
