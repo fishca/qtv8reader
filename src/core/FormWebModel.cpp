@@ -1295,6 +1295,14 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("ChangeRowOrder"), boolText(false));
     if (item.skipOnInput >= 0)
         properties.insert(QStringLiteral("SkipOnInput"), boolText(item.skipOnInput != 0));
+    // Команды, исключённые из панели таблицы: рендерер по списку решает, какие
+    // стандартные команды не показывать.
+    if (!item.excludedCommands.isEmpty()) {
+        QJsonArray excluded;
+        for (const QString &name : item.excludedCommands)
+            excluded.append(name);
+        properties.insert(QStringLiteral("ExcludedCommands"), excluded);
+    }
     if (const QString location = commandBarLocationText(item.commandBarLocation);
         !location.isEmpty()) {
         properties.insert(QStringLiteral("CommandBarLocation"), location);

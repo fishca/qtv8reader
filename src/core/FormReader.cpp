@@ -1650,6 +1650,39 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
         if (skip == 0 || skip == 1)
             item->skipOnInput = skip;
     }
+    // Исключённые из панели команды: список [количество, GUID, …], где все
+    // элементы после первого — GUID стандартных команд элемента. Платформа
+    // пишет свойство только при непустом списке и сортирует имена по алфавиту.
+    // Сверено с Form.xml по 16 таблицам корпуса с заданным списком.
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList() || child.children.size() < 3)
+            continue;
+        const V8TextNode *count = child.child(0);
+        if (!count || !count->isInteger())
+            continue;
+        const int size = static_cast<int>(count->toInteger());
+        if (size < 2 || static_cast<int>(child.children.size()) != size + 1)
+            continue;
+        QStringList names;
+        bool ok = true;
+        for (int i = 1; i <= size && ok; ++i) {
+            const V8TextNode *guid = child.child(i);
+            if (!guid || !guid->isGuid()) {
+                ok = false;
+                break;
+            }
+            const QString name = itemStandardCommandName(guid->normalizedGuid());
+            if (name.isEmpty())
+                ok = false;
+            else
+                names.append(name);
+        }
+        if (!ok || names.isEmpty())
+            continue;
+        names.sort(Qt::CaseInsensitive);
+        item->excludedCommands = names;
+        break;
+    }
     // Перетаскивание файлов в таблицу: 0 — AsFile, 1 — UseAsFile (по
     // умолчанию). Признак стоит вторым с конца записи, потому что после него
     // идут только необязательные вложенные узлы. Сверено с Form.xml по

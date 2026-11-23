@@ -36,10 +36,33 @@ const CommandName kFormCommands[] = {
 // Стандартные команды элемента (CommandName =
 // «Form.Item.<элемент>.StandardCommand.<имя>»): колонки и команды таблиц,
 // поля форматированного документа, результата отчёта, просмотра PDF.
+// Часть команд встречается в наборе с двумя GUID (например, Delete и
+// EndEdit): таблица исключённых команд таблицы (ExcludedCommands) ссылается на
+// них вторым вариантом. Соответствие для 18 таких GUID восстановлено по
+// корпусу: в 16 таблицах список исключённых команд из Form.xml однозначно
+// сопоставляется с набором GUID в записи таблицы.
 const CommandName kItemCommands[] = {
+    {"01833a5a-6553-4c49-b445-095018107bb5", "HierarchicalList"},
     {"01db2225-b62d-4112-a4b6-d39d627bf79f", "PageSetup"},
+    {"05468165-f954-45a5-84f2-6641c51f9f23", "List"},
     {"0ae4bea5-23be-42a7-b69e-97b11b29c453", "Copy"},
     {"0bdc43a3-79f0-48d6-bce4-1142542e1a59", "IncreaseFontSize"},
+    {"0d0249a4-2b2f-4fc0-a66f-b36f9494b3cc", "Tree"},
+    {"1f1e900a-8488-4159-81be-9704eb96906d", "UserSettingItemProperties"},
+    {"2bbe4e12-06d2-409b-a972-eea585125d83", "SortListAsc"},
+    {"48e12019-0fd6-46eb-aab6-2acba716a623", "AddAutoOrderItem"},
+    {"51c99108-107c-43e1-8918-e48835bf2495", "CopyToClipboard"},
+    {"58b2a785-23f6-4b0e-a324-9a1323285595", "SortListDesc"},
+    {"59b4387d-f5be-4658-901f-bd3068217469", "FindByCurrentValue"},
+    {"714d44cc-63da-4431-b33a-428e398d2a08", "Pickup"},
+    {"7b683784-b474-441a-ba63-3d757bd0ffd4", "SearchEverywhere"},
+    {"88078230-1f6b-415f-99e4-ad2ff73810cf", "SelectAll"},
+    {"8af6ebff-cd02-4bfe-a984-44a292623708", "SearchHistory"},
+    {"9ef79140-3de6-436a-8dda-610bb963f5db", "EndEdit"},
+    {"d96b0c03-b209-4d01-a3fc-17a14f873b64", "ShowRowRearrangement"},
+    {"e7216412-03ac-4a81-99c2-1d7c28e88e31", "ShowMultipleSelection"},
+    {"ec576e13-1e76-4c33-98aa-a33204514227", "Delete"},
+    {"fc120c02-7f39-469b-b357-b2dd8d4b0765", "Expand"},
     {"0cf34151-92d3-42fd-954f-5938433908a4", "Find"},
     {"0e355e57-d603-4ac6-998b-c522c43d3668", "PrintImmediately"},
     {"0f8d6d98-2f8b-405a-b8b3-0538e9d95da5", "Create"},

@@ -302,6 +302,10 @@ struct FormItem
     // свойства заданы, и по 45 таблицам без них.
     int changeRowSet = -1;
     int changeRowOrder = -1;
+    // Команды, исключённые из командной панели таблицы (ExcludedCommands):
+    // в записи таблицы это список [количество, GUID, …] стандартных команд
+    // элемента. Платформа пишет его в Form.xml отсортированным по имени.
+    QStringList excludedCommands;
     int autoRefresh = -1;                // AutoRefresh
     int autoRefreshPeriod = -1;          // AutoRefreshPeriod
     QString period;                      // Period («Custom, начало, конец»)
