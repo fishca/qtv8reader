@@ -123,6 +123,47 @@ QString standardPictureName(int code)
     return QString();
 }
 
+// Спецификация шрифта в модели рендерера. Ссылка на стиль записана именем
+// («style:ЗаголовкиСтрокШрифт»), явно заданные атрибуты — значениями, а
+// незаданные — null: тогда рендерер берёт их из стиля, как и для Form.xml.
+QJsonObject fontSpec(const FormFont &font)
+{
+    auto attribute = [](int value) {
+        if (value < 0)
+            return QJsonValue(QJsonValue::Null);
+        return QJsonValue(value != 0);
+    };
+    QJsonObject spec;
+    spec.insert(QStringLiteral("kind"), QStringLiteral("StyleItem"));
+    spec.insert(QStringLiteral("ref"), font.reference);
+    spec.insert(QStringLiteral("faceName"), QString());
+    spec.insert(QStringLiteral("height"), font.height);
+    spec.insert(QStringLiteral("scale"), font.scale);
+    spec.insert(QStringLiteral("bold"), attribute(font.bold));
+    spec.insert(QStringLiteral("italic"), attribute(font.italic));
+    spec.insert(QStringLiteral("underline"), attribute(font.underline));
+    spec.insert(QStringLiteral("strikeout"), attribute(font.strikeout));
+    return spec;
+}
+
+// Оформление элемента: цвета и шрифты. Значения — те же строки, что пишет
+// Form.xml: «style:Имя» (стиль конфигурации или платформы) либо «#RRGGBB».
+void addStyleProperties(const FormItem &item, QJsonObject *properties)
+{
+    if (!item.textColor.isEmpty())
+        properties->insert(QStringLiteral("TextColor"), item.textColor);
+    if (!item.titleTextColor.isEmpty())
+        properties->insert(QStringLiteral("TitleTextColor"), item.titleTextColor);
+    if (!item.backColor.isEmpty())
+        properties->insert(QStringLiteral("BackColor"), item.backColor);
+    if (!item.borderColor.isEmpty())
+        properties->insert(QStringLiteral("BorderColor"), item.borderColor);
+    if (!item.font.isEmpty())
+        properties->insert(QStringLiteral("FontSpec"), fontSpec(item.font));
+    if (!item.titleFont.isEmpty())
+        properties->insert(QStringLiteral("TitleFontSpec"), fontSpec(item.titleFont));
+}
+
 // Элемент, который имеет смысл отдавать рендереру.
 bool isRenderable(const FormItem &item)
 {
@@ -448,6 +489,7 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
     if (!item.onCommandBar)
         properties.insert(QStringLiteral("LocationInCommandBar"),
                           QStringLiteral("InAdditionalSubmenu"));
+    addStyleProperties(item, &properties);
 
     QJsonObject json;
     json.insert(QStringLiteral("tag"), QStringLiteral("Button"));
@@ -530,6 +572,8 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
             properties.insert(QStringLiteral("ChoiceListItems"), choiceItems);
     }
 
+    addStyleProperties(item, &properties);
+
     QJsonObject json;
     json.insert(QStringLiteral("tag"), elementTag(item));
     json.insert(QStringLiteral("name"), item.name);
@@ -609,6 +653,8 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("Visible"), boolText(false));
     }
 
+    addStyleProperties(item, &properties);
+
     QJsonObject json;
     json.insert(QStringLiteral("tag"), tag);
     json.insert(QStringLiteral("name"), item.name);
@@ -636,6 +682,8 @@ QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
         properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
+
+    addStyleProperties(item, &properties);
 
     QJsonArray children;
     for (const FormItem &child : item.children) {
@@ -739,6 +787,8 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     if (mainList)
         properties.insert(QStringLiteral("CommandBarLocation"), QStringLiteral("None"));
 
+    addStyleProperties(item, &properties);
+
     QJsonObject json;
     json.insert(QStringLiteral("tag"), QStringLiteral("Table"));
     json.insert(QStringLiteral("name"), item.name);
@@ -815,6 +865,7 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         const QString picture = standardPictureName(item.pictureStandardCode);
         if (isPictureDecoration(item) && !picture.isEmpty())
             properties.insert(QStringLiteral("Picture"), picture);
+        addStyleProperties(item, &properties);
         QJsonObject json;
         json.insert(QStringLiteral("tag"),
                     isPictureDecoration(item) ? QStringLiteral("PictureDecoration")
@@ -1349,7 +1400,14 @@ QByteArray formWebModelJson(const FormDocument &document)
                  QStringLiteral("TaxiEnableVersion8_2"));
     model.insert(QStringLiteral("objectMeta"), buildObjectMeta(document));
     model.insert(QStringLiteral("refMeta"), QJsonObject());
-    model.insert(QStringLiteral("styleItems"), QJsonObject());
+    // Таблица стилей-цветов формы: имя стиля -> абсолютный цвет. Рендерер
+    // сам разбирает ссылки «style:Имя» у элементов, но цвет берёт отсюда.
+    QJsonObject styleItems;
+    for (auto it = document.styleItems.constBegin();
+         it != document.styleItems.constEnd(); ++it) {
+        styleItems.insert(it.key(), it.value());
+    }
+    model.insert(QStringLiteral("styleItems"), styleItems);
     model.insert(QStringLiteral("events"), QJsonArray());
 
     return QJsonDocument(model).toJson(QJsonDocument::Compact);

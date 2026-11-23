@@ -9,6 +9,7 @@
 namespace v8reader {
 
 class FormBindingResolver;
+class FormStyleTable;
 
 class FormReader
 {
@@ -18,12 +19,16 @@ public:
 
     // resolver (необязательный) расшифровывает пути к данным по метаданным
     // объекта: заголовки, типы и ширины полей.
+    // styles (необязательный) переводит ссылки на стили оформления из GUID-ов
+    // и кодов платформы в имена, как их пишет Form.xml.
     static bool parseBytes(const QByteArray &data, FormDocument *document,
                            QString *error = nullptr,
-                           const FormBindingResolver *resolver = nullptr);
+                           const FormBindingResolver *resolver = nullptr,
+                           const FormStyleTable *styles = nullptr);
     static bool parseFile(const QString &path, FormDocument *document,
                           QString *error = nullptr,
-                          const FormBindingResolver *resolver = nullptr);
+                          const FormBindingResolver *resolver = nullptr,
+                          const FormStyleTable *styles = nullptr);
 
     // Отладочное представление узлов формы (JSON): для каждого элемента —
     // код типа, имя и «слоты» — дочерние узлы в том порядке, в котором они

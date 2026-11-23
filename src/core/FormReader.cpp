@@ -1,6 +1,7 @@
 #include "core/FormReader.h"
 
 #include "core/FormBindings.h"
+#include "core/FormStyles.h"
 #include "core/V8Text.h"
 
 #include <QFile>
@@ -629,6 +630,300 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex, FormItem *item)
         item->pictureStandardCode = static_cast<int>(code->toInteger());
 }
 
+// Цвет из записи формата. Запись начинается кодом 3, затем идёт вид значения:
+//   0 — абсолютный цвет числом (0x00BBGGRR, как COLORREF Windows);
+//   2 — web-цвет номером известного цвета (48 — Gainsboro);
+//   3 — ссылка на стиль: {0, GUID} у общего стиля конфигурации, {код} у стиля
+//       платформы (отрицательное число);
+//   4 — значение не задано (по умолчанию).
+// Сверено с Form.xml по корпусу: абсолютные цвета — #0000FF у надписи
+// «ПозицииМННГиперСсылка» (число 16711680 = 0xFF0000), #999999 — у поля
+// картинки; стили конфигурации — 40 элементов, стили платформы — BorderColor,
+// FormBackColor, ToolTipBackColor, TableHeaderBackColor и AccentColor.
+QString colorFromRecord(const V8TextNode &record, const FormStyleTable *styles)
+{
+    if (!record.isList() || record.children.size() < 2)
+        return QString();
+    const V8TextNode *tag = record.child(0);
+    if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("3"))
+        return QString();
+    const V8TextNode *mode = record.child(1);
+    if (!mode || !mode->isScalar())
+        return QString();
+    const QString modeText = mode->scalar().trimmed();
+
+    if (modeText == QLatin1String("0") || modeText == QLatin1String("2")) {
+        const V8TextNode *payload = record.child(2);
+        const V8TextNode *value = payload && payload->isList() ? payload->child(0) : nullptr;
+        if (!value || !value->isInteger())
+            return QString();
+        if (modeText == QLatin1String("2")) {
+            const QString name = FormStyleTable::webColorName(
+                static_cast<int>(value->toInteger()));
+            return name.isEmpty() ? QString() : QStringLiteral("web:") + name;
+        }
+        const qint64 color = value->toInteger();
+        if (color <= 0)
+            return QString();
+        const int red = static_cast<int>(color & 0xFF);
+        const int green = static_cast<int>((color >> 8) & 0xFF);
+        const int blue = static_cast<int>((color >> 16) & 0xFF);
+        return QStringLiteral("#%1%2%3")
+            .arg(red, 2, 16, QLatin1Char('0'))
+            .arg(green, 2, 16, QLatin1Char('0'))
+            .arg(blue, 2, 16, QLatin1Char('0'))
+            .toUpper();
+    }
+    if (modeText != QLatin1String("3"))
+        return QString();
+
+    const V8TextNode *payload = record.child(2);
+    if (!payload || !payload->isList())
+        return QString();
+    if (payload->children.size() >= 2) {
+        const V8TextNode *guid = payload->child(1);
+        if (guid && guid->isGuid())
+            return styles ? styles->reference(guid->normalizedGuid()) : QString();
+        return QString();
+    }
+    const V8TextNode *code = payload->child(0);
+    if (code && code->isInteger()) {
+        const QString name = FormStyleTable::platformStyleName(
+            static_cast<int>(code->toInteger()));
+        if (!name.isEmpty())
+            return QStringLiteral("style:") + name;
+    }
+    return QString();
+}
+
+// Шрифт из записи формата. Запись начинается кодом 7, вторым элементом идёт
+// версия (всегда 2), третьим — маска заданных атрибутов, четвёртым — ссылка
+// на стиль: {0, GUID} — общий стиль шрифта конфигурации, {код} — стиль
+// платформы. Дальше идут только отмеченные маской значения: высота в десятых
+// долях пункта (2), вес шрифта 400/700 (4), курсив (8), подчёркивание (16),
+// зачёркивание (32), служебная единица, масштаб в процентах (512).
+// Сверено с Form.xml: запись {7,2,60,…} — «жирный» 700 при выключенных
+// остальных; {7,2,572,…} — явные bold/italic/underline/strikeout и масштаб
+// 100; {7,2,2,…,160,…} — высота 16; {7,2,512,…,90} — масштаб 90.
+FormFont fontFromRecord(const V8TextNode &record, const FormStyleTable *styles)
+{
+    FormFont font;
+    if (!record.isList() || record.children.size() < 4)
+        return font;
+    const V8TextNode *tag = record.child(0);
+    if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("7"))
+        return font;
+    const V8TextNode *flagsNode = record.child(2);
+    const int flags = flagsNode && flagsNode->isInteger()
+        ? static_cast<int>(flagsNode->toInteger()) : 0;
+    const V8TextNode *payload = record.child(3);
+    if (!payload || !payload->isList())
+        return font;
+    if (payload->children.size() >= 2) {
+        const V8TextNode *guid = payload->child(1);
+        if (!guid || !guid->isGuid() || !styles)
+            return font;
+        font.reference = styles->reference(guid->normalizedGuid());
+    } else {
+        const V8TextNode *code = payload->child(0);
+        if (!code || !code->isInteger())
+            return font;
+        const QString name = FormStyleTable::platformStyleName(
+            static_cast<int>(code->toInteger()));
+        if (name.isEmpty())
+            return font;
+        font.reference = QStringLiteral("style:") + name;
+    }
+
+    int pos = 4;
+    auto value = [&record, &pos](int *out) {
+        const V8TextNode *node = record.child(pos);
+        ++pos;
+        if (node && node->isInteger())
+            *out = static_cast<int>(node->toInteger());
+    };
+    if (flags & 2) {
+        int tenths = 0;
+        value(&tenths);
+        font.height = tenths / 10;
+    }
+    if (flags & 60) {
+        // Вес шрифта: 700 — жирный, 400 — обычный.
+        int weight = 0;
+        value(&weight);
+        font.bold = weight >= 700 ? 1 : 0;
+        value(&font.italic);
+        value(&font.underline);
+        value(&font.strikeout);
+    }
+    // Служебная единица перед масштабом.
+    ++pos;
+    if (flags & 512) {
+        int scale = 0;
+        value(&scale);
+        font.scale = scale;
+    }
+    return font;
+}
+
+QString colorAt(const V8TextNode &node, int index, const FormStyleTable *styles)
+{
+    const V8TextNode *child = node.child(index);
+    return child ? colorFromRecord(*child, styles) : QString();
+}
+
+FormFont fontAt(const V8TextNode &node, int index, const FormStyleTable *styles)
+{
+    const V8TextNode *child = node.child(index);
+    return child ? fontFromRecord(*child, styles) : FormFont();
+}
+
+// Запись макета поля: список, первый элемент которого — код раскладки
+// (36 — поле ввода, 11 — надпись и флажок, 10 — поле-картинка, 6 — календарь).
+// Ссылка на сам элемент тоже начинается с числа ({id, GUID}), поэтому запись
+// макета отличается ещё и длиной: у неё не меньше восьми полей.
+const V8TextNode *findFieldLayout(const V8TextNode &node, QString *code)
+{
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList() || child.children.size() < 8)
+            continue;
+        const V8TextNode *first = child.child(0);
+        if (!first || !first->isScalar())
+            continue;
+        const QString value = first->scalar().trimmed();
+        if (value == QLatin1String("36") || value == QLatin1String("11")
+            || value == QLatin1String("10") || value == QLatin1String("6")) {
+            if (code)
+                *code = value;
+            return &child;
+        }
+    }
+    return nullptr;
+}
+
+// Оформление поля. В записи макета три цвета (текст, фон, рамка) и шрифт:
+//   36: 37 — TextColor, 38 — BackColor, 39 — BorderColor, 40 — Font;
+//   11 и 6: 8 — TextColor, 9 — BackColor, 10 — Font;
+//   10 (поле-картинка): 10 — TextColor, 11 — BackColor, 12 — Font.
+// Цвет заголовка и шрифт заголовка записаны не в макете, а в записи элемента
+// через 25 и 26 полей после имени.
+// Сверено с Form.xml: поле ввода с фоном «ФонУправляющегоПоля» (справочник
+// «Виды контактной информации»), поле-картинка с цветом #999999 и шрифтом,
+// надпись с фоном и цветом заголовка («Организации»), поля «Авансового
+// отчёта» с цветом и шрифтом.
+void readFieldStyles(const V8TextNode &node, int nameIndex,
+                     const FormStyleTable *styles, FormItem *item)
+{
+    if (!styles || styles->isEmpty())
+        return;
+    QString code;
+    if (const V8TextNode *layout = findFieldLayout(node, &code)) {
+        if (code == QLatin1String("36")) {
+            item->textColor = colorAt(*layout, 37, styles);
+            item->backColor = colorAt(*layout, 38, styles);
+            item->borderColor = colorAt(*layout, 39, styles);
+            item->font = fontAt(*layout, 40, styles);
+        } else if (code == QLatin1String("11") || code == QLatin1String("6")) {
+            item->textColor = colorAt(*layout, 8, styles);
+            item->backColor = colorAt(*layout, 9, styles);
+            item->font = fontAt(*layout, 10, styles);
+        } else if (code == QLatin1String("10")) {
+            item->textColor = colorAt(*layout, 10, styles);
+            item->backColor = colorAt(*layout, 11, styles);
+            item->font = fontAt(*layout, 12, styles);
+        }
+    }
+    if (nameIndex >= 0) {
+        item->titleTextColor = colorAt(node, nameIndex + 25, styles);
+        item->titleFont = fontAt(node, nameIndex + 26, styles);
+    }
+}
+
+// Оформление группы: фон лежит в узле макета девятым полем, цвет и шрифт
+// заголовка — через 10 и 11 полей после имени. Сверено с Form.xml: группы
+// «Авансового отчёта» с фоном баннера, «Новостей» с цветом и шрифтом
+// заголовка.
+void readGroupStyles(const V8TextNode &node, int nameIndex,
+                     const FormStyleTable *styles, FormItem *item)
+{
+    if (!styles || styles->isEmpty())
+        return;
+    if (const V8TextNode *layout = findLayoutNode(node))
+        item->backColor = colorAt(*layout, 9, styles);
+    if (nameIndex >= 0) {
+        item->titleTextColor = colorAt(node, nameIndex + 10, styles);
+        item->titleFont = fontAt(node, nameIndex + 11, styles);
+    }
+}
+
+// Оформление декорации: цвет текста и шрифт — через 8 и 9 полей после имени.
+// Сверено с Form.xml по декорациям «Новостей» (цвет «ЦветИнформацияОшибочна»,
+// шрифт «ШрифтМикротекста») и «Перехода РВБ».
+void readDecorationStyles(const V8TextNode &node, int nameIndex,
+                          const FormStyleTable *styles, FormItem *item)
+{
+    if (!styles || styles->isEmpty() || nameIndex < 0)
+        return;
+    item->textColor = colorAt(node, nameIndex + 8, styles);
+    item->font = fontAt(node, nameIndex + 9, styles);
+}
+
+// Оформление кнопки: шрифт лежит в записи оформления {7, …} среди полей
+// кнопки. Сверено с Form.xml по кнопке «Оставить отзыв о классификации
+// выручки по ОКВЭД»: стиль SmallTextFont (в форме записан кодом −30).
+void readButtonStyles(const V8TextNode &node, const FormStyleTable *styles,
+                      FormItem *item)
+{
+    if (!styles || styles->isEmpty())
+        return;
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList() || child.children.size() < 4)
+            continue;
+        const V8TextNode *tag = child.child(0);
+        if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("7"))
+            continue;
+        const FormFont font = fontFromRecord(child, styles);
+        if (!font.isEmpty()) {
+            item->font = font;
+            return;
+        }
+    }
+}
+
+// Оформление таблицы: запись формата {4, …} открывает блок из трёх цветов
+// (текст, фон, рамка), шрифта, цвета и шрифта заголовка — всего шесть полей
+// после неё. Сверено с Form.xml: таблица «Задачи исполнителя» (рамка
+// BorderColor), таблицы «Перехода РВБ» (цвет и шрифт заголовка).
+void readTableStyles(const V8TextNode &node, const FormStyleTable *styles,
+                     FormItem *item)
+{
+    if (!styles || styles->isEmpty())
+        return;
+    for (int i = 0; i + 1 < node.children.size(); ++i) {
+        const V8TextNode *base = node.child(i);
+        if (!base || !base->isList() || base->children.size() < 8)
+            continue;
+        const V8TextNode *tag = base->child(0);
+        if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("4"))
+            continue;
+        const V8TextNode *next = node.child(i + 1);
+        if (!next || !next->isList() || next->children.isEmpty())
+            continue;
+        const V8TextNode *nextTag = next->child(0);
+        if (!nextTag || !nextTag->isScalar()
+            || nextTag->scalar().trimmed() != QLatin1String("3")) {
+            continue;
+        }
+        item->textColor = colorAt(node, i + 1, styles);
+        item->backColor = colorAt(node, i + 2, styles);
+        item->borderColor = colorAt(node, i + 3, styles);
+        item->font = fontAt(node, i + 4, styles);
+        item->titleTextColor = colorAt(node, i + 5, styles);
+        item->titleFont = fontAt(node, i + 6, styles);
+        return;
+    }
+}
+
 // Смещение признака видимости от расширенной подсказки в «хвосте» записи
 // элемента. Перед подсказкой идут служебные поля, и их число зависит от вида
 // элемента: у группы — три, у декорации — пять, у кнопки — шесть. Значения
@@ -647,7 +942,32 @@ int visibleOffsetFromTooltip(int typeCode)
     }
 }
 
-FormItem parseItem(const V8TextNode &node)
+// Значения стилей-цветов, на которые ссылается форма: рендерер получает их
+// таблицей styleItems (имя стиля -> «#RRGGBB»), иначе по одной ссылке
+// «style:Имя» цвет не восстановить.
+void collectStyleItems(const QVector<FormItem> &items,
+                       const FormStyleTable *styles,
+                       QHash<QString, QString> *target)
+{
+    if (!styles)
+        return;
+    for (const FormItem &item : items) {
+        const QString *values[] = {&item.textColor, &item.titleTextColor,
+                                   &item.backColor, &item.borderColor,
+                                   &item.font.reference, &item.titleFont.reference};
+        for (const QString *value : values) {
+            if (!value->startsWith(QStringLiteral("style:")))
+                continue;
+            const QString name = value->mid(6);
+            const QString color = styles->colorValue(name);
+            if (!color.isEmpty() && !target->contains(name))
+                target->insert(name, color);
+        }
+        collectStyleItems(item.children, styles, target);
+    }
+}
+
+FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles)
 {
     FormItem item;
     item.typeCode = static_cast<int>(node.child(0)->toInteger());
@@ -832,9 +1152,32 @@ FormItem parseItem(const V8TextNode &node)
         }
     }
 
+    // Оформление: цвета и шрифты элемента. Ссылки на стили записаны GUID-ами
+    // и отрицательными кодами платформы; таблица стилей конфигурации переводит
+    // первые в имена, вторые — по постоянной таблице платформы.
+    switch (item.type) {
+    case FormItem::Type::Field:
+        readFieldStyles(node, nameIndex, styles, &item);
+        break;
+    case FormItem::Type::Group:
+        readGroupStyles(node, nameIndex, styles, &item);
+        break;
+    case FormItem::Type::Decoration:
+        readDecorationStyles(node, nameIndex, styles, &item);
+        break;
+    case FormItem::Type::Table:
+        readTableStyles(node, styles, &item);
+        break;
+    case FormItem::Type::Button:
+        readButtonStyles(node, styles, &item);
+        break;
+    default:
+        break;
+    }
+
     for (const V8TextNode &child : node.children) {
         if (isItemNode(child))
-            item.children.append(parseItem(child));
+            item.children.append(parseItem(child, styles));
     }
     return item;
 }
@@ -863,7 +1206,8 @@ bool FormReader::looksLikeForm(const QByteArray &data)
 }
 
 bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
-                            QString *error, const FormBindingResolver *resolver)
+                            QString *error, const FormBindingResolver *resolver,
+                            const FormStyleTable *styles)
 {
     if (!document) {
         if (error)
@@ -910,7 +1254,7 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
     // Элементы формы — прямые дочерние элементы заголовка формы.
     for (const V8TextNode &child : header->children) {
         if (isItemNode(child))
-            document->items.append(parseItem(child));
+            document->items.append(parseItem(child, styles));
     }
     // На случай нестандартной вложенности: ищем список, состоящий из элементов.
     if (document->items.isEmpty()) {
@@ -925,7 +1269,7 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             if (itemCount > 0) {
                 for (const V8TextNode &nested : child.children) {
                     if (isItemNode(nested))
-                        document->items.append(parseItem(nested));
+                        document->items.append(parseItem(nested, styles));
                 }
                 break;
             }
@@ -976,13 +1320,15 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             *error = QStringLiteral("Форма не содержит элементов.");
         return false;
     }
+    collectStyleItems(document->items, styles, &document->styleItems);
     if (resolver && !resolver->isEmpty())
         resolver->applyToDocument(document);
     return true;
 }
 
 bool FormReader::parseFile(const QString &path, FormDocument *document,
-                           QString *error, const FormBindingResolver *resolver)
+                           QString *error, const FormBindingResolver *resolver,
+                           const FormStyleTable *styles)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -991,7 +1337,7 @@ bool FormReader::parseFile(const QString &path, FormDocument *document,
                          .arg(QFileInfo(path).fileName(), file.errorString());
         return false;
     }
-    return parseBytes(file.readAll(), document, error, resolver);
+    return parseBytes(file.readAll(), document, error, resolver, styles);
 }
 
 namespace {

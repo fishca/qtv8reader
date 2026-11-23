@@ -59,6 +59,8 @@ add_library(qtv8reader_core STATIC
     src/core/FormBindings.cpp
     src/core/FormReader.h
     src/core/FormReader.cpp
+    src/core/FormStyles.h
+    src/core/FormStyles.cpp
 )
 
 target_include_directories(qtv8reader_core PUBLIC src)

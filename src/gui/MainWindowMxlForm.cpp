@@ -9,6 +9,7 @@
 #include "core/FormBindings.h"
 #include "core/FormOwner.h"
 #include "core/FormReader.h"
+#include "core/FormStyles.h"
 #include "core/FormWebModel.h"
 #include "core/MxlReader.h"
 #include "core/V8Text.h"
@@ -133,8 +134,12 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
     FormBindingResolver resolver;
     if (m_currentObject)
         resolver.addObject(*m_currentObject);
+    FormStyleTable styles;
+    if (m_reader)
+        styles.loadFromConfiguration(m_reader->configuration(), m_reader->container());
     if (!FormReader::parseBytes(payload, &document, &error,
-                                resolver.isEmpty() ? nullptr : &resolver)) {
+                                resolver.isEmpty() ? nullptr : &resolver,
+                                &styles)) {
         m_formView->setMessage(
             QStringLiteral("Не удалось разобрать форму «%1»: %2")
                 .arg(entry.displayName(), error));

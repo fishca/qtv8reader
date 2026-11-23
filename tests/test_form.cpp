@@ -3,6 +3,7 @@
 #include "core/FormDocument.h"
 #include "core/FormOwner.h"
 #include "core/FormReader.h"
+#include "core/FormStyles.h"
 #include "core/FormWebModel.h"
 #include "core/V8Text.h"
 #include "core/V8Container.h"
@@ -116,6 +117,7 @@ private slots:
     void fieldKindsFromForm();
     void decorationKindsAndHyperlinks();
     void commandBarGroupKinds();
+    void styleReferences();
 };
 
 void TestForm::parseSynthetic()
@@ -1252,6 +1254,153 @@ void TestForm::commandBarGroupKinds()
         }
     }
     QVERIFY(sawSearchAddition);
+}
+
+// Стили оформления: в форме они записаны GUID-ами общих стилей конфигурации и
+// отрицательными кодами стилей платформы, а Form.xml и рендерер ждут имя
+// «style:Имя». Проверяем фон группы-баннера (стиль конфигурации), цвет и шрифт
+// поля (стили конфигурации), рамку поля (стиль платформы BorderColor).
+void TestForm::styleReferences()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+    FormStyleTable styles;
+    styles.loadFromConfiguration(reader.configuration(), reader.container());
+    QVERIFY(!styles.isEmpty());
+    // GUID общего стиля «ПоясняющийТекст» из списка «Элементы стиля».
+    QCOMPARE(styles.reference(QStringLiteral("ad87bd29-0ad1-4da4-ac62-38e714e0cb9f")),
+             QStringLiteral("style:ПоясняющийТекст"));
+    // Коды стилей платформы из записи цвета.
+    QCOMPARE(FormStyleTable::platformStyleName(-1), QStringLiteral("FormBackColor"));
+    QCOMPARE(FormStyleTable::platformStyleName(-22), QStringLiteral("BorderColor"));
+    // Значение стиля-цвета лежит в данных стиля отдельным элементом контейнера.
+    QCOMPARE(styles.colorValue(QStringLiteral("ЦветБаннераБежевый")),
+             QStringLiteral("#FCEB9F"));
+    // Web-цвета записаны в контейнере номером, а Form.xml — именем.
+    QCOMPARE(FormStyleTable::webColorName(48), QStringLiteral("Gainsboro"));
+    QCOMPARE(styles.colorValue(QStringLiteral("ИтогиФонГруппы")),
+             QStringLiteral("web:Gainsboro"));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("АвансовыйОтчет"),
+                                       Qt::CaseInsensitive) == 0) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаДокумента")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error, nullptr, &styles),
+             qPrintable(error));
+
+    // Группа-баннер: фон записан GUID-ом стиля «ЦветБаннераБежевый».
+    const FormItem *banner = findItemByName(document.items,
+                                            QStringLiteral("ГруппаБаннерПодключенАппаратныйСканер"));
+    QVERIFY(banner);
+    QCOMPARE(banner->backColor, QStringLiteral("style:ЦветБаннераБежевый"));
+
+    // Поле с цветом и шрифтом из стилей конфигурации.
+    const FormItem *field = findItemByName(document.items, QStringLiteral("ОплатаПоставщикамНадписьКурс"));
+    QVERIFY(field);
+    QCOMPARE(field->textColor, QStringLiteral("style:ЗаголовкиСтрокЦветТекста"));
+    QCOMPARE(field->font.reference, QStringLiteral("style:ЗаголовкиСтрокШрифт"));
+
+    // Без таблицы стилей ссылки не разрешаются: свойства остаются пустыми.
+    FormDocument plain;
+    QVERIFY2(FormReader::parseBytes(payload, &plain, &error), qPrintable(error));
+    const FormItem *plainBanner = findItemByName(plain.items,
+                                                 QStringLiteral("ГруппаБаннерПодключенАппаратныйСканер"));
+    QVERIFY(plainBanner);
+    QVERIFY(plainBanner->backColor.isEmpty());
+
+    // В модели рендерера цвета — строками, шрифт — объектом FontSpec.
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray root = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject bannerNode =
+        findModelNode(root, QStringLiteral("ГруппаБаннерПодключенАппаратныйСканер"));
+    QVERIFY(!bannerNode.isEmpty());
+    QCOMPARE(bannerNode.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("BackColor")).toString(),
+             QStringLiteral("style:ЦветБаннераБежевый"));
+    // Рендерер получает таблицу значений стилей: без неё цвет не нарисовать.
+    QCOMPARE(model.value(QStringLiteral("styleItems")).toObject()
+                 .value(QStringLiteral("ЦветБаннераБежевый")).toString(),
+             QStringLiteral("#FCEB9F"));
+    const QJsonObject fieldNode =
+        findModelNode(root, QStringLiteral("ОплатаПоставщикамНадписьКурс"));
+    QVERIFY(!fieldNode.isEmpty());
+    const QJsonObject fieldProperties = fieldNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(fieldProperties.value(QStringLiteral("TextColor")).toString(),
+             QStringLiteral("style:ЗаголовкиСтрокЦветТекста"));
+    const QJsonObject font =
+        fieldProperties.value(QStringLiteral("FontSpec")).toObject();
+    QCOMPARE(font.value(QStringLiteral("kind")).toString(), QStringLiteral("StyleItem"));
+    QCOMPARE(font.value(QStringLiteral("ref")).toString(),
+             QStringLiteral("style:ЗаголовкиСтрокШрифт"));
+
+    // Рамка поля — стиль платформы BorderColor (в форме записан кодом −22).
+    MetadataObject *tasks = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("ЗадачаИсполнителя"),
+                                       Qt::CaseInsensitive) == 0) {
+                tasks = &candidate;
+                break;
+            }
+        }
+        if (tasks)
+            break;
+    }
+    QVERIFY(tasks);
+    reader.loadSections(*tasks);
+    const MetadataSection *taskForms = tasks->section(MetadataSectionKind::Forms);
+    QVERIFY(taskForms);
+    const MetadataEntry *listForm = nullptr;
+    for (const MetadataEntry &entry : taskForms->entries) {
+        if (entry.name == QStringLiteral("ФормаСписка")) {
+            listForm = &entry;
+            break;
+        }
+    }
+    QVERIFY(listForm);
+    const V8Element *listElement =
+        reader.container().find(listForm->guid + QStringLiteral(".0"));
+    QVERIFY(listElement);
+    QVERIFY2(reader.container().elementPayload(*listElement, &payload, nullptr, &error),
+             qPrintable(error));
+    FormDocument list;
+    QVERIFY2(FormReader::parseBytes(payload, &list, &error, nullptr, &styles),
+             qPrintable(error));
+    const FormItem *nameField = findItemById(list.items, 6);
+    QVERIFY(nameField);
+    QCOMPARE(nameField->borderColor, QStringLiteral("style:BorderColor"));
 }
 
 } // namespace
