@@ -20,6 +20,7 @@ private slots:
     void decodeUtf16Le();
     void decodeUtf16Be();
     void decodeWindows1251();
+    void decodeBinaryFallback();
     void parseSimpleTree();
     void parseQuotedStrings();
     void parseEmptyList();
@@ -79,6 +80,24 @@ void TestV8Text::decodeWindows1251()
     QCOMPARE(result, QStringLiteral("Привет"));
     QCOMPARE(encoding, QStringLiteral("Windows-1251"));
     QVERIFY(error.isEmpty());
+
+    // "Ёжик №5 — «тест»": кириллица, знак номера, длинное тире и кавычки-ёлочки.
+    const QByteArray extended = QByteArray::fromHex("a8e6e8ea20b935209720abf2e5f1f2bb");
+    QString extendedEncoding;
+    const QString extendedText = V8Text::decode(extended, &extendedEncoding, nullptr);
+    QCOMPARE(extendedText, QStringLiteral("Ёжик №5 — «тест»"));
+    QCOMPARE(extendedEncoding, QStringLiteral("Windows-1251"));
+}
+
+void TestV8Text::decodeBinaryFallback()
+{
+    // Двоичные данные (NUL и управляющие байты) не должны выдаваться за cp1251.
+    const QByteArray binary = QByteArray::fromHex("7f00010203c3ff");
+    QString encoding;
+    QString error;
+    V8Text::decode(binary, &encoding, &error);
+    QCOMPARE(encoding, QStringLiteral("System"));
+    QVERIFY(!error.isEmpty());
 }
 
 void TestV8Text::parseSimpleTree()
