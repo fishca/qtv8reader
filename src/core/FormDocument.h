@@ -208,6 +208,30 @@ struct FormItem
     int fixingInTable = -1;         // 0 — None, 1 — Left, 2 — Right
     int toolTipRepresentation = -1; // 3 — Button, 5 — ShowTop, 7 — ShowBottom
     QString inputHint;              // текст-подсказка ввода (InputHint)
+    // Свойства поля из записи макета ({36,…} у поля ввода, {10,…} у
+    // поля-картинки). Платформа пишет их в Form.xml только при отличии от
+    // значения по умолчанию, поэтому у признаков хранится значение формы
+    // (−1 — не задано), а умолчания стоят в инициализаторах. Сверено с
+    // Form.xml по 326 полям ввода и 56 полям-картинкам корпуса.
+    bool autoMaxWidth = true;      // AutoMaxWidth (по умолчанию true)
+    bool autoMaxHeight = true;     // AutoMaxHeight (по умолчанию true)
+    int maxWidth = 0;              // MaxWidth (0 — не задана)
+    bool wrap = true;              // Wrap (по умолчанию true)
+    int choiceButton = -1;         // 0 — false, 1 — true, 2 — по умолчанию
+    int clearButton = -1;          // то же
+    int spinButton = -1;           // то же
+    int openButton = -1;           // то же
+    int dropListButton = -1;       // то же
+    int choiceListButton = -1;     // то же
+    bool chooseType = true;        // ChooseType (по умолчанию true)
+    bool textEdit = true;          // TextEdit (по умолчанию true)
+    bool listChoiceMode = false;   // ListChoiceMode
+    int autoMarkIncomplete = -1;   // AutoMarkIncomplete (2 — по умолчанию)
+    int autoChoiceIncomplete = -1; // AutoChoiceIncomplete (2 — по умолчанию)
+    int choiceHistoryOnInput = -1; // 0 — Auto, 1 — DontUse
+    int choiceButtonRepresentation = -1; // 0 — по умолчанию, 2/3 — явно
+    int choiceFoldersAndItems = -1; // 0 — Items, 1 — Folders, 2 — FoldersAndItems
+    int fileDragMode = -1;         // поле-картинка: 0 — AsFile, 1 — UseAsFile
     // Таблица: настройки, которые платформа пишет в Form.xml только для
     // отличающегося значения. Сверено с Form.xml по 48 таблицам корпуса.
     bool useAlternationRowColor = false; // UseAlternationRowColor
@@ -218,6 +242,31 @@ struct FormItem
     // Положение заголовка таблицы: 0 — None (по умолчанию, в XML не пишется),
     // 1 — Auto, 2 — Left, 3 — Top, 4 — Right; −1 — не задано.
     int tableTitleLocation = -1;
+    // Заголовок таблицы (Header) и настройки динамического списка. Настройки
+    // лежат в записи таблицы блоком «количество, код, значение, …»; в XML они
+    // пишутся только у таблиц, связанных с динамическим списком. Сверено с
+    // Form.xml по 87 таблицам динамических списков и 76 обычным таблицам.
+    bool tableHeader = true;             // Header (по умолчанию true)
+    int autoRefresh = -1;                // AutoRefresh
+    int autoRefreshPeriod = -1;          // AutoRefreshPeriod
+    QString period;                      // Period («Custom, начало, конец»)
+    int tableChoiceFolders = -1;         // ChoiceFoldersAndItems
+    int restoreCurrentRow = -1;          // RestoreCurrentRow
+    int showRoot = -1;                   // ShowRoot
+    int allowRootChoice = -1;            // AllowRootChoice
+    bool hasRowFilter = false;           // RowFilter (пустая структура отбора)
+    int updateOnDataChange = -1;         // UpdateOnDataChange: 0 — Auto
+    bool hasTopLevelParent = false;      // TopLevelParent (строка, обычно пустая)
+    QString topLevelParent;
+    // Кнопка: вид (Type), отображение (Representation), пропуск при вводе и
+    // выравнивание в группе. −1 — в форме не задано.
+    int buttonType = -1;                 // 0 — CommandBarButton, 1 — UsualButton, 2 — Hyperlink
+    int buttonRepresentation = -1;       // 0 — Text, 1 — Picture, 2 — PictureAndText, 3 — Auto
+    int buttonGroupHorizontalAlign = -1; // 3 — Auto (по умолчанию)
+    int buttonGroupVerticalAlign = -1;   // 3 — Auto (по умолчанию)
+    int displayImportance = -1;          // 3 — Usual
+    // Декорация-картинка: размер (1 — Stretch, 2 — Proportionally).
+    int pictureSize = -1;
     // Оформление элемента. Ссылка на общий стиль конфигурации записана в форме
     // GUID-ом, на стиль платформы — отрицательным кодом, абсолютный цвет —
     // числом RGB. После разбора значения хранятся так же, как их пишет

@@ -520,7 +520,46 @@ QString buttonTitle(const FormItem &item)
 QJsonObject makeButton(const FormItem &item, const FormDocument &document)
 {
     QJsonObject properties;
-    properties.insert(QStringLiteral("Type"), QStringLiteral("CommandBarButton"));
+    // Вид кнопки: 0 — CommandBarButton (по умолчанию), 1 — UsualButton,
+    // 2 — Hyperlink. Сверено с Form.xml по 294 кнопкам корпуса.
+    QString buttonType = QStringLiteral("CommandBarButton");
+    if (item.buttonType == 1)
+        buttonType = QStringLiteral("UsualButton");
+    else if (item.buttonType == 2)
+        buttonType = QStringLiteral("Hyperlink");
+    properties.insert(QStringLiteral("Type"), buttonType);
+    // Отображение: 0 — Text, 1 — Picture, 2 — PictureAndText; 3 — Auto
+    // (значение по умолчанию, в XML не пишется).
+    if (item.buttonRepresentation >= 0 && item.buttonRepresentation <= 2) {
+        static const char *const representations[] = {"Text", "Picture",
+                                                      "PictureAndText"};
+        properties.insert(QStringLiteral("Representation"),
+                          QString::fromLatin1(representations[item.buttonRepresentation]));
+    }
+    if (item.skipOnInput >= 0)
+        properties.insert(QStringLiteral("SkipOnInput"), boolText(item.skipOnInput != 0));
+    if (item.displayImportance == 3)
+        properties.insert(QStringLiteral("DisplayImportance"), QStringLiteral("Usual"));
+    const auto groupAlign = [](int code) -> QString {
+        switch (code) {
+        case 0:
+            return QStringLiteral("Left");
+        case 1:
+            return QStringLiteral("Center");
+        case 2:
+            return QStringLiteral("Right");
+        default:
+            return QString();
+        }
+    };
+    if (const QString align = groupAlign(item.buttonGroupHorizontalAlign);
+        !align.isEmpty()) {
+        properties.insert(QStringLiteral("GroupHorizontalAlign"), align);
+    }
+    if (const QString align = groupAlign(item.buttonGroupVerticalAlign);
+        !align.isEmpty()) {
+        properties.insert(QStringLiteral("GroupVerticalAlign"), align);
+    }
     const QString commandName = commandNameForButton(item, document);
     if (!commandName.isEmpty())
         properties.insert(QStringLiteral("CommandName"), commandName);
@@ -673,6 +712,58 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     }
     if (!item.inputHint.isEmpty())
         properties.insert(QStringLiteral("InputHint"), item.inputHint);
+
+    // Остальные свойства поля из записи макета: платформа пишет их в Form.xml
+    // только при отличии от значения по умолчанию. Сверено с Form.xml по
+    // 326 полям ввода и 56 полям-картинкам корпуса.
+    if (!item.autoMaxWidth)
+        properties.insert(QStringLiteral("AutoMaxWidth"), boolText(false));
+    if (!item.autoMaxHeight)
+        properties.insert(QStringLiteral("AutoMaxHeight"), boolText(false));
+    if (item.maxWidth > 0)
+        properties.insert(QStringLiteral("MaxWidth"), QString::number(item.maxWidth));
+    if (!item.wrap)
+        properties.insert(QStringLiteral("Wrap"), boolText(false));
+    const auto triBool = [&properties](const QString &name, int value) {
+        if (value == 0 || value == 1)
+            properties.insert(name, boolText(value == 1));
+    };
+    triBool(QStringLiteral("ChoiceButton"), item.choiceButton);
+    triBool(QStringLiteral("ClearButton"), item.clearButton);
+    triBool(QStringLiteral("SpinButton"), item.spinButton);
+    triBool(QStringLiteral("OpenButton"), item.openButton);
+    triBool(QStringLiteral("DropListButton"), item.dropListButton);
+    triBool(QStringLiteral("ChoiceListButton"), item.choiceListButton);
+    triBool(QStringLiteral("AutoMarkIncomplete"), item.autoMarkIncomplete);
+    if (item.autoChoiceIncomplete == 1)
+        properties.insert(QStringLiteral("AutoChoiceIncomplete"), boolText(true));
+    if (!item.chooseType)
+        properties.insert(QStringLiteral("ChooseType"), boolText(false));
+    if (!item.textEdit)
+        properties.insert(QStringLiteral("TextEdit"), boolText(false));
+    if (item.listChoiceMode)
+        properties.insert(QStringLiteral("ListChoiceMode"), boolText(true));
+    if (item.choiceHistoryOnInput == 1) {
+        properties.insert(QStringLiteral("ChoiceHistoryOnInput"),
+                          QStringLiteral("DontUse"));
+    }
+    if (item.choiceButtonRepresentation == 2 || item.choiceButtonRepresentation == 3) {
+        properties.insert(QStringLiteral("ChoiceButtonRepresentation"),
+                          item.choiceButtonRepresentation == 3
+                              ? QStringLiteral("ShowInInputField")
+                              : QStringLiteral("ShowInDropListAndInInputField"));
+    }
+    if (item.choiceFoldersAndItems >= 0 && item.choiceFoldersAndItems <= 2) {
+        static const char *const names[] = {"Items", "Folders", "FoldersAndItems"};
+        properties.insert(QStringLiteral("ChoiceFoldersAndItems"),
+                          QString::fromLatin1(names[item.choiceFoldersAndItems]));
+    }
+    // Режим перетаскивания файлов: 0 — AsFile; 1 — UseAsFile (значение по
+    // умолчанию, в XML не пишется). Сверено с Form.xml по 56 полям-картинкам.
+    if (item.fileDragMode == 0)
+        properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));
+    if (item.fieldKind == FormFieldKind::Picture && item.hyperlink)
+        properties.insert(QStringLiteral("Hyperlink"), boolText(true));
 
     // Подписи списка выбора: у переключателя по ним рисуется одна радиокнопка
     // на элемент (список без представлений приходит из метаданных — его не
@@ -899,6 +990,41 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
 
+    // Заголовок таблицы и настройки динамического списка. В XML они пишутся
+    // только у таблиц, связанных с динамическим списком; значения — как их
+    // пишет платформа. Сверено с Form.xml по 87 таблицам динамических списков.
+    if (!item.tableHeader)
+        properties.insert(QStringLiteral("Header"), boolText(false));
+    if (item.autoRefresh >= 0)
+        properties.insert(QStringLiteral("AutoRefresh"), boolText(item.autoRefresh != 0));
+    if (item.autoRefreshPeriod >= 0) {
+        properties.insert(QStringLiteral("AutoRefreshPeriod"),
+                          QString::number(item.autoRefreshPeriod));
+    }
+    if (!item.period.isEmpty())
+        properties.insert(QStringLiteral("Period"), item.period);
+    if (item.tableChoiceFolders >= 0 && item.tableChoiceFolders <= 2) {
+        static const char *const names[] = {"Items", "Folders", "FoldersAndItems"};
+        properties.insert(QStringLiteral("ChoiceFoldersAndItems"),
+                          QString::fromLatin1(names[item.tableChoiceFolders]));
+    }
+    if (item.restoreCurrentRow >= 0) {
+        properties.insert(QStringLiteral("RestoreCurrentRow"),
+                          boolText(item.restoreCurrentRow != 0));
+    }
+    if (item.showRoot >= 0)
+        properties.insert(QStringLiteral("ShowRoot"), boolText(item.showRoot != 0));
+    if (item.allowRootChoice >= 0) {
+        properties.insert(QStringLiteral("AllowRootChoice"),
+                          boolText(item.allowRootChoice != 0));
+    }
+    if (item.hasRowFilter)
+        properties.insert(QStringLiteral("RowFilter"), QString());
+    if (item.updateOnDataChange == 0)
+        properties.insert(QStringLiteral("UpdateOnDataChange"), QStringLiteral("Auto"));
+    if (item.hasTopLevelParent)
+        properties.insert(QStringLiteral("TopLevelParent"), item.topLevelParent);
+
     QJsonArray columns;
     const FormItem *tableBar = nullptr;
     // Имя табличной части — последний сегмент пути к данным таблицы.
@@ -1019,6 +1145,12 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
         if (item.heightUnits > 0)
             properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
+        // AutoMaxWidth надписи: платформа пишет только false (по умолчанию true).
+        if (!item.pictureDecoration && !item.autoMaxWidth)
+            properties.insert(QStringLiteral("AutoMaxWidth"), boolText(false));
+        // Перетаскивание картинки файлом: 0 — AsFile (в XML пишется только оно).
+        if (item.fileDragMode == 0)
+            properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));
         // Картинка декорации: имя общей картинки конфигурации
         // («CommonPicture.Имя») или стандартной картинки платформы
         // («StdPicture.Имя»); сами данные общих картинок уходят в узел

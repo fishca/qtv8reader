@@ -724,6 +724,20 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
         if (kind && kind->isInteger())
             item->pictureDecoration = kind->toInteger() != 0;
     }
+    // Размер картинки: 1 — Stretch, 2 — Proportionally; по умолчанию 0.
+    if (item->pictureDecoration) {
+        const V8TextNode *size = node.child(nameIndex + 6);
+        if (size && size->isInteger()) {
+            const int value = static_cast<int>(size->toInteger());
+            if (value >= 1 && value <= 2)
+                item->pictureSize = value;
+        }
+    } else if (const V8TextNode *autoMax = node.child(nameIndex + 21);
+               autoMax && autoMax->isInteger()) {
+        // AutoMaxWidth надписи: 0 — false (по умолчанию true); через 21 поле
+        // после имени. Сверено с Form.xml по 73 декорациям корпуса.
+        item->autoMaxWidth = autoMax->toInteger() != 0;
+    }
 
     const V8TextNode *appearance = node.child(nameIndex + 12);
     if (!appearance || !appearance->isList() || appearance->children.size() < 3)
@@ -735,6 +749,11 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
     const V8TextNode *flag = appearance->child(pictured ? 2 : 1);
     if (flag && flag->isInteger())
         item->hyperlink = flag->toInteger() != 0;
+    // Режим перетаскивания файлов: 0 — AsFile, 1 — UseAsFile (по умолчанию);
+    // в записи оформления через 11 полей. Сверено с Form.xml по 39 декорациям
+    // корпуса.
+    if (const V8TextNode *drag = appearance->child(11); drag && drag->isInteger())
+        item->fileDragMode = static_cast<int>(drag->toInteger());
     if (!pictured)
         return;
 
@@ -1137,6 +1156,170 @@ void readFieldInputHint(const V8TextNode &node, FormItem *item)
         item->inputHint = localizedText(*hint);
 }
 
+// Свойства поля, которые лежат в записи макета: {36,…} — поле ввода,
+// {10,…} — поле-картинка. Номера полей записи сверены с Form.xml по 326 полям
+// ввода и 56 полям-картинкам корпуса; значение по умолчанию платформа в XML не
+// пишет, поэтому «не равно умолчанию» и есть признак явно заданного свойства.
+void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
+{
+    QString code;
+    const V8TextNode *layout = findFieldLayout(node, &code);
+    if (!layout)
+        return;
+    auto intAt = [layout](int index) {
+        const V8TextNode *child = layout->child(index);
+        return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
+    };
+    if (code == QLatin1String("36")) {
+        item->autoMaxWidth = intAt(49) != 0;
+        item->autoMaxHeight = intAt(52) != 0;
+        item->maxWidth = qMax(0, intAt(50));
+        item->wrap = intAt(6) != 0;
+        item->choiceButton = intAt(12);
+        item->clearButton = intAt(13);
+        item->spinButton = intAt(14);
+        item->openButton = intAt(15);
+        item->dropListButton = intAt(47);
+        item->choiceListButton = intAt(11);
+        item->chooseType = intAt(32) != 0;
+        item->textEdit = intAt(41) != 0;
+        item->listChoiceMode = intAt(19) == 1;
+        item->autoMarkIncomplete = intAt(31);
+        item->autoChoiceIncomplete = intAt(28);
+        item->choiceHistoryOnInput = intAt(48);
+        item->choiceButtonRepresentation = intAt(46);
+        item->choiceFoldersAndItems = intAt(24);
+    } else if (code == QLatin1String("10")) {
+        // Поле-картинка: режим перетаскивания файлов и признак гиперссылки.
+        item->fileDragMode = intAt(22);
+        item->hyperlink = intAt(8) == 1;
+    }
+}
+
+// Настройки динамического списка записаны в записи таблицы блоком
+// «количество, код, значение, …»: количество — целое число, коды возрастают,
+// значения — типизированные записи ["B","1"], ["N","60"], ["S",""], ["U"] или
+// ["#", GUID, …]. Сверено с Form.xml по 87 таблицам динамических списков
+// корпуса: блок находится сразу за общими полями таблицы.
+const V8TextNode *findTableSettingsBlock(const V8TextNode &node, int *start)
+{
+    for (int i = 0; i < node.children.size(); ++i) {
+        const V8TextNode *count = node.child(i);
+        if (!count || !count->isInteger())
+            continue;
+        const int n = static_cast<int>(count->toInteger());
+        // Блок стоит после общих полей записи таблицы; пара из одного кода
+        // встречается и в самих полях, поэтому требуем минимум два кода.
+        if (n < 2 || i < 30 || i + 2 * n >= node.children.size())
+            continue;
+        int previous = -1;
+        bool ok = true;
+        for (int j = 0; j < n && ok; ++j) {
+            const V8TextNode *key = node.child(i + 1 + 2 * j);
+            const V8TextNode *value = node.child(i + 2 + 2 * j);
+            if (!key || !key->isInteger() || !value || !value->isList()
+                || !value->child(0) || !value->child(0)->isScalar()) {
+                ok = false;
+                break;
+            }
+            const int keyCode = static_cast<int>(key->toInteger());
+            if (keyCode <= previous)
+                ok = false;
+            previous = keyCode;
+        }
+        if (ok) {
+            if (start)
+                *start = i;
+            return &node;
+        }
+    }
+    return nullptr;
+}
+
+// Дата периода в записи динамического списка — 14 цифр «ГГГГММДДЧЧММСС»;
+// платформа пишет её в XML как «ГГГГ-ММ-ДДTЧЧ:ММ:СС».
+QString periodDateText(const QString &digits)
+{
+    if (digits.size() != 14)
+        return digits;
+    return QStringLiteral("%1-%2-%3T%4:%5:%6")
+        .arg(digits.mid(0, 4), digits.mid(4, 2), digits.mid(6, 2),
+             digits.mid(8, 2), digits.mid(10, 2), digits.mid(12, 2));
+}
+
+void readDynamicListSettings(const V8TextNode &node, FormItem *item)
+{
+    int start = -1;
+    if (!findTableSettingsBlock(node, &start))
+        return;
+    const int count = static_cast<int>(node.child(start)->toInteger());
+    for (int j = 0; j < count; ++j) {
+        const int key = static_cast<int>(node.child(start + 1 + 2 * j)->toInteger());
+        const V8TextNode *value = node.child(start + 2 + 2 * j);
+        const QString kind = value->child(0)->scalar().trimmed();
+        auto ordinal = [value]() {
+            const V8TextNode *third = value->child(2);
+            return third && third->isInteger() ? static_cast<int>(third->toInteger()) : -1;
+        };
+        auto boolean = [value]() {
+            const V8TextNode *second = value->child(1);
+            return second && second->isScalar() && second->scalar().trimmed() != QLatin1String("0");
+        };
+        switch (key) {
+        case 5:
+            item->autoRefresh = boolean() ? 1 : 0;
+            break;
+        case 6: {
+            const V8TextNode *second = value->child(1);
+            if (second && second->isInteger())
+                item->autoRefreshPeriod = static_cast<int>(second->toInteger());
+            break;
+        }
+        case 7: {
+            // Period: ["#", GUID, ["0", начало, конец]]; вид 0 — Custom.
+            const V8TextNode *payload = value->child(2);
+            if (payload && payload->isList() && payload->children.size() >= 3) {
+                const V8TextNode *kindNode = payload->child(0);
+                const V8TextNode *begin = payload->child(1);
+                const V8TextNode *end = payload->child(2);
+                if (kindNode && kindNode->isScalar() && kindNode->scalar() == QLatin1String("0")
+                    && begin && begin->isScalar() && end && end->isScalar()) {
+                    item->period = QStringLiteral("Custom, %1, %2")
+                        .arg(periodDateText(begin->scalar()),
+                             periodDateText(end->scalar()));
+                }
+            }
+            break;
+        }
+        case 8:
+            item->tableChoiceFolders = ordinal();
+            break;
+        case 9:
+            item->restoreCurrentRow = boolean() ? 1 : 0;
+            break;
+        case 10:
+            item->hasTopLevelParent = true;
+            item->topLevelParent = kind == QLatin1String("S") && value->child(1)
+                ? value->child(1)->scalar() : QString();
+            break;
+        case 11:
+            item->showRoot = boolean() ? 1 : 0;
+            break;
+        case 12:
+            item->allowRootChoice = boolean() ? 1 : 0;
+            break;
+        case 13:
+            item->hasRowFilter = true;
+            break;
+        case 14:
+            item->updateOnDataChange = ordinal();
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 // Свойства таблицы: положение командной панели, чередование цветов строк,
 // добавление строки, перетаскивание. В XML платформа пишет их только при
 // отличии от значения по умолчанию. Сверено с Form.xml по 48 таблицам корпуса.
@@ -1155,10 +1338,13 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
         item->tableTitleLocation = title;
     // CommandBarLocation: 1 — Auto (по умолчанию), 0 — None.
     item->commandBarLocation = codeAt(3);
+    // Header: 0 — false, по умолчанию true.
+    item->tableHeader = codeAt(21) != 0;
     item->useAlternationRowColor = codeAt(31) == 1;
     item->autoInsertNewRow = codeAt(32) == 1;
     item->enableStartDrag = codeAt(47) == 1;
     item->enableDrag = codeAt(48) == 1;
+    readDynamicListSettings(node, item);
 }
 
 // Картинка кнопки лежит через 20 полей после имени. Сверено с Form.xml по
@@ -1430,7 +1616,6 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // Декорации: вид (надпись или картинка), признак гиперссылки и картинка.
     if (item.typeCode == 12 && nameIndex >= 1)
         readDecorationExtras(node, nameIndex, pictures, &item);
-
     // Ориентация группы — второй элемент узла макета (1 — горизонтальная).
     // По умолчанию платформа (и рендерер) считают обычную группу
     // горизонтальной, поэтому группа без узла макета тоже горизонтальная.
@@ -1474,6 +1659,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     if (isFieldCode(item.typeCode) && nameIndex >= 0) {
         readFieldFlags(node, nameIndex, &item);
         readFieldInputHint(node, &item);
+        readFieldLayoutFlags(node, &item);
     } else if (item.typeCode == 55 && nameIndex >= 0) {
         readTableFlags(node, nameIndex, &item);
     }
@@ -1522,6 +1708,42 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         const V8TextNode *onBar = node.child(nameIndex + 10);
         if (onBar && onBar->isInteger())
             item.onCommandBar = onBar->toInteger() != 0;
+        // Вид кнопки (Type): 0 — CommandBarButton, 1 — UsualButton,
+        // 2 — Hyperlink; через 41 поле после имени. Сверено с Form.xml по
+        // 294 кнопкам корпуса.
+        if (const V8TextNode *type = node.child(nameIndex + 41);
+            type && type->isInteger()) {
+            item.buttonType = static_cast<int>(type->toInteger());
+        }
+        // Отображение (Representation): 0 — Text, 1 — Picture,
+        // 2 — PictureAndText, 3 — Auto (по умолчанию).
+        if (const V8TextNode *representation = node.child(nameIndex + 5);
+            representation && representation->isInteger()) {
+            const int value = static_cast<int>(representation->toInteger());
+            if (value >= 0 && value <= 3)
+                item.buttonRepresentation = value;
+        }
+        // SkipOnInput: 0/1 — явно задано, 2 — значение по умолчанию.
+        if (const V8TextNode *skip = node.child(nameIndex + 24);
+            skip && skip->isInteger()) {
+            const int value = static_cast<int>(skip->toInteger());
+            if (value == 0 || value == 1)
+                item.skipOnInput = value;
+        }
+        // DisplayImportance: 3 — Usual; по умолчанию 0.
+        if (const V8TextNode *importance = node.child(nameIndex + 43);
+            importance && importance->isInteger()) {
+            item.displayImportance = static_cast<int>(importance->toInteger());
+        }
+        // Выравнивание кнопки в группе: 3 — Auto (по умолчанию).
+        if (const V8TextNode *align = node.child(nameIndex + 36);
+            align && align->isInteger()) {
+            item.buttonGroupHorizontalAlign = static_cast<int>(align->toInteger());
+        }
+        if (const V8TextNode *align = node.child(nameIndex + 37);
+            align && align->isInteger()) {
+            item.buttonGroupVerticalAlign = static_cast<int>(align->toInteger());
+        }
         // Ссылка на команду — через три поля после имени: {номер, GUID}.
         // Номер — идентификатор команды формы, 0 — стандартная/общая команда
         // платформы, иное — идентификатор элемента-владельца стандартной

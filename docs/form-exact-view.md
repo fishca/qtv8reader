@@ -164,11 +164,79 @@ GUID-ом библиотеки платформы или отрицательн�
 поля-картинки — true, поэтому в модель попадает только отличие. Режим
 редактирования отдаётся и флажкам: в `Form.xml` он у них тоже есть.
 
+Остальные свойства поля лежат в записи макета: у поля ввода — в записи
+`{36,…}`, у поля-картинки — в записи `{10,…}`. Номера полей записи и значения
+по умолчанию сверены с `Form.xml` по 326 полям ввода и 56 полям-картинкам:
+
+| Поле записи | Свойство | Значения |
+|---|---|---|
+| 36:6 | `Wrap` | 0 — false (по умолчанию true) |
+| 36:11 | `ChoiceListButton` | 0/1 — false/true; 2 — по умолчанию |
+| 36:12 | `ChoiceButton` | то же |
+| 36:13 | `ClearButton` | то же |
+| 36:14 | `SpinButton` | то же |
+| 36:15 | `OpenButton` | то же |
+| 36:19 | `ListChoiceMode` | 1 — true |
+| 36:21 | `ChoiceListHeight` | высота списка |
+| 36:22 | `DropListWidth` | ширина списка выбора |
+| 36:24 | `ChoiceFoldersAndItems` | 0 Items, 1 Folders, 2 FoldersAndItems; 3 — по умолчанию |
+| 36:28 | `AutoChoiceIncomplete` | 1 — true; 2 — по умолчанию |
+| 36:31 | `AutoMarkIncomplete` | 0/1 — false/true; 2 — по умолчанию |
+| 36:32 | `ChooseType` | 0 — false (по умолчанию true) |
+| 36:41 | `TextEdit` | 0 — false (по умолчанию true) |
+| 36:46 | `ChoiceButtonRepresentation` | 2 ShowInDropListAndInInputField, 3 ShowInInputField; 0 — по умолчанию |
+| 36:47 | `DropListButton` | 0/1 — false/true; 2 — по умолчанию |
+| 36:48 | `ChoiceHistoryOnInput` | 1 — DontUse (0 — по умолчанию) |
+| 36:49 | `AutoMaxWidth` | 0 — false (по умолчанию true) |
+| 36:50 | `MaxWidth` | ширина |
+| 36:52 | `AutoMaxHeight` | 0 — false (по умолчанию true) |
+| 10:8 | `Hyperlink` | 1 — true (гиперссылка поля-картинки) |
+| 10:22 | `FileDragMode` | 0 AsFile; 1 UseAsFile — по умолчанию |
+
+У надписи `AutoMaxWidth` лежит через 21 поле после имени (0 — false, по
+умолчанию true), а `FileDragMode` декорации — в записи оформления одиннадцатым
+полем (0 — AsFile). Сверено с `Form.xml` по 73 надписям и 39 декорациям.
+
+Кнопка: `+5` — `Representation` (0 Text, 1 Picture, 2 PictureAndText; 3 — Auto),
+`+24` — `SkipOnInput` (0/1 — false/true; 2 — по умолчанию), `+36` и `+37` —
+`GroupHorizontalAlign`/`GroupVerticalAlign` (0 Left/Top, 1 Center, 2 Right/Bottom;
+3 — Auto), `+41` — `Type` (0 CommandBarButton, 1 UsualButton, 2 Hyperlink),
+`+43` — `DisplayImportance` (3 — Usual). Сверено по 294 кнопкам корпуса.
+
 Таблица (код 55): `+1` — `TitleLocation` (0 None, 1 Auto, 2 Left, 3 Top),
-`+3` — `CommandBarLocation` (0 None, 1 Auto, 2 Top, 3 Bottom), `+31` —
-`UseAlternationRowColor`, `+32` — `AutoInsertNewRow`, `+47` — `EnableStartDrag`,
-`+48` — `EnableDrag`. Все, кроме первых двух, платформа пишет только для true.
-Сверено с `Form.xml` по 48 таблицам корпуса.
+`+3` — `CommandBarLocation` (0 None, 1 Auto, 2 Top, 3 Bottom), `+21` —
+`Header` (0 — false, по умолчанию true), `+31` — `UseAlternationRowColor`,
+`+32` — `AutoInsertNewRow`, `+47` — `EnableStartDrag`, `+48` — `EnableDrag`.
+Все, кроме первых двух, платформа пишет только для true. Сверено с `Form.xml`
+по 48 таблицам корпуса.
+
+Настройки динамического списка записаны в записи таблицы блоком
+«количество, код, значение, …»: коды возрастают, значения — типизированные
+записи `["B","1"]`, `["N","60"]`, `["S",""]`, `["U"]` или `["#", GUID, …]`.
+Блок находится сразу за общими полями таблицы (обычно после 50-го слота).
+Коды сверены с `Form.xml` по 87 таблицам динамических списков корпуса:
+
+| Код | Свойство | Значение |
+|---|---|---|
+| 5 | `AutoRefresh` | B — true/false |
+| 6 | `AutoRefreshPeriod` | N — период в секундах |
+| 7 | `Period` | `#`: вид 0 — `Custom, начало, конец` (даты 14 цифр → ISO) |
+| 8 | `ChoiceFoldersAndItems` | 0 Items, 1 Folders, 2 FoldersAndItems |
+| 9 | `RestoreCurrentRow` | B |
+| 10 | `TopLevelParent` | U/S — путь верхнего уровня (обычно пустой) |
+| 11 | `ShowRoot` | B |
+| 12 | `AllowRootChoice` | B |
+| 13 | `RowFilter` | U — пустая структура отбора |
+| 14 | `UpdateOnDataChange` | `#`: 0 — Auto |
+
+Таблица без динамического списка получает только `RowFilter` (если в форме
+есть пустая структура отбора), поэтому остальные свойства в XML и модели не
+появляются. Проверка: до разбора настроек в модели не было `RowFilter` у 29
+таблиц, `Period`/`AutoRefresh`/`AutoRefreshPeriod`/`RestoreCurrentRow`/
+`ShowRoot`/`AllowRootChoice`/`UpdateOnDataChange`/`AllowGettingCurrentRowURL` —
+по 17, `InitialTreeView` и `DefaultItem` — по 6; после разбора перечисленные
+свойства, кроме `AllowGettingCurrentRowURL`, совпадают с `Form.xml` во всём
+корпусе.
 
 Режим ориентации обычной группы (`Group`) записан в узле макета `{29,…}`
 индексом 27: 0 — `Vertical`, 1 — `Horizontal`, 2 — «горизонтально, если
@@ -216,13 +284,17 @@ v8reader_cli form-model <файл> <объект> --items     # дерево э�
 ## Ограничения текущей реализации
 
 - Данные в контейнере беднее, чем в выгрузке в XML (`v8unpack -PARSE`):
-  часть свойств элементов пока не разбирается — настройки динамических
-  списков (`RowFilter`, `Period`, `AutoRefresh*`, `ChoiceFoldersAndItems`,
-  `ExcludedCommands` и др., 17 таблиц), свойства групп колонок (`ShowInHeader`,
-  `FixingInTable`, `Group`) и оформления таблиц (`SearchStringLocation`,
-  `ViewStatusLocation`, `SearchControlLocation`, `FileDragMode`), `AutoMaxWidth`
-  и `MaxWidth` полей, ширина части колонок (32), режим перетаскивания файлов
-  (112 элементов). Поэтому вид близок к конфигуратору, но не бит-в-бит.
+  часть свойств элементов пока не разбирается — форматированные заголовки
+  (`TitleFormatted`, 100 элементов), свойства групп колонок (`Group` 31,
+  `ShowInHeader` 14, `FixingInTable` 7), оформление таблиц
+  (`SearchStringLocation` 31, `SearchControlLocation` 33, `ViewStatusLocation`
+  33, `FileDragMode` 42), `ExcludedCommands` (17), `AllowGettingCurrentRowURL`
+  (17), `InitialTreeView` (6), `ExtendedEditMultipleValues` (34), `AutoMaxWidth`
+  у полей-надписей (15) и таблиц (4), картинка строки таблицы
+  (`RowPictureDataPath` 12), ширина части колонок (32). Поэтому вид близок
+  к конфигуратору, но не бит-в-бит. Разобранные свойства полей, таблиц,
+  динамических списков и кнопок перечислены выше и совпадают с `Form.xml`
+  во всём корпусе.
 - Кнопка ссылается на команду парой «номер, GUID», а не именем. По этой
   ссылке разбираются стандартные команды формы (`Form.StandardCommand.*`),
   команды формы (`Form.Command.*` — номер ищется по идентификатору команды,

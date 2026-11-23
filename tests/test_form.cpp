@@ -122,6 +122,7 @@ private slots:
     void styleReferences();
     void standardCommandTables();
     void tableAndColumnProperties();
+    void fieldTableListProperties();
 };
 
 void TestForm::parseSynthetic()
@@ -1692,10 +1693,209 @@ void TestForm::tableAndColumnProperties()
                  .contains(QStringLiteral("Group")));
 }
 
+// Свойства поля из записи макета, настройки динамического списка и свойства
+// кнопки: платформа пишет их в Form.xml только при отличии от значения по
+// умолчанию, поэтому модель получает ровно то, что задано в форме.
+void TestForm::fieldTableListProperties()
+{
+    FormDocument document;
+
+    FormItem column;
+    column.type = FormItem::Type::Field;
+    column.typeCode = 37;
+    column.fieldKind = FormFieldKind::Input;
+    column.name = QStringLiteral("КолонкаСвойства");
+    column.dataPathText = QStringLiteral("Объект.Товары.Количество");
+    column.valueKind = FormValueKind::Number;
+    column.autoMaxWidth = false;
+    column.autoMaxHeight = false;
+    column.maxWidth = 28;
+    column.wrap = false;
+    column.choiceButton = 0;
+    column.clearButton = 1;
+    column.spinButton = 0;
+    column.openButton = 1;
+    column.dropListButton = 0;
+    column.choiceListButton = 1;
+    column.chooseType = false;
+    column.textEdit = false;
+    column.listChoiceMode = true;
+    column.autoMarkIncomplete = 1;
+    column.autoChoiceIncomplete = 1;
+    column.choiceHistoryOnInput = 1;
+    column.choiceButtonRepresentation = 3;
+    column.choiceFoldersAndItems = 2;
+    column.fileDragMode = 0;
+
+    FormItem pictureField;
+    pictureField.type = FormItem::Type::Field;
+    pictureField.typeCode = 37;
+    pictureField.fieldKind = FormFieldKind::Picture;
+    pictureField.name = QStringLiteral("ПолеКартинка");
+    pictureField.hyperlink = true;
+
+    FormItem table;
+    table.type = FormItem::Type::Table;
+    table.typeCode = 55;
+    table.name = QStringLiteral("Список");
+    table.dataPathText = QStringLiteral("Список");
+    table.tableHeader = false;
+    table.autoRefresh = 0;
+    table.autoRefreshPeriod = 60;
+    table.period = QStringLiteral("Custom, 0001-01-01T00:00:00, 0001-01-01T00:00:00");
+    table.tableChoiceFolders = 2;
+    table.restoreCurrentRow = 1;
+    table.showRoot = 0;
+    table.allowRootChoice = 1;
+    table.hasRowFilter = true;
+    table.updateOnDataChange = 0;
+    table.hasTopLevelParent = true;
+    table.children.append(column);
+    table.children.append(pictureField);
+
+    FormItem button;
+    button.type = FormItem::Type::Button;
+    button.typeCode = 31;
+    button.name = QStringLiteral("КнопкаСвойства");
+    button.buttonType = 1;
+    button.buttonRepresentation = 1;
+    button.skipOnInput = 0;
+    button.displayImportance = 3;
+    button.buttonGroupHorizontalAlign = 2;
+
+    FormItem pictureDecoration;
+    pictureDecoration.type = FormItem::Type::Decoration;
+    pictureDecoration.typeCode = 12;
+    pictureDecoration.name = QStringLiteral("ДекорацияКартинка");
+    pictureDecoration.pictureDecoration = true;
+    pictureDecoration.autoMaxWidth = false;
+    pictureDecoration.fileDragMode = 0;
+
+    FormItem labelDecoration;
+    labelDecoration.type = FormItem::Type::Decoration;
+    labelDecoration.typeCode = 12;
+    labelDecoration.name = QStringLiteral("ДекорацияНадпись");
+    labelDecoration.autoMaxWidth = false;
+
+    document.items.append(table);
+    document.items.append(button);
+    document.items.append(pictureDecoration);
+    document.items.append(labelDecoration);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+
+    const QJsonObject tableNode = findModelNode(roots, QStringLiteral("Список"));
+    QVERIFY2(!tableNode.isEmpty(), "таблица не попала в модель");
+    const QJsonObject tableProps =
+        tableNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(tableProps.value(QStringLiteral("Header")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(tableProps.value(QStringLiteral("AutoRefresh")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(tableProps.value(QStringLiteral("AutoRefreshPeriod")).toString(),
+             QStringLiteral("60"));
+    QCOMPARE(tableProps.value(QStringLiteral("Period")).toString(),
+             QStringLiteral("Custom, 0001-01-01T00:00:00, 0001-01-01T00:00:00"));
+    QCOMPARE(tableProps.value(QStringLiteral("ChoiceFoldersAndItems")).toString(),
+             QStringLiteral("FoldersAndItems"));
+    QCOMPARE(tableProps.value(QStringLiteral("RestoreCurrentRow")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(tableProps.value(QStringLiteral("ShowRoot")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(tableProps.value(QStringLiteral("AllowRootChoice")).toString(),
+             QStringLiteral("true"));
+    QVERIFY(tableProps.contains(QStringLiteral("RowFilter")));
+    QVERIFY(tableProps.value(QStringLiteral("RowFilter")).toString().isEmpty());
+    QCOMPARE(tableProps.value(QStringLiteral("UpdateOnDataChange")).toString(),
+             QStringLiteral("Auto"));
+    QVERIFY(tableProps.contains(QStringLiteral("TopLevelParent")));
+    QVERIFY(tableProps.value(QStringLiteral("TopLevelParent")).toString().isEmpty());
+
+    const QJsonObject columnNode = findModelNode(
+        tableNode.value(QStringLiteral("childItems")).toArray(),
+        QStringLiteral("КолонкаСвойства"));
+    QVERIFY2(!columnNode.isEmpty(), "колонка не попала в модель");
+    const QJsonObject columnProps =
+        columnNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(columnProps.value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("AutoMaxHeight")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("MaxWidth")).toString(),
+             QStringLiteral("28"));
+    QCOMPARE(columnProps.value(QStringLiteral("Wrap")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("ChoiceButton")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("ClearButton")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("SpinButton")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("OpenButton")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("DropListButton")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("ChoiceListButton")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("ChooseType")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("TextEdit")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(columnProps.value(QStringLiteral("ListChoiceMode")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("AutoMarkIncomplete")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("AutoChoiceIncomplete")).toString(),
+             QStringLiteral("true"));
+    QCOMPARE(columnProps.value(QStringLiteral("ChoiceHistoryOnInput")).toString(),
+             QStringLiteral("DontUse"));
+    QCOMPARE(columnProps.value(QStringLiteral("ChoiceButtonRepresentation")).toString(),
+             QStringLiteral("ShowInInputField"));
+    QCOMPARE(columnProps.value(QStringLiteral("ChoiceFoldersAndItems")).toString(),
+             QStringLiteral("FoldersAndItems"));
+    QCOMPARE(columnProps.value(QStringLiteral("FileDragMode")).toString(),
+             QStringLiteral("AsFile"));
+
+    const QJsonObject pictureProps = findModelNode(
+        tableNode.value(QStringLiteral("childItems")).toArray(),
+        QStringLiteral("ПолеКартинка"))
+        .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(pictureProps.value(QStringLiteral("Hyperlink")).toString(),
+             QStringLiteral("true"));
+    // FileDragMode по умолчанию (UseAsFile) в модель не попадает.
+    QVERIFY(!pictureProps.contains(QStringLiteral("FileDragMode")));
+
+    const QJsonObject buttonProps = findModelNode(roots, QStringLiteral("КнопкаСвойства"))
+        .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(buttonProps.value(QStringLiteral("Type")).toString(),
+             QStringLiteral("UsualButton"));
+    QCOMPARE(buttonProps.value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("Picture"));
+    QCOMPARE(buttonProps.value(QStringLiteral("SkipOnInput")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(buttonProps.value(QStringLiteral("DisplayImportance")).toString(),
+             QStringLiteral("Usual"));
+    QCOMPARE(buttonProps.value(QStringLiteral("GroupHorizontalAlign")).toString(),
+             QStringLiteral("Right"));
+
+    const QJsonObject pictureDecorationProps =
+        findModelNode(roots, QStringLiteral("ДекорацияКартинка"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(pictureDecorationProps.value(QStringLiteral("FileDragMode")).toString(),
+             QStringLiteral("AsFile"));
+    QVERIFY(!pictureDecorationProps.contains(QStringLiteral("AutoMaxWidth")));
+    const QJsonObject labelDecorationProps =
+        findModelNode(roots, QStringLiteral("ДекорацияНадпись"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(labelDecorationProps.value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+}
+
 } // namespace
 
-int runFormTests(int argc, char **argv){
-    TestForm test;
+int runFormTests(int argc, char **argv){    TestForm test;
     return QTest::qExec(&test, argc, argv);
 }
 
