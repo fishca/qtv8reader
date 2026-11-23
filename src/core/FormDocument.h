@@ -312,6 +312,18 @@ struct FormItem
     // Сверено с Form.xml по 8 группам с VerticalSpacing и 3 с HorizontalSpacing.
     int verticalSpacing = 0;
     int horizontalSpacing = 0;
+    // Ширина дочерних элементов группы (ChildItemsWidth) — второе поле записи
+    // макета {29,…}: 1 — Equal, 2 — LeftWide, 3 — LeftWidest, 4 — LeftNarrow,
+    // 5 — LeftNarrowest; 0 — значение по умолчанию, в Form.xml не пишется.
+    // Там же: девятнадцатое поле — сквозное выравнивание (ThroughAlign), 0 —
+    // Use (2 — умолчание), и двадцать первое — объединение группы (United),
+    // 0 — false (1 — умолчание). Сверено с Form.xml по 237 обычным группам
+    // корпуса (5 ширин, 11 United=false и 2 ThroughAlign=Use) и по формам
+    // «ВнешниеПользователи» (LeftNarrowest) и «ЗаявкаНаОткрытиеЛицевыхСчетов
+    // Сотрудников» (LeftNarrow).
+    int childItemsWidth = 0;
+    int throughAlign = -1;
+    bool united = true;
     int autoRefresh = -1;                // AutoRefresh
     int autoRefreshPeriod = -1;          // AutoRefreshPeriod
     QString period;                      // Period («Custom, начало, конец»)

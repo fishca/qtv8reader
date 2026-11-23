@@ -2690,6 +2690,36 @@ void TestForm::tableRepresentationAndRowFlags()
     QCOMPARE(props(model, QStringLiteral("НомерТекущегоГода"))
                  .value(QStringLiteral("EditFormat")).toString(),
              QStringLiteral("ЧГ="));
+
+    // Оформление группы: ширина дочерних элементов (ChildItemsWidth) лежит
+    // вторым полем записи макета, объединение (United) — двадцать первым,
+    // сквозное выравнивание (ThroughAlign) — девятнадцатым.
+    QCOMPARE(props(model, QStringLiteral("НастройкиГруппа"))
+                 .value(QStringLiteral("ChildItemsWidth")).toString(),
+             QStringLiteral("Equal"));
+    QCOMPARE(props(model, QStringLiteral("РезультатЗаполненияГруппа"))
+                 .value(QStringLiteral("ChildItemsWidth")).toString(),
+             QStringLiteral("LeftWidest"));
+    FormDocument advance;
+    QVERIFY2(loadForm(QStringLiteral("Документ"), QStringLiteral("АвансовыйОтчет"),
+                      QStringLiteral("ФормаДокумента"), &advance),
+             qPrintable(error));
+    const QJsonObject advanceModel =
+        QJsonDocument::fromJson(formWebModelJson(advance)).object();
+    QCOMPARE(props(advanceModel, QStringLiteral("ГруппаШапкаЛевая"))
+                 .value(QStringLiteral("United")).toString(),
+             QStringLiteral("false"));
+    FormDocument inventory;
+    QVERIFY2(loadForm(QStringLiteral("Документ"),
+                      QStringLiteral("АктИнвентаризацииСАТУРН"),
+                      QStringLiteral("ФормаДокумента"), &inventory),
+             qPrintable(error));
+    const QJsonObject inventoryModel =
+        QJsonDocument::fromJson(formWebModelJson(inventory)).object();
+    QCOMPARE(props(inventoryModel,
+                   QStringLiteral("ГруппаНередактируемыеПослеОтправкиРеквизитыОсновное"))
+                 .value(QStringLiteral("ThroughAlign")).toString(),
+             QStringLiteral("Use"));
 }
 
 } // namespace

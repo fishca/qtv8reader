@@ -2165,6 +2165,23 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
             const int contentVertical = layoutInteger(*layout, 18);
             if (contentVertical >= 0 && contentVertical <= 2)
                 item.contentVerticalAlign = contentVertical;
+            // Ширина дочерних элементов (ChildItemsWidth) — второе поле того
+            // же узла макета: 1 — Equal, 2 — LeftWide, 3 — LeftWidest,
+            // 4 — LeftNarrow, 5 — LeftNarrowest; 0 — умолчание, платформа
+            // в Form.xml не пишет. Девятнадцатое поле — сквозное выравнивание
+            // (ThroughAlign): 0 — Use, 2 — умолчание. Двадцать первое поле —
+            // объединение группы (United): 0 — false, 1 — умолчание true.
+            // Сверено с Form.xml по 237 обычным группам корпуса и по формам
+            // «ВнешниеПользователи» и «ЗаявкаНаОткрытиеЛицевыхСчетовСотрудников».
+            if (item.groupKind == 5) {
+                const int childItemsWidth = layoutInteger(*layout, 2);
+                if (childItemsWidth >= 1 && childItemsWidth <= 5)
+                    item.childItemsWidth = childItemsWidth;
+                if (layoutInteger(*layout, 19) == 0)
+                    item.throughAlign = 0;
+                if (layoutInteger(*layout, 21) == 0)
+                    item.united = false;
+            }
         }
         // Автозаполнение командной панели: третье поле списка из трёх чисел,
         // который стоит через 14 полей после имени панели. Ноль — разработчик

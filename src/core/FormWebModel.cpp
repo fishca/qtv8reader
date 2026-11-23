@@ -105,6 +105,27 @@ QString verticalAlignText(int code)
     }
 }
 
+// Ширина дочерних элементов группы (ChildItemsWidth). Коды записи макета:
+// 1 — Equal, 2 — LeftWide, 3 — LeftWidest, 4 — LeftNarrow, 5 — LeftNarrowest;
+// 0 — значение по умолчанию, платформа в Form.xml его не пишет.
+QString childItemsWidthText(int code)
+{
+    switch (code) {
+    case 1:
+        return QStringLiteral("Equal");
+    case 2:
+        return QStringLiteral("LeftWide");
+    case 3:
+        return QStringLiteral("LeftWidest");
+    case 4:
+        return QStringLiteral("LeftNarrow");
+    case 5:
+        return QStringLiteral("LeftNarrowest");
+    default:
+        return QString();
+    }
+}
+
 QString editModeText(int code)
 {
     switch (code) {
@@ -1096,6 +1117,17 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         !align.isEmpty()) {
         properties.insert(QStringLiteral("VerticalAlign"), align);
     }
+    // Ширина дочерних элементов группы (ChildItemsWidth) и сквозное
+    // выравнивание (ThroughAlign): платформа пишет их только при отличии от
+    // умолчания. United платформа пишет только значением false.
+    if (const QString width = childItemsWidthText(item.childItemsWidth);
+        !width.isEmpty()) {
+        properties.insert(QStringLiteral("ChildItemsWidth"), width);
+    }
+    if (item.throughAlign == 0)
+        properties.insert(QStringLiteral("ThroughAlign"), QStringLiteral("Use"));
+    if (!item.united)
+        properties.insert(QStringLiteral("United"), boolText(false));
     // Размеры группы и растяжение записаны в самой форме: ширина и высота — в
     // единицах формы, растяжение — кодами 0 (нет), 1 (да) и 2 (авто, значение
     // по умолчанию, в Form.xml не пишется). Сверено с Form.xml по всем 361
