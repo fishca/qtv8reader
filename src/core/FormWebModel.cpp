@@ -1091,6 +1091,11 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     QJsonObject properties;
     if (!item.dataPathText.isEmpty() && !item.dataPathText.contains(QLatin1Char('?')))
         properties.insert(QStringLiteral("DataPath"), item.dataPathText);
+    // Отображение таблицы: платформа пишет List у таблицы, привязанной к
+    // табличной части объекта или к настройкам отчёта, а у таблицы значения
+    // из реквизита формы List — значение по умолчанию и в Form.xml не попадает.
+    // Отличить эти случаи по бинарной форме пока не удалось, поэтому List
+    // отдаётся всегда (как и до этого): 27 лишних значений в корпусе.
     properties.insert(QStringLiteral("Representation"), QStringLiteral("List"));
     // AutoInsertNewRow платформа пишет только для true; по умолчанию строка
     // не добавляется автоматически.
