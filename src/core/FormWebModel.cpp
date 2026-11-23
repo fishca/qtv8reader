@@ -2,6 +2,7 @@
 
 #include "core/FormDocument.h"
 #include "core/FormOwner.h"
+#include "core/FormPictures.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -110,17 +111,6 @@ bool isServiceTooltip(const FormItem &item)
 bool isPictureDecoration(const FormItem &item)
 {
     return item.pictureDecoration;
-}
-
-// Стандартная картинка платформы в бинарной форме записана отрицательным
-// числом, а в XCF — именем StdPicture.<Имя>. Пока подтверждён один код:
-// −2 — «очистить» у поля ввода (StdPicture.InputFieldClear). Остальные коды
-// в корпусе из 26 форм не встретились, поэтому название не угадывается.
-QString standardPictureName(int code)
-{
-    if (code == -2)
-        return QStringLiteral("StdPicture.InputFieldClear");
-    return QString();
 }
 
 // Спецификация шрифта в модели рендерера. Ссылка на стиль записана именем
@@ -475,6 +465,11 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
     const QString title = buttonTitle(item, document);
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
+    // Собственная картинка кнопки: общая картинка конфигурации или
+    // стандартная картинка платформы. Пиктограммы платформенных команд
+    // (см. ниже) важнее — их подставляет рендерер по имени команды.
+    if (!item.pictureRef.isEmpty())
+        properties.insert(QStringLiteral("Picture"), item.pictureRef);
     // Платформенные команды («Движения документа», «Структура подчинённости»,
     // «Присоединённые файлы», «Дополнительные сведения», «История изменений»)
     // клиент выводит на панель одними пиктограммами: заголовок остаётся
@@ -571,6 +566,13 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         if (hasText)
             properties.insert(QStringLiteral("ChoiceListItems"), choiceItems);
     }
+
+    // Картинка значений поля и значок в заголовке колонки — ссылками на
+    // общие картинки конфигурации («CommonPicture.Имя»).
+    if (!item.valuesPictureRef.isEmpty())
+        properties.insert(QStringLiteral("ValuesPicture"), item.valuesPictureRef);
+    if (!item.headerPictureRef.isEmpty())
+        properties.insert(QStringLiteral("HeaderPicture"), item.headerPictureRef);
 
     addStyleProperties(item, &properties);
 
@@ -859,12 +861,12 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
         if (item.heightUnits > 0)
             properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
-        // Картинку отдаём только если знаем её имя: общая картинка
-        // конфигурации (GUID) потребовала бы байтов из контейнера, поэтому
-        // такая декорация остаётся пустым местом нужного размера.
-        const QString picture = standardPictureName(item.pictureStandardCode);
-        if (isPictureDecoration(item) && !picture.isEmpty())
-            properties.insert(QStringLiteral("Picture"), picture);
+        // Картинка декорации: имя общей картинки конфигурации
+        // («CommonPicture.Имя») или стандартной картинки платформы
+        // («StdPicture.Имя»); сами данные общих картинок уходят в узел
+        // commonPictures модели.
+        if (isPictureDecoration(item) && !item.pictureRef.isEmpty())
+            properties.insert(QStringLiteral("Picture"), item.pictureRef);
         addStyleProperties(item, &properties);
         QJsonObject json;
         json.insert(QStringLiteral("tag"),
@@ -1391,7 +1393,20 @@ QByteArray formWebModelJson(const FormDocument &document)
     model.insert(QStringLiteral("excludedCommands"), QJsonArray());
     model.insert(QStringLiteral("commandInterface"), QJsonArray());
     model.insert(QStringLiteral("commonCommands"), QJsonObject());
-    model.insert(QStringLiteral("commonPictures"), QJsonObject());
+    // Общие картинки, на которые ссылается форма: имя -> данные ZIP-архива
+    // с вариантами PNG (рендерер разбирает архив сам).
+    QJsonObject commonPictures;
+    for (auto it = document.commonPictures.constBegin();
+         it != document.commonPictures.constEnd(); ++it) {
+        QJsonObject entry;
+        QString mime = document.commonPictureMimes.value(it.key());
+        if (mime.isEmpty())
+            mime = QStringLiteral("application/zip");
+        entry.insert(QStringLiteral("mime"), mime);
+        entry.insert(QStringLiteral("data"), it.value());
+        commonPictures.insert(it.key(), entry);
+    }
+    model.insert(QStringLiteral("commonPictures"), commonPictures);
     model.insert(QStringLiteral("commandGroups"), QJsonObject());
     model.insert(QStringLiteral("version"), QStringLiteral("2.20"));
     model.insert(QStringLiteral("adoptedForm"), false);

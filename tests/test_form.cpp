@@ -3,6 +3,7 @@
 #include "core/FormDocument.h"
 #include "core/FormOwner.h"
 #include "core/FormReader.h"
+#include "core/FormPictures.h"
 #include "core/FormStyles.h"
 #include "core/FormWebModel.h"
 #include "core/V8Text.h"
@@ -1317,7 +1318,15 @@ void TestForm::styleReferences()
     QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
              qPrintable(error));
     FormDocument document;
-    QVERIFY2(FormReader::parseBytes(payload, &document, &error, nullptr, &styles),
+    FormPictureTable pictures;
+    pictures.loadFromConfiguration(reader.configuration(), reader.container());
+    QVERIFY(!pictures.isEmpty());
+    // Общая картинка конфигурации: GUID в форме, имя и данные — в контейнере.
+    QCOMPARE(pictures.reference(QStringLiteral("188d8f0e-94da-44bb-8ed3-21aa01e973b9")),
+             QStringLiteral("CommonPicture.Внимание16"));
+    QVERIFY(!pictures.dataByName(QStringLiteral("Внимание16")).isEmpty());
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error, nullptr, &styles,
+                                    &pictures),
              qPrintable(error));
 
     // Группа-баннер: фон записан GUID-ом стиля «ЦветБаннераБежевый».
@@ -1331,6 +1340,18 @@ void TestForm::styleReferences()
     QVERIFY(field);
     QCOMPARE(field->textColor, QStringLiteral("style:ЗаголовкиСтрокЦветТекста"));
     QCOMPARE(field->font.reference, QStringLiteral("style:ЗаголовкиСтрокШрифт"));
+
+    // Картинки: значок баннера и картинка значений поля — общие картинки
+    // конфигурации, их данные уходят в модель узлом commonPictures.
+    const FormItem *bannerPicture = findItemByName(
+        document.items, QStringLiteral("КартинкаБаннерЧекиПодотчетныхЛицВнимание"));
+    QVERIFY(bannerPicture);
+    QCOMPARE(bannerPicture->pictureRef, QStringLiteral("CommonPicture.Внимание16"));
+    const FormItem *stateField = findItemByName(document.items,
+                                                QStringLiteral("СостояниеДокумента"));
+    QVERIFY(stateField);
+    QCOMPARE(stateField->valuesPictureRef,
+             QStringLiteral("CommonPicture.СостоянияДокумента"));
 
     // Без таблицы стилей ссылки не разрешаются: свойства остаются пустыми.
     FormDocument plain;
@@ -1364,6 +1385,21 @@ void TestForm::styleReferences()
     QCOMPARE(font.value(QStringLiteral("kind")).toString(), QStringLiteral("StyleItem"));
     QCOMPARE(font.value(QStringLiteral("ref")).toString(),
              QStringLiteral("style:ЗаголовкиСтрокШрифт"));
+
+    // Картинка баннера в модели — ссылкой на общую картинку, а её данные
+    // (base64 ZIP) лежат в узле commonPictures.
+    const QJsonObject pictureNode =
+        findModelNode(root, QStringLiteral("КартинкаБаннерЧекиПодотчетныхЛицВнимание"));
+    QVERIFY(!pictureNode.isEmpty());
+    QCOMPARE(pictureNode.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Picture")).toString(),
+             QStringLiteral("CommonPicture.Внимание16"));
+    const QJsonObject pictureEntry = model.value(QStringLiteral("commonPictures"))
+        .toObject().value(QStringLiteral("Внимание16")).toObject();
+    QCOMPARE(pictureEntry.value(QStringLiteral("mime")).toString(),
+             QStringLiteral("application/zip"));
+    QVERIFY(pictureEntry.value(QStringLiteral("data")).toString()
+                .startsWith(QStringLiteral("UEsDB")));
 
     // Рамка поля — стиль платформы BorderColor (в форме записан кодом −22).
     MetadataObject *tasks = nullptr;

@@ -192,6 +192,19 @@ struct FormItem
     QString titleTextColor;
     QString backColor;
     QString borderColor;        // рамка поля, таблицы и её колонок
+    // Картинки элемента: «CommonPicture.Имя» (общая картинка конфигурации,
+    // в форме записана GUID-ом), «StdPicture.Имя» (стандартная картинка
+    // платформы) или «Abs:<свойство>.bmp» — картинка, встроенная прямо в
+    // форму (её байты лежат в записи элемента). ValuesPicture — картинка
+    // значений поля, HeaderPicture — значок в заголовке колонки, Picture —
+    // картинка декорации или кнопки.
+    QString valuesPictureRef;
+    QString headerPictureRef;
+    QString pictureRef;
+    // Данные встроенных картинок: суффикс («ValuesPicture.bmp»,
+    // «HeaderPicture.bmp», «Picture.bmp») -> base64 BMP. Рендерер ищет их
+    // в commonPictures по ключу «@item:<имя элемента>/<суффикс>».
+    QHash<QString, QString> inlinePictures;
     FormFont font;              // FontSpec
     FormFont titleFont;         // TitleFontSpec
     // Декорация-картинка (PictureDecoration) отличается от надписи тем же
@@ -305,6 +318,12 @@ struct FormDocument
     // Рендерер получает их отдельной таблицей styleItems: по одной ссылке
     // «style:Имя» цвет не восстановить, значение лежит в данных стиля.
     QHash<QString, QString> styleItems;
+    // Общие картинки, на которые ссылается форма: имя -> base64 данных.
+    // Рендерер разбирает их сам (узел commonPictures); MIME лежит отдельно:
+    // общие картинки конфигурации — ZIP с вариантами PNG, встроенные в форму
+    // (ключ «@item:<имя>/<свойство>.bmp») — обычный BMP.
+    QHash<QString, QString> commonPictures;
+    QHash<QString, QString> commonPictureMimes;
     // Форма списка документа: платформа добавляет команды
     // «Создать на основании», «Еще», «?».
     bool runtimeListCommands = false;

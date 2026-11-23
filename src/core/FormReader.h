@@ -9,6 +9,7 @@
 namespace v8reader {
 
 class FormBindingResolver;
+class FormPictureTable;
 class FormStyleTable;
 
 class FormReader
@@ -21,14 +22,18 @@ public:
     // объекта: заголовки, типы и ширины полей.
     // styles (необязательный) переводит ссылки на стили оформления из GUID-ов
     // и кодов платформы в имена, как их пишет Form.xml.
+    // pictures (необязательный) переводит ссылки на общие картинки в имена и
+    // достаёт их данные из контейнера.
     static bool parseBytes(const QByteArray &data, FormDocument *document,
                            QString *error = nullptr,
                            const FormBindingResolver *resolver = nullptr,
-                           const FormStyleTable *styles = nullptr);
+                           const FormStyleTable *styles = nullptr,
+                           const FormPictureTable *pictures = nullptr);
     static bool parseFile(const QString &path, FormDocument *document,
                           QString *error = nullptr,
                           const FormBindingResolver *resolver = nullptr,
-                          const FormStyleTable *styles = nullptr);
+                          const FormStyleTable *styles = nullptr,
+                          const FormPictureTable *pictures = nullptr);
 
     // Отладочное представление узлов формы (JSON): для каждого элемента —
     // код типа, имя и «слоты» — дочерние узлы в том порядке, в котором они

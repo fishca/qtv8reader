@@ -2,6 +2,7 @@
 
 #include "core/FormBindings.h"
 #include "core/FormOwner.h"
+#include "core/FormPictures.h"
 #include "core/FormReader.h"
 #include "core/FormStyles.h"
 #include "core/FormWebModel.h"
@@ -145,9 +146,11 @@ int commandFormModel(const QString &path, const QString &objectQuery,
     resolver.addObject(*object);
     FormStyleTable styles;
     styles.loadFromConfiguration(reader.configuration(), reader.container());
+    FormPictureTable pictures;
+    pictures.loadFromConfiguration(reader.configuration(), reader.container());
     if (!FormReader::parseBytes(payload, &document, &error,
                                 resolver.isEmpty() ? nullptr : &resolver,
-                                &styles)) {
+                                &styles, &pictures)) {
         err() << QStringLiteral("Ошибка: не удалось разобрать форму «%1»: %2\n")
                      .arg(formEntry->displayName(), error);
         return 1;

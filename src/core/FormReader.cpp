@@ -1,6 +1,7 @@
 #include "core/FormReader.h"
 
 #include "core/FormBindings.h"
+#include "core/FormPictures.h"
 #include "core/FormStyles.h"
 #include "core/V8Text.h"
 
@@ -591,7 +592,82 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
 // платформы, {0, GUID} — общая картинка конфигурации).
 // Сверено с Form.xml по 112 декорациям 26 форм: вид, гиперссылка и картинка
 // совпали во всех.
-void readDecorationExtras(const V8TextNode &node, int nameIndex, FormItem *item)
+// Ссылка на картинку из записи картинки: {4, вид, {полезная нагрузка}, ...}.
+// Полезная нагрузка — {0, GUID} у общей картинки конфигурации (GUID может
+// быть и картинкой библиотеки платформы) или {код} у стандартной картинки
+// платформы. Картинка может быть встроена прямо в форму: тогда в записи
+// лежит base64 BMP, а Form.xml называет её «Abs:<свойство>.bmp».
+struct ParsedPicture
+{
+    QString reference;    // «CommonPicture.Имя», «StdPicture.Имя» или пусто
+    QString inlineData;   // base64 BMP для встроенной картинки
+};
+
+QString findBase64Picture(const V8TextNode &node)
+{
+    if (node.isScalar()) {
+        const QString value = node.scalar().trimmed();
+        const int marker = value.indexOf(QStringLiteral("#base64:"));
+        if (marker >= 0) {
+            QString payload = value.mid(marker + 8);
+            payload.remove(QLatin1Char('\r'));
+            payload.remove(QLatin1Char('\n'));
+            payload.remove(QLatin1Char(' '));
+            return payload;
+        }
+    }
+    for (const V8TextNode &child : node.children) {
+        const QString data = findBase64Picture(child);
+        if (!data.isEmpty())
+            return data;
+    }
+    return QString();
+}
+
+ParsedPicture pictureFromRecord(const V8TextNode &record,
+                               const FormPictureTable *pictures,
+                               int *standardCode = nullptr)
+{
+    ParsedPicture parsed;
+    if (standardCode)
+        *standardCode = 0;
+    if (!record.isList() || record.children.size() < 3)
+        return parsed;
+    const V8TextNode *tag = record.child(0);
+    if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("4"))
+        return parsed;
+    const V8TextNode *payload = record.child(2);
+    if (payload && payload->isList() && !payload->children.isEmpty()) {
+        if (payload->children.size() >= 2) {
+            const V8TextNode *guid = payload->child(1);
+            if (guid && guid->isGuid()) {
+                parsed.reference = pictures
+                    ? pictures->reference(guid->normalizedGuid()) : QString();
+                return parsed;
+            }
+        } else {
+            const V8TextNode *code = payload->child(0);
+            if (code && code->isInteger()) {
+                const int value = static_cast<int>(code->toInteger());
+                // Отрицательный код — стандартная картинка платформы;
+                // ноль и положительные числа картинкой не задают
+                // («нет картинки»), ниже ищем встроенную.
+                if (value < 0) {
+                    if (standardCode)
+                        *standardCode = value;
+                    parsed.reference = FormPictureTable::standardPictureName(value);
+                    return parsed;
+                }
+            }
+        }
+    }
+    // Встроенная картинка: её байты записаны в самой форме.
+    parsed.inlineData = findBase64Picture(record);
+    return parsed;
+}
+
+void readDecorationExtras(const V8TextNode &node, int nameIndex,
+                          const FormPictureTable *pictures, FormItem *item)
 {
     if (nameIndex >= 1) {
         const V8TextNode *kind = node.child(nameIndex - 1);
@@ -615,19 +691,16 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex, FormItem *item)
     const V8TextNode *border = appearance->child(1);
     if (!border || !border->isList() || border->children.size() < 3)
         return;
-    const V8TextNode *reference = border->child(2);
-    if (!reference || !reference->isList() || reference->children.isEmpty())
+    const ParsedPicture picture =
+        pictureFromRecord(*border, pictures, &item->pictureStandardCode);
+    if (!picture.reference.isEmpty()) {
+        item->pictureRef = picture.reference;
         return;
-    if (reference->children.size() >= 2) {
-        const V8TextNode *guid = reference->child(1);
-        if (guid && guid->isGuid()) {
-            item->pictureGuid = guid->normalizedGuid();
-            return;
-        }
     }
-    const V8TextNode *code = reference->child(0);
-    if (code && code->isInteger())
-        item->pictureStandardCode = static_cast<int>(code->toInteger());
+    if (!picture.inlineData.isEmpty()) {
+        item->inlinePictures.insert(QStringLiteral("Picture.bmp"), picture.inlineData);
+        item->pictureRef = QStringLiteral("Abs:Picture.bmp");
+    }
 }
 
 // Цвет из записи формата. Запись начинается кодом 3, затем идёт вид значения:
@@ -924,6 +997,62 @@ void readTableStyles(const V8TextNode &node, const FormStyleTable *styles,
     }
 }
 
+// Картинки поля: значок в заголовке колонки лежит через 23 поля после имени,
+// картинка значений — в записи макета поля-картинки (код 10) пятым полем.
+// Сверено с Form.xml по корпусу: 47 значков колонок и 15 картинок значений.
+void readFieldPictures(const V8TextNode &node, int nameIndex,
+                       const FormPictureTable *pictures, FormItem *item)
+{
+    if (!pictures)
+        return;
+    if (nameIndex >= 0) {
+        if (const V8TextNode *header = node.child(nameIndex + 23)) {
+            const ParsedPicture picture = pictureFromRecord(*header, pictures);
+            if (!picture.reference.isEmpty()) {
+                item->headerPictureRef = picture.reference;
+            } else if (!picture.inlineData.isEmpty()) {
+                item->inlinePictures.insert(QStringLiteral("HeaderPicture.bmp"),
+                                            picture.inlineData);
+                item->headerPictureRef = QStringLiteral("Abs:HeaderPicture.bmp");
+            }
+        }
+    }
+    QString code;
+    if (const V8TextNode *layout = findFieldLayout(node, &code)) {
+        if (code == QLatin1String("10")) {
+            if (const V8TextNode *record = layout->child(5)) {
+                const ParsedPicture picture = pictureFromRecord(*record, pictures);
+                if (!picture.reference.isEmpty()) {
+                    item->valuesPictureRef = picture.reference;
+                } else if (!picture.inlineData.isEmpty()) {
+                    item->inlinePictures.insert(QStringLiteral("ValuesPicture.bmp"),
+                                                picture.inlineData);
+                    item->valuesPictureRef = QStringLiteral("Abs:ValuesPicture.bmp");
+                }
+            }
+        }
+    }
+}
+
+// Картинка кнопки лежит через 20 полей после имени. Сверено с Form.xml по
+// кнопкам «Сформировать» и «Показать быстрые настройки» (10 кнопок корпуса).
+void readButtonPictures(const V8TextNode &node, int nameIndex,
+                        const FormPictureTable *pictures, FormItem *item)
+{
+    if (!pictures || nameIndex < 0)
+        return;
+    const V8TextNode *record = node.child(nameIndex + 20);
+    if (!record)
+        return;
+    const ParsedPicture picture = pictureFromRecord(*record, pictures);
+    if (!picture.reference.isEmpty()) {
+        item->pictureRef = picture.reference;
+    } else if (!picture.inlineData.isEmpty()) {
+        item->inlinePictures.insert(QStringLiteral("Picture.bmp"), picture.inlineData);
+        item->pictureRef = QStringLiteral("Abs:Picture.bmp");
+    }
+}
+
 // Смещение признака видимости от расширенной подсказки в «хвосте» записи
 // элемента. Перед подсказкой идут служебные поля, и их число зависит от вида
 // элемента: у группы — три, у декорации — пять, у кнопки — шесть. Значения
@@ -967,7 +1096,46 @@ void collectStyleItems(const QVector<FormItem> &items,
     }
 }
 
-FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles)
+// Общие картинки, на которые ссылается форма: рендерер получает их данными
+// (base64 ZIP-архива), а по одной ссылке «CommonPicture.Имя» картинку не
+// нарисовать — её байты лежат в контейнере отдельно.
+void collectCommonPictures(const QVector<FormItem> &items,
+                           const FormPictureTable *pictures,
+                           FormDocument *document)
+{
+    if (!pictures)
+        return;
+    for (const FormItem &item : items) {
+        const QString *references[] = {&item.valuesPictureRef, &item.headerPictureRef,
+                                       &item.pictureRef};
+        for (const QString *reference : references) {
+            if (!reference->startsWith(QStringLiteral("CommonPicture.")))
+                continue;
+            const QString name = reference->mid(14);
+            if (document->commonPictures.contains(name))
+                continue;
+            const QString data = pictures->dataByName(name);
+            if (!data.isEmpty()) {
+                document->commonPictures.insert(name, data);
+                document->commonPictureMimes.insert(
+                    name, QStringLiteral("application/zip"));
+            }
+        }
+        for (auto it = item.inlinePictures.constBegin();
+             it != item.inlinePictures.constEnd(); ++it) {
+            const QString key = QStringLiteral("@item:") + item.name
+                + QLatin1Char('/') + it.key();
+            if (document->commonPictures.contains(key))
+                continue;
+            document->commonPictures.insert(key, it.value());
+            document->commonPictureMimes.insert(key, QStringLiteral("image/bmp"));
+        }
+        collectCommonPictures(item.children, pictures, document);
+    }
+}
+
+FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
+                  const FormPictureTable *pictures)
 {
     FormItem item;
     item.typeCode = static_cast<int>(node.child(0)->toInteger());
@@ -1056,7 +1224,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles)
 
     // Декорации: вид (надпись или картинка), признак гиперссылки и картинка.
     if (item.typeCode == 12 && nameIndex >= 1)
-        readDecorationExtras(node, nameIndex, &item);
+        readDecorationExtras(node, nameIndex, pictures, &item);
 
     // Ориентация группы — второй элемент узла макета (1 — горизонтальная).
     // По умолчанию платформа (и рендерер) считают обычную группу
@@ -1158,6 +1326,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles)
     switch (item.type) {
     case FormItem::Type::Field:
         readFieldStyles(node, nameIndex, styles, &item);
+        readFieldPictures(node, nameIndex, pictures, &item);
         break;
     case FormItem::Type::Group:
         readGroupStyles(node, nameIndex, styles, &item);
@@ -1170,6 +1339,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles)
         break;
     case FormItem::Type::Button:
         readButtonStyles(node, styles, &item);
+        readButtonPictures(node, nameIndex, pictures, &item);
         break;
     default:
         break;
@@ -1177,7 +1347,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles)
 
     for (const V8TextNode &child : node.children) {
         if (isItemNode(child))
-            item.children.append(parseItem(child, styles));
+            item.children.append(parseItem(child, styles, pictures));
     }
     return item;
 }
@@ -1207,7 +1377,8 @@ bool FormReader::looksLikeForm(const QByteArray &data)
 
 bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
                             QString *error, const FormBindingResolver *resolver,
-                            const FormStyleTable *styles)
+                            const FormStyleTable *styles,
+                            const FormPictureTable *pictures)
 {
     if (!document) {
         if (error)
@@ -1254,7 +1425,7 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
     // Элементы формы — прямые дочерние элементы заголовка формы.
     for (const V8TextNode &child : header->children) {
         if (isItemNode(child))
-            document->items.append(parseItem(child, styles));
+            document->items.append(parseItem(child, styles, pictures));
     }
     // На случай нестандартной вложенности: ищем список, состоящий из элементов.
     if (document->items.isEmpty()) {
@@ -1269,7 +1440,7 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
             if (itemCount > 0) {
                 for (const V8TextNode &nested : child.children) {
                     if (isItemNode(nested))
-                        document->items.append(parseItem(nested, styles));
+                        document->items.append(parseItem(nested, styles, pictures));
                 }
                 break;
             }
@@ -1321,6 +1492,7 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
         return false;
     }
     collectStyleItems(document->items, styles, &document->styleItems);
+    collectCommonPictures(document->items, pictures, document);
     if (resolver && !resolver->isEmpty())
         resolver->applyToDocument(document);
     return true;
@@ -1328,7 +1500,8 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
 
 bool FormReader::parseFile(const QString &path, FormDocument *document,
                            QString *error, const FormBindingResolver *resolver,
-                           const FormStyleTable *styles)
+                           const FormStyleTable *styles,
+                           const FormPictureTable *pictures)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -1337,7 +1510,7 @@ bool FormReader::parseFile(const QString &path, FormDocument *document,
                          .arg(QFileInfo(path).fileName(), file.errorString());
         return false;
     }
-    return parseBytes(file.readAll(), document, error, resolver, styles);
+    return parseBytes(file.readAll(), document, error, resolver, styles, pictures);
 }
 
 namespace {

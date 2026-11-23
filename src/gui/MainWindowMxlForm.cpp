@@ -8,6 +8,7 @@
 #include "core/ConfigurationReader.h"
 #include "core/FormBindings.h"
 #include "core/FormOwner.h"
+#include "core/FormPictures.h"
 #include "core/FormReader.h"
 #include "core/FormStyles.h"
 #include "core/FormWebModel.h"
@@ -135,11 +136,14 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
     if (m_currentObject)
         resolver.addObject(*m_currentObject);
     FormStyleTable styles;
-    if (m_reader)
+    FormPictureTable pictures;
+    if (m_reader) {
         styles.loadFromConfiguration(m_reader->configuration(), m_reader->container());
+        pictures.loadFromConfiguration(m_reader->configuration(), m_reader->container());
+    }
     if (!FormReader::parseBytes(payload, &document, &error,
                                 resolver.isEmpty() ? nullptr : &resolver,
-                                &styles)) {
+                                &styles, &pictures)) {
         m_formView->setMessage(
             QStringLiteral("Не удалось разобрать форму «%1»: %2")
                 .arg(entry.displayName(), error));
