@@ -104,11 +104,28 @@ QString FormPictureTable::dataByName(const QString &name) const
     return data(m_guidsByName.value(name));
 }
 
+// Имя стандартной картинки платформы по её коду из записи картинки: у
+// стандартной картинки полезная нагрузка — одно отрицательное число.
+// Соответствие кодов и имён снято с самого корпуса: имя берётся из Form.xml,
+// код — из записи той же картинки в контейнере. Сверено по корпусу: −10 —
+// CheckAll (кнопка «ПисьмаВыбратьВсе»), −11 — UncheckAll («ПисьмаИсключитьВсе»),
+// −1 — InputFieldSelect («ВыбратьПериод»), −2 — InputFieldClear (пять
+// декораций-крестиков закрытия баннера). Остальные коды платформы пока не
+// встречались, поэтому картинка не отдаётся.
 QString FormPictureTable::standardPictureName(int code)
 {
-    if (code == -2)
+    switch (code) {
+    case -1:
+        return QStringLiteral("StdPicture.InputFieldSelect");
+    case -2:
         return QStringLiteral("StdPicture.InputFieldClear");
-    return QString();
+    case -10:
+        return QStringLiteral("StdPicture.CheckAll");
+    case -11:
+        return QStringLiteral("StdPicture.UncheckAll");
+    default:
+        return QString();
+    }
 }
 
 QString FormPictureTable::data(const QString &guid) const

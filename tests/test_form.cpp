@@ -1232,6 +1232,17 @@ void TestForm::decorationKindsAndHyperlinks()
              QStringLiteral("StdPicture.InputFieldClear"));
     QCOMPARE(closeProperties.value(QStringLiteral("Hyperlink")).toString(),
              QStringLiteral("true"));
+    // Стандартные картинки платформы: код из записи картинки — отрицательное
+    // число; имена сняты с корпуса (Form.xml) и проверены по контейнеру.
+    QCOMPARE(FormPictureTable::standardPictureName(-1),
+             QStringLiteral("StdPicture.InputFieldSelect"));
+    QCOMPARE(FormPictureTable::standardPictureName(-2),
+             QStringLiteral("StdPicture.InputFieldClear"));
+    QCOMPARE(FormPictureTable::standardPictureName(-10),
+             QStringLiteral("StdPicture.CheckAll"));
+    QCOMPARE(FormPictureTable::standardPictureName(-11),
+             QStringLiteral("StdPicture.UncheckAll"));
+    QVERIFY(FormPictureTable::standardPictureName(-999).isEmpty());
 }
 
 // Своя командная панель формы записана группой с кодом 0, панель
