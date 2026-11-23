@@ -123,6 +123,7 @@ private slots:
     void standardCommandTables();
     void tableAndColumnProperties();
     void fieldTableListProperties();
+    void columnGroupModes();
 };
 
 void TestForm::parseSynthetic()
@@ -1891,6 +1892,104 @@ void TestForm::fieldTableListProperties()
             .value(QStringLiteral("properties")).toObject();
     QCOMPARE(labelDecorationProps.value(QStringLiteral("AutoMaxWidth")).toString(),
              QStringLiteral("false"));
+}
+
+// Таблица с группами колонок: вид группировки записан в записи {2, режим, …}
+// (0 — Horizontal, 2 — InCell, 1 — значение по умолчанию). Без Group рендерер
+// считает группу вертикальной, поэтому Horizontal пишется в модель явно.
+void TestForm::columnGroupModes()
+{
+    const QString text = QStringLiteral(
+        "{4,"
+        "{50,0,"
+        "{55,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"Таблица\",{1,1,{\"ru\",\"Таблица\"}},"
+        // Группа колонок по горизонтали: режим 0, заголовок показан.
+        "{22,{2,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",2,"
+        "\"ГруппаКолонок\",{1,1,{\"ru\",\"Группа колонок\"}},"
+        "{2,0,1,1,3,{\"0\"},{1,0},{\"0\"},0,0,0,0},"
+        "{37,{3,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"Колонка1\",{1,1,{\"ru\",\"Колонка 1\"}}},"
+        // Вложенная группа в ячейке: режим 2, закреплена слева.
+        "{22,{4,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",2,"
+        "\"ГруппаВЯчейке\",{1,1,{\"ru\",\"В ячейке\"}},"
+        "{2,2,1,0,3,{\"0\"},{1,0},{\"0\"},0,0,0,1},"
+        "{37,{5,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"Колонка2\",{1,1,{\"ru\",\"Колонка 2\"}}}"
+        "},"
+        // Группа без заданной группировки: режим 1, в XML свойств нет.
+        "{22,{6,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",2,"
+        "\"ГруппаПоУмолчанию\",{1,1,{\"ru\",\"Обычная\"}},"
+        "{2,1,1,0,3,{\"0\"},{1,0},{\"0\"},0,0,0,0},"
+        "{37,{7,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"Колонка3\",{1,1,{\"ru\",\"Колонка 3\"}}}"
+        "}"
+        "}"
+        "},"
+        "\"Процедура Тест()\\nКонецПроцедуры\","
+        "{4,\"2\","
+        "{9,{\"1\"},\"0\",\"Атрибут1\",{1,1,{\"ru\",\"Атрибут 1\"}},{\"Pattern\",{\"S\"}}}"
+        "},"
+        "{0,0},"
+        "{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}"
+        "}"
+        "}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error),
+             qPrintable(error));
+
+    const FormItem *horizontal = findItemByName(document.items,
+                                                QStringLiteral("ГруппаКолонок"));
+    QVERIFY(horizontal);
+    QCOMPARE(horizontal->groupKind, 2);
+    QCOMPARE(horizontal->columnGroupMode, 0);
+    QVERIFY(horizontal->showInHeader);
+    QCOMPARE(horizontal->fixingInTable, -1);
+    const FormItem *inCell = findItemByName(document.items,
+                                            QStringLiteral("ГруппаВЯчейке"));
+    QVERIFY(inCell);
+    QCOMPARE(inCell->columnGroupMode, 2);
+    QVERIFY(!inCell->showInHeader);
+    QCOMPARE(inCell->fixingInTable, 1);
+    const FormItem *fallback = findItemByName(document.items,
+                                              QStringLiteral("ГруппаПоУмолчанию"));
+    QVERIFY(fallback);
+    QCOMPARE(fallback->columnGroupMode, 1);
+    QVERIFY(!fallback->showInHeader);
+    QCOMPARE(fallback->fixingInTable, -1);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonArray columns = findModelNode(roots, QStringLiteral("Таблица"))
+                                   .value(QStringLiteral("childItems")).toArray();
+    QCOMPARE(findModelNode(columns, QStringLiteral("ГруппаКолонок"))
+                 .value(QStringLiteral("tag")).toString(),
+             QStringLiteral("ColumnGroup"));
+    const QJsonObject horizontalProps =
+        findModelNode(columns, QStringLiteral("ГруппаКолонок"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(horizontalProps.value(QStringLiteral("Group")).toString(),
+             QStringLiteral("Horizontal"));
+    QCOMPARE(horizontalProps.value(QStringLiteral("ShowInHeader")).toString(),
+             QStringLiteral("true"));
+    QVERIFY(!horizontalProps.contains(QStringLiteral("FixingInTable")));
+    const QJsonObject inCellProps =
+        findModelNode(columns, QStringLiteral("ГруппаВЯчейке"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(inCellProps.value(QStringLiteral("Group")).toString(),
+             QStringLiteral("InCell"));
+    QCOMPARE(inCellProps.value(QStringLiteral("FixingInTable")).toString(),
+             QStringLiteral("Left"));
+    QVERIFY(!inCellProps.contains(QStringLiteral("ShowInHeader")));
+    QVERIFY(!findModelNode(columns, QStringLiteral("ГруппаПоУмолчанию"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .contains(QStringLiteral("Group")));
+    QVERIFY(!findModelNode(columns, QStringLiteral("ГруппаПоУмолчанию"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .contains(QStringLiteral("ShowInHeader")));
 }
 
 } // namespace

@@ -846,6 +846,19 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         // Группа колонок таблицы: рамка и растяжение, как у обычной группы.
         if (item.widthUnits > 0)
             properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+        // Группировка группы колонок: Horizontal (0) или InCell (2). Значение
+        // по умолчанию (1) платформа в XML не пишет; рендерер без свойства
+        // считает группу вертикальной, поэтому Horizontal пишем явно.
+        if (item.columnGroupMode == 0)
+            properties.insert(QStringLiteral("Group"), QStringLiteral("Horizontal"));
+        else if (item.columnGroupMode == 2)
+            properties.insert(QStringLiteral("Group"), QStringLiteral("InCell"));
+        // Заголовок группы колонок платформа показывает только при ShowInHeader
+        // (по умолчанию скрыт), закрепление — при отличии от None.
+        if (item.showInHeader)
+            properties.insert(QStringLiteral("ShowInHeader"), boolText(true));
+        if (const QString fixing = fixingInTableText(item.fixingInTable); !fixing.isEmpty())
+            properties.insert(QStringLiteral("FixingInTable"), fixing);
         if (item.horizontalStretch == 1)
             properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
         if (!item.visible)
@@ -901,6 +914,19 @@ QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (item.widthUnits > 0)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+    // Группировка группы колонок: Horizontal (0) или InCell (2). Значение по
+    // умолчанию (1) платформа в XML не пишет — без свойства рендерер считает
+    // группу вертикальной, поэтому Horizontal пишем явно.
+    if (item.columnGroupMode == 0)
+        properties.insert(QStringLiteral("Group"), QStringLiteral("Horizontal"));
+    else if (item.columnGroupMode == 2)
+        properties.insert(QStringLiteral("Group"), QStringLiteral("InCell"));
+    // Заголовок группы колонок платформа показывает только при ShowInHeader
+    // (по умолчанию скрыт), закрепление — при отличии от None.
+    if (item.showInHeader)
+        properties.insert(QStringLiteral("ShowInHeader"), boolText(true));
+    if (const QString fixing = fixingInTableText(item.fixingInTable); !fixing.isEmpty())
+        properties.insert(QStringLiteral("FixingInTable"), fixing);
     // Растяжение группы колонок: Auto (2) — по умолчанию, в XML не пишется.
     if (item.horizontalStretch == 0)
         properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));

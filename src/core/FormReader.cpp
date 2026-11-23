@@ -1710,6 +1710,42 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         }
     }
 
+    // Группа колонок таблицы: в её записи {2, группировка, …, показ заголовка,
+    // …, закрепление} второй элемент — вид группировки (0 — Horizontal, 2 —
+    // InCell, 1 — значение по умолчанию, Group в Form.xml не пишется), четвёртый
+    // — показ заголовка (по умолчанию заголовок группы колонок скрыт),
+    // двенадцатый — закрепление (1 — Left, 2 — Right; 0 — по умолчанию).
+    // Сверено с Form.xml по 75 группам колонок корпуса.
+    if (item.typeCode == 22 && item.groupKind == 2) {
+        const auto isCode = [](const V8TextNode &value, const char *text) {
+            return (value.isInteger()
+                    && QString::number(value.toInteger()) == QLatin1String(text))
+                || (value.isScalar() && value.scalar().trimmed() == QLatin1String(text));
+        };
+        for (const V8TextNode &child : node.children) {
+            if (!child.isList() || child.children.size() < 3)
+                continue;
+            const V8TextNode *recordKind = child.child(0);
+            if (!recordKind || !isCode(*recordKind, "2"))
+                continue;
+            // Второй элемент записи — целое; так запись отличается от ссылки на
+            // элемент {номер, GUID}, которая тоже начинается с двойки.
+            const V8TextNode *mode = child.child(1);
+            if (!mode || !mode->isInteger())
+                continue;
+            item.columnGroupMode = static_cast<int>(mode->toInteger());
+            if (const V8TextNode *header = child.child(3); header && header->isInteger())
+                item.showInHeader = header->toInteger() != 0;
+            if (const V8TextNode *fixing = child.child(11);
+                fixing && fixing->isInteger()) {
+                const int value = static_cast<int>(fixing->toInteger());
+                if (value == 1 || value == 2)
+                    item.fixingInTable = value;
+            }
+            break;
+        }
+    }
+
     // Кнопка: через 10 полей после имени — LocationInCommandBar
     // (0 — только в подменю «Еще», 1 — на панели). Сверено с Form.xml
     // на 30 кнопках пяти объектов БП.
