@@ -913,11 +913,19 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
             if (value >= 1 && value <= 2)
                 item->pictureSize = value;
         }
-    } else if (const V8TextNode *autoMax = node.child(nameIndex + 21);
-               autoMax && autoMax->isInteger()) {
-        // AutoMaxWidth надписи: 0 — false (по умолчанию true); через 21 поле
-        // после имени. Сверено с Form.xml по 73 декорациям корпуса.
-        item->autoMaxWidth = autoMax->toInteger() != 0;
+    }
+    // Пределы авторазмера декорации: двадцать первое поле после имени —
+    // AutoMaxWidth, двадцать четвёртое — AutoMaxHeight (0 — false, 1 —
+    // значение по умолчанию true). Платформа пишет обе свойства только
+    // значением false. Сверено с Form.xml по 112 декорациям корпуса: 18 надписей
+    // и одна картинка с AutoMaxWidth, три надписи с AutoMaxHeight.
+    if (const V8TextNode *autoMaxWidth = node.child(nameIndex + 21);
+        autoMaxWidth && autoMaxWidth->isInteger()) {
+        item->autoMaxWidth = autoMaxWidth->toInteger() != 0;
+    }
+    if (const V8TextNode *autoMaxHeight = node.child(nameIndex + 24);
+        autoMaxHeight && autoMaxHeight->isInteger()) {
+        item->autoMaxHeight = autoMaxHeight->toInteger() != 0;
     }
 
     const V8TextNode *appearance = node.child(nameIndex + 12);
@@ -1398,6 +1406,34 @@ QString numberNodeText(const V8TextNode &node)
         return QString();
     const V8TextNode *value = node.child(1);
     return value && value->isScalar() ? value->scalar() : QString();
+}
+
+// Вид переключателя (RadioButtonType): у переключателя в записи есть блок
+// {8, {3, вид, "", …}}, которого нет ни у одного другого вида поля; вид —
+// второе поле внутренней записи (1 — Auto, 2 — Tumbler, 0 — RadioButton,
+// значение по умолчанию, в корпусе не встречается). Сверено с Form.xml по
+// 9 переключателям корпуса.
+void readRadioButtonType(const V8TextNode &node, FormItem *item)
+{
+    if (item->fieldKind != FormFieldKind::RadioButton)
+        return;
+    for (const V8TextNode &child : node.children) {
+        if (!child.isList() || child.children.size() < 2)
+            continue;
+        const V8TextNode *tag = child.child(0);
+        const V8TextNode *payload = child.child(1);
+        if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("8"))
+            continue;
+        if (!payload || !payload->isList() || payload->children.size() < 4)
+            continue;
+        const V8TextNode *kind = payload->child(0);
+        const V8TextNode *type = payload->child(1);
+        if (!kind || !kind->isScalar() || kind->scalar().trimmed() != QLatin1String("3"))
+            continue;
+        if (type && type->isInteger())
+            item->radioButtonType = static_cast<int>(type->toInteger());
+        break;
+    }
 }
 
 void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
@@ -2131,6 +2167,13 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
                 if (mode->isInteger())
                     item.pageMode = static_cast<int>(mode->toInteger());
             }
+            // Путь к данным заголовка страницы (TitleDataPath) — четвёртое поле
+            // того же блока; пустой путь записан как {0}. Сверено с Form.xml по
+            // десяти страницам корпуса с этим свойством и по 88 без него.
+            if (const V8TextNode *path = child.child(4)) {
+                if (isPathDescriptor(*path))
+                    item.titleDataPath = parsePathDescriptor(*path);
+            }
             break;
         }
     }
@@ -2141,6 +2184,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         readFieldFlags(node, nameIndex, &item);
         readFieldInputHint(node, &item);
         readFieldLayoutFlags(node, &item);
+        readRadioButtonType(node, &item);
     } else if (item.typeCode == 55 && nameIndex >= 0) {
         readTableFlags(node, nameIndex, &item);
     }
@@ -2157,6 +2201,14 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // и поведение (10–12). Обычные группы БП дают 0/1, раскрываемые — 1/1/1,
     // всплывающие — 1/0/0; сверено с Form.xml на четырёх справочниках.
     if (item.type == FormItem::Type::Group) {
+        // Разрешать изменение содержимого (EnableContentChange) — третье поле
+        // после имени записи группы; платформа пишет свойство только true.
+        if (nameIndex >= 1) {
+            if (const V8TextNode *contentChange = node.child(nameIndex + 3)) {
+                if (contentChange->isInteger())
+                    item.enableContentChange = contentChange->toInteger() != 0;
+            }
+        }
         if (const V8TextNode *layout = findLayoutNode(node)) {
             // Режим ориентации группы: 0 — вертикально, 1 — горизонтально,
             // 2 — горизонтально, если помещается (Group в XML не пишется),

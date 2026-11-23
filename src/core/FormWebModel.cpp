@@ -879,8 +879,10 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("EditMode"), editMode);
     if (!item.showTitle)
         properties.insert(QStringLiteral("TitleLocation"), QStringLiteral("None"));
-    else if (item.titleLocation != FormTitleLocation::Auto
-             && item.titleLocation != FormTitleLocation::Left) {
+    else if (item.titleLocation != FormTitleLocation::Auto) {
+        // Auto (код 1) — значение по умолчанию, платформа его не пишет. Left
+        // пишется явно: для многострочного поля это признак того, что заголовок
+        // остаётся сбоку, а не переезжает наверх (в корпусе 6 таких полей).
         properties.insert(QStringLiteral("TitleLocation"),
                           titleLocationText(item.titleLocation));
     }
@@ -984,6 +986,13 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("AutoMaxHeight"), boolText(false));
     if (item.maxWidth > 0)
         properties.insert(QStringLiteral("MaxWidth"), QString::number(item.maxWidth));
+    // Вид переключателя (RadioButtonType): платформа пишет Auto и Tumbler явно,
+    // обычный переключатель (RadioButton) — значение по умолчанию, в корпусе
+    // такого случая нет. Сверено с Form.xml по 9 переключателям корпуса.
+    if (item.radioButtonType == 1)
+        properties.insert(QStringLiteral("RadioButtonType"), QStringLiteral("Auto"));
+    else if (item.radioButtonType == 2)
+        properties.insert(QStringLiteral("RadioButtonType"), QStringLiteral("Tumbler"));
     if (!item.wrap)
         properties.insert(QStringLiteral("Wrap"), boolText(false));
     const auto triBool = [&properties](const QString &name, int value) {
@@ -1083,9 +1092,20 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
 {
     const QString tag = elementTag(item);
     QJsonObject properties;
+    // Разрешать изменение содержимого группы: платформа пишет свойство только
+    // значением true (по умолчанию false).
+    if (item.enableContentChange)
+        properties.insert(QStringLiteral("EnableContentChange"), boolText(true));
     const QString title = item.titleText();
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
+    // Путь к данным заголовка (TitleDataPath): заголовок страницы или группы
+    // берётся из реквизита, а не из текста Title; типовая конфигурация так
+    // выводит количество строк табличной части («Объект.Товары.RowsCount»).
+    // Рендерер значения подставить не может (данных в превью нет), поэтому
+    // текст заголовка остаётся прежним, а путь уходит в панель свойств.
+    if (!item.titleDataPathText.isEmpty() && !item.titleDataPathText.contains(QLatin1Char('?')))
+        properties.insert(QStringLiteral("TitleDataPath"), item.titleDataPathText);
     if (!item.tooltip.isEmpty())
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
     if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
@@ -1633,9 +1653,12 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("false"));
         else if (item.verticalStretch == 1)
             properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
-        // AutoMaxWidth надписи: платформа пишет только false (по умолчанию true).
-        if (!item.pictureDecoration && !item.autoMaxWidth)
+        // Пределы авторазмера декорации: платформа пишет только false
+        // (AutoMaxWidth и AutoMaxHeight по умолчанию true).
+        if (!item.autoMaxWidth)
             properties.insert(QStringLiteral("AutoMaxWidth"), boolText(false));
+        if (!item.autoMaxHeight)
+            properties.insert(QStringLiteral("AutoMaxHeight"), boolText(false));
         // Перетаскивание картинки файлом: 0 — AsFile (в XML пишется только оно).
         if (item.fileDragMode == 0)
             properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));

@@ -1903,7 +1903,11 @@ void TestForm::fieldTableListProperties()
             .value(QStringLiteral("properties")).toObject();
     QCOMPARE(pictureDecorationProps.value(QStringLiteral("FileDragMode")).toString(),
              QStringLiteral("AsFile"));
-    QVERIFY(!pictureDecorationProps.contains(QStringLiteral("AutoMaxWidth")));
+    // AutoMaxWidth есть и у декорации-картинки; AutoMaxHeight по умолчанию
+    // (true) платформа не пишет.
+    QCOMPARE(pictureDecorationProps.value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QVERIFY(!pictureDecorationProps.contains(QStringLiteral("AutoMaxHeight")));
     const QJsonObject labelDecorationProps =
         findModelNode(roots, QStringLiteral("ДекорацияНадпись"))
             .value(QStringLiteral("properties")).toObject();
@@ -2778,6 +2782,50 @@ void TestForm::tableRepresentationAndRowFlags()
     QCOMPARE(props(enumModel, QStringLiteral("Список"))
                  .value(QStringLiteral("RowPictureDataPath")).toString(),
              QStringLiteral("~Список.DefaultPicture"));
+
+    // Заголовок страницы из реквизита (TitleDataPath): платформа связывает
+    // заголовок страницы с количеством строк табличной части. Путь лежит
+    // четвёртым полем блока {18,…}, а стандартное поле RowsCount закодировано
+    // номером 100000000; пустой путь записан как {0} — свойства в модели нет.
+    QCOMPARE(props(advanceModel, QStringLiteral("ГруппаТовары"))
+                 .value(QStringLiteral("TitleDataPath")).toString(),
+             QStringLiteral("Объект.Товары.RowsCount"));
+    QCOMPARE(props(inventoryModel, QStringLiteral("СтраницаТовары"))
+                 .value(QStringLiteral("TitleDataPath")).toString(),
+             QStringLiteral("Объект.Товары.RowsCount"));
+    QVERIFY(!props(inventoryModel, QStringLiteral("Страницы"))
+                 .contains(QStringLiteral("TitleDataPath")));
+
+    // Разрешать изменение содержимого (EnableContentChange) — третье поле после
+    // имени записи группы; платформа пишет свойство только значением true.
+    const QJsonObject processorModel =
+        QJsonDocument::fromJson(formWebModelJson(processor)).object();
+    QCOMPARE(props(processorModel, QStringLiteral("ГруппаПериодСверки"))
+                 .value(QStringLiteral("EnableContentChange")).toString(),
+             QStringLiteral("true"));
+    QVERIFY(!props(processorModel, QStringLiteral("ГруппаШапка"))
+                 .contains(QStringLiteral("EnableContentChange")));
+
+    // Вид переключателя (RadioButtonType): блок {8, {3, вид, …}} есть только у
+    // переключателя; вид 1 — Auto, 2 — Tumbler.
+    QCOMPARE(props(calendarModel, QStringLiteral("СпособЗаполненияПоНеделям"))
+                 .value(QStringLiteral("RadioButtonType")).toString(),
+             QStringLiteral("Auto"));
+
+    // Пределы авторазмера декорации (AutoMaxWidth — двадцать первое поле после
+    // имени, AutoMaxHeight — двадцать четвёртое): платформа пишет только false.
+    const QJsonObject unitDecoration =
+        props(calendarModel, QStringLiteral("ДлинаЦиклаЕдиницаИзмерения"));
+    QCOMPARE(unitDecoration.value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QVERIFY(!unitDecoration.contains(QStringLiteral("AutoMaxHeight")));
+    const QJsonObject resultText =
+        props(calendarModel, QStringLiteral("РезультатЗаполненияИнформационныйТекст"));
+    QCOMPARE(resultText.value(QStringLiteral("AutoMaxHeight")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(props(uploadModel, QStringLiteral("ПредложениеПеретащитьИзображение"))
+                 .value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
 }
 
 } // namespace

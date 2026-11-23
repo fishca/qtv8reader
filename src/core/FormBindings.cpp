@@ -61,6 +61,21 @@ const FormAttribute *findRootAttribute(const FormDocument &document, int id,
     return nullptr;
 }
 
+// Стандартные поля таблицы закодированы в путях большими номерами, а в
+// Form.xml записаны английскими именами: 10000000 — DefaultPicture
+// динамического списка (путь картинки строки), 100000000 — RowsCount
+// (количество строк — «Объект.Товары.RowsCount» в заголовке страницы).
+// Сверено с Form.xml по 12 путям картинки строки и 10 заголовкам страниц
+// корпуса.
+QString standardTableFieldName(qint64 code)
+{
+    if (code == 10000000)
+        return QStringLiteral("DefaultPicture");
+    if (code == 100000000)
+        return QStringLiteral("RowsCount");
+    return QString();
+}
+
 } // namespace
 
 void FormBindingResolver::clear()
@@ -306,6 +321,10 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                     && rootAttribute->columnNames.contains(segment.code);
                 if (fieldName.isEmpty() && tableColumn)
                     fieldName = rootAttribute->columnNames.value(segment.code);
+                // Стандартные поля таблицы (количество строк, картинка строки)
+                // в карту полей динамического списка не попадают.
+                if (fieldName.isEmpty())
+                    fieldName = standardTableFieldName(segment.code);
                 if (fieldName.isEmpty()) {
                     parts.append(QStringLiteral("#%1").arg(segment.code));
                     break;
@@ -467,6 +486,11 @@ void FormBindingResolver::applyToDocument(FormDocument *document) const
                     item.valueChars = binding.chars;
                 }
             }
+            // Путь к данным заголовка разбирается по тем же правилам; заголовок
+            // и тип поля из него не берутся (у TitleDataPath другая роль).
+            if (!item.titleDataPath.isEmpty())
+                item.titleDataPathText = resolve(item.titleDataPath, *document,
+                                                 QString()).text;
             apply(item.children);
         }
     };
