@@ -306,6 +306,12 @@ struct FormItem
     // в записи таблицы это список [количество, GUID, …] стандартных команд
     // элемента. Платформа пишет его в Form.xml отсортированным по имени.
     QStringList excludedCommands;
+    // Отступы внутри группы (VerticalSpacing и HorizontalSpacing): пятнадцатое
+    // и шестнадцатое поля записи макета {29,…}. 0 — Auto (в Form.xml не
+    // пишется), 1 — None, 2 — Half, 3 — Single, 4 — OneAndHalf, 5 — Double.
+    // Сверено с Form.xml по 8 группам с VerticalSpacing и 3 с HorizontalSpacing.
+    int verticalSpacing = 0;
+    int horizontalSpacing = 0;
     int autoRefresh = -1;                // AutoRefresh
     int autoRefreshPeriod = -1;          // AutoRefreshPeriod
     QString period;                      // Period («Custom, начало, конец»)

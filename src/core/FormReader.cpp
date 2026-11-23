@@ -2030,6 +2030,18 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     if (item.typeCode == 22) {
         if (const V8TextNode *layout = findLayoutNode(node))
             item.orientation = layoutInteger(*layout, 1);
+        // Отступы внутри группы: пятнадцатое поле записи макета —
+        // HorizontalSpacing, шестнадцатое — VerticalSpacing (1 None, 2 Half,
+        // 3 Single; 0 — Auto, значение по умолчанию). Сверено с Form.xml по
+        // 8 группам с VerticalSpacing и 3 с HorizontalSpacing.
+        if (const V8TextNode *layout = findLayoutNode(node)) {
+            const int horizontal = layoutInteger(*layout, 15);
+            if (horizontal > 0 && horizontal <= 5)
+                item.horizontalSpacing = horizontal;
+            const int vertical = layoutInteger(*layout, 16);
+            if (vertical > 0 && vertical <= 5)
+                item.verticalSpacing = vertical;
+        }
         // Важность отображения (DisplayImportance) у группы записана
         // последним полем записи: 0 — Auto (умолчание), 3 — Usual. Сверено с
         // Form.xml по 1605 группам корпуса: 4 с Usual и 1601 без свойства.

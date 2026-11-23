@@ -151,6 +151,27 @@ QString toolTipRepresentationText(int code)
     }
 }
 
+// Отступы внутри группы (VerticalSpacing и HorizontalSpacing): 0 — Auto
+// (значение по умолчанию, в Form.xml не пишется), 1 — None, 2 — Half,
+// 3 — Single, 4 — OneAndHalf, 5 — Double.
+QString spacingText(int code)
+{
+    switch (code) {
+    case 1:
+        return QStringLiteral("None");
+    case 2:
+        return QStringLiteral("Half");
+    case 3:
+        return QStringLiteral("Single");
+    case 4:
+        return QStringLiteral("OneAndHalf");
+    case 5:
+        return QStringLiteral("Double");
+    default:
+        return QString();
+    }
+}
+
 QString commandBarLocationText(int code)
 {
     switch (code) {
@@ -1053,6 +1074,11 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
     // Важность отображения группы: платформа пишет только Usual (код 3).
     if (item.displayImportance == 3)
         properties.insert(QStringLiteral("DisplayImportance"), QStringLiteral("Usual"));
+    // Отступы группы: платформа пишет их только при отличии от Auto.
+    if (const QString spacing = spacingText(item.verticalSpacing); !spacing.isEmpty())
+        properties.insert(QStringLiteral("VerticalSpacing"), spacing);
+    if (const QString spacing = spacingText(item.horizontalSpacing); !spacing.isEmpty())
+        properties.insert(QStringLiteral("HorizontalSpacing"), spacing);
     // Выравнивание элемента внутри группы: платформа пишет GroupHorizontalAlign
     // и GroupVerticalAlign только при отличии от Auto, поэтому значения 0..2
     // уходят в модель как Left/Center/Right и Top/Center/Bottom.
