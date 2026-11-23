@@ -259,6 +259,7 @@ struct FormItem
     bool autoMaxWidth = true;      // AutoMaxWidth (по умолчанию true)
     bool autoMaxHeight = true;     // AutoMaxHeight (по умолчанию true)
     int maxWidth = 0;              // MaxWidth (0 — не задана)
+    int maxHeight = 0;             // MaxHeight (0 — не задана)
     bool wrap = true;              // Wrap (по умолчанию true)
     int choiceButton = -1;         // 0 — false, 1 — true, 2 — по умолчанию
     int clearButton = -1;          // то же
@@ -280,6 +281,12 @@ struct FormItem
     // Сверено с Form.xml по 9 переключателям корпуса.
     int radioButtonType = -1;
     int choiceFoldersAndItems = -1; // 0 — Items, 1 — Folders, 2 — FoldersAndItems
+    // Многострочный режим поля (MultiLine): восьмое поле записи макета —
+    // 0 — false, 1 — true, 2 — не задан (в XML свойства нет). Сверено с
+    // Form.xml по 326 полям ввода корпуса и по формам
+    // «ДоговорыКонтрагентов/ФормаЭлемента» и «БанкиУниверсальногоОбмена/
+    // ФормаЭлемента».
+    int multiLine = 2;
     // Формат поля и предел значения из записи поля ввода {36,…}: двадцать
     // девятое и тридцатое поля — строки формата, шестнадцатое и семнадцатое —
     // пределы MinValue и MaxValue, шестьдесят шестое — признак расширенного
@@ -380,6 +387,9 @@ struct FormItem
     // выравнивание в группе. −1 — в форме не задано.
     int buttonType = -1;                 // 0 — CommandBarButton, 1 — UsualButton, 2 — Hyperlink
     int buttonRepresentation = -1;       // 0 — Text, 1 — Picture, 2 — PictureAndText, 3 — Auto
+    // Кнопка по умолчанию (DefaultButton): шестое поле после имени равно 1.
+    // Сверено с Form.xml по 294 кнопкам корпуса (4 кнопки с DefaultButton).
+    bool defaultButton = false;
     int buttonGroupHorizontalAlign = -1; // 3 — Auto (по умолчанию)
     int buttonGroupVerticalAlign = -1;   // 3 — Auto (по умолчанию)
     int displayImportance = -1;          // 3 — Usual

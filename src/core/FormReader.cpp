@@ -614,6 +614,66 @@ bool fieldLayoutHasStretch(const QString &code)
         || code == QLatin1String("6");
 }
 
+// Блок пределов размера занимает в записи пять полей подряд:
+// AutoMaxWidth, MaxWidth, (поле не используется), AutoMaxHeight, MaxHeight.
+// Положение блока зависит от вида поля и кода записи макета: у поля ввода
+// (36/32) — с сорок девятого поля, у надписи и флажка (11) — с пятнадцатого,
+// у HTML-документа (3) — с шестого, у форматированного документа (1) — с
+// одиннадцатого, у поля табличного документа (13) — с двадцатого. У остальных
+// видов (поле-картинка, календарь, графсхема, диаграмма, PDF-документ) блок
+// на этих местах не лежит, поэтому пределы для них не читаются.
+// Сверено с Form.xml: HTML-документы — по формам «Реклама/ФормаСписка»,
+// «Номенклатура/ФормаСписка» и «Новости/ФормаДокумента», поле табличного
+// документа — по «МашиночитаемыеДоверенностиКонтрагентов/ФормаЭлемента»,
+// форматированный документ — по «ДоговорыКонтрагентов/ФормаПечатиЭлектронного
+// Формата», надпись и флажок — по 171 записи корпуса, поле ввода — по 326.
+int fieldLimitsBlockStart(FormFieldKind kind, const QString &code)
+{
+    switch (kind) {
+    case FormFieldKind::Input:
+        if (code == QLatin1String("36") || code == QLatin1String("32"))
+            return 49;
+        return -1;
+    case FormFieldKind::Label:
+    case FormFieldKind::CheckBox:
+        return code == QLatin1String("11") ? 15 : -1;
+    case FormFieldKind::HTMLDocument:
+        return code == QLatin1String("3") ? 6 : -1;
+    case FormFieldKind::FormattedDocument:
+        return code == QLatin1String("1") ? 11 : -1;
+    case FormFieldKind::SpreadSheetDocument:
+        return code == QLatin1String("13") ? 20 : -1;
+    default:
+        break;
+    }
+    return -1;
+}
+
+// Читает блок пределов размера из записи макета: признаки авторазмера
+// платформа пишет значением false (по умолчанию true), пределы — только
+// заданными. Незаполненные поля записи не трогают значения элемента.
+void readFieldSizeLimits(const V8TextNode &layout, int start, FormItem *item)
+{
+    if (start < 0)
+        return;
+    const auto codeAt = [&layout](int index) {
+        const V8TextNode *child = layout.child(index);
+        return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
+    };
+    const int autoMaxWidth = codeAt(start);
+    if (autoMaxWidth >= 0)
+        item->autoMaxWidth = autoMaxWidth != 0;
+    const int maxWidth = codeAt(start + 1);
+    if (maxWidth > 0)
+        item->maxWidth = maxWidth;
+    const int autoMaxHeight = codeAt(start + 3);
+    if (autoMaxHeight >= 0)
+        item->autoMaxHeight = autoMaxHeight != 0;
+    const int maxHeight = codeAt(start + 4);
+    if (maxHeight > 0)
+        item->maxHeight = maxHeight;
+}
+
 // Выравнивание элемента внутри группы (GroupHorizontalAlign и
 // GroupVerticalAlign) лежит в «хвосте» записи элемента, поэтому отсчёт ведётся
 // от конца записи: необязательные вложенные записи (контекстное меню,
@@ -932,6 +992,18 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
     if (const V8TextNode *autoMaxHeight = node.child(nameIndex + 24);
         autoMaxHeight && autoMaxHeight->isInteger()) {
         item->autoMaxHeight = autoMaxHeight->toInteger() != 0;
+    }
+    // Пределы размера декорации стоят в том же блоке: двадцать второе поле
+    // после имени — MaxWidth, двадцать пятое — MaxHeight. Сверено с Form.xml по
+    // надписи «НавигацияКартинка» (90 и 3) и картинке «ДекорацияОжидание»
+    // (4 и 1) и по 112 декорациям корпуса.
+    if (const V8TextNode *maxWidth = node.child(nameIndex + 22);
+        maxWidth && maxWidth->isInteger() && maxWidth->toInteger() > 0) {
+        item->maxWidth = static_cast<int>(maxWidth->toInteger());
+    }
+    if (const V8TextNode *maxHeight = node.child(nameIndex + 25);
+        maxHeight && maxHeight->isInteger() && maxHeight->toInteger() > 0) {
+        item->maxHeight = static_cast<int>(maxHeight->toInteger());
     }
 
     const V8TextNode *appearance = node.child(nameIndex + 12);
@@ -1446,17 +1518,44 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
 {
     QString code;
     const V8TextNode *layout = findFieldLayout(node, &code);
-    if (!layout)
+    if (!layout) {
+        // У поля табличного документа (13), графсхемы и HTML-документа (3),
+        // диаграммы и форматированного документа (1) запись макета общим
+        // поиском не находится: её код не входит в набор findFieldLayout.
+        // Второе и третье поля такой записи — ширина и высота поля, поэтому
+        // она опознаётся по ним. Сверено с Form.xml по формам «Реклама/
+        // ФормаСписка», «Номенклатура/ФормаСписка», «Новости/ФормаДокумента»,
+        // «МашиночитаемыеДоверенностиКонтрагентов/ФормаЭлемента» и
+        // «ДоговорыКонтрагентов/ФормаПечатиЭлектронногоФормата».
+        for (const V8TextNode &child : node.children) {
+            if (!child.isList() || child.children.size() < 8)
+                continue;
+            const V8TextNode *first = child.child(0);
+            if (!first || !first->isScalar())
+                continue;
+            const int start = fieldLimitsBlockStart(item->fieldKind,
+                                                    first->scalar().trimmed());
+            if (start < 0)
+                continue;
+            const V8TextNode *width = child.child(1);
+            const V8TextNode *height = child.child(2);
+            if (!width || !width->isInteger() || !height || !height->isInteger())
+                continue;
+            readFieldSizeLimits(child, start, item);
+            break;
+        }
         return;
+    }
     auto intAt = [layout](int index) {
         const V8TextNode *child = layout->child(index);
         return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
     };
     if (code == QLatin1String("36") || code == QLatin1String("32")) {
-        item->autoMaxWidth = intAt(49) != 0;
-        item->autoMaxHeight = intAt(52) != 0;
-        item->maxWidth = qMax(0, intAt(50));
         item->wrap = intAt(6) != 0;
+        // Многострочный режим: восьмое поле записи, 0 — false, 1 — true,
+        // 2 — значение не задано (платформа свойства не пишет).
+        if (intAt(8) == 0 || intAt(8) == 1)
+            item->multiLine = intAt(8);
         item->choiceButton = intAt(12);
         item->clearButton = intAt(13);
         item->spinButton = intAt(14);
@@ -1492,10 +1591,9 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         item->hyperlink = intAt(8) == 1;
     } else if (code == QLatin1String("11")) {
         // Надпись и флажок: ширина, высота и растяжение стоят в начале записи,
-        // а пределы авторазмера — пятнадцатым и восемнадцатым полями.
-        // Сверено с Form.xml: AutoMaxWidth — 15 надписей, AutoMaxHeight — 3.
-        item->autoMaxWidth = intAt(15) != 0;
-        item->autoMaxHeight = intAt(18) != 0;
+        // а пределы размера — пятнадцатым полем записи.
+        // Сверено с Form.xml: AutoMaxWidth — 15 надписей, AutoMaxHeight — 3,
+        // MaxHeight — 2.
         // Вид флажка: двенадцатое поле равно 3 у переключателя, 0 — у обычного
         // флажка (платформа пишет в Form.xml CheckBoxType=Auto).
         const int checkBox = intAt(12);
@@ -1506,6 +1604,7 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         if (intAt(7) == 1)
             item->hyperlink = true;
     }
+    readFieldSizeLimits(*layout, fieldLimitsBlockStart(item->fieldKind, code), item);
 }
 
 // Настройки динамического списка записаны в записи таблицы блоком
@@ -1706,6 +1805,32 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
     item->autoInsertNewRow = codeAt(32) == 1;
     item->enableStartDrag = codeAt(47) == 1;
     item->enableDrag = codeAt(48) == 1;
+    // Пределы размера таблицы — блок из пяти полей в конце записи:
+    // AutoMaxWidth, MaxWidth, (поле не используется), AutoMaxHeight, MaxHeight.
+    // Блок стоит на фиксированном расстоянии от конца записи, потому что число
+    // вложенных записей (контекстное меню, командная панель, подсказка,
+    // дополнения панели) у таблиц разное. Сверено с Form.xml по 54 таблицам
+    // корпуса: AutoMaxWidth=false у 4, AutoMaxHeight=false у 2 — расхождений нет.
+    const int tableEnd = static_cast<int>(node.children.size());
+    const auto tailCode = [&node, tableEnd](int fromEnd) {
+        const int index = tableEnd - fromEnd;
+        if (index < 0)
+            return -1;
+        const V8TextNode *slot = node.child(index);
+        return slot && slot->isInteger() ? static_cast<int>(slot->toInteger()) : -1;
+    };
+    const int autoMaxWidth = tailCode(15);
+    if (autoMaxWidth >= 0)
+        item->autoMaxWidth = autoMaxWidth != 0;
+    const int tableMaxWidth = tailCode(14);
+    if (tableMaxWidth > 0)
+        item->maxWidth = tableMaxWidth;
+    const int autoMaxHeight = tailCode(12);
+    if (autoMaxHeight >= 0)
+        item->autoMaxHeight = autoMaxHeight != 0;
+    const int tableMaxHeight = tailCode(11);
+    if (tableMaxHeight > 0)
+        item->maxHeight = tableMaxHeight;
     // Признаки, которые платформа пишет в Form.xml только при отличии от
     // умолчания: DefaultItem (0/1), ChangeRowSet и ChangeRowOrder (0 — false,
     // 1 — умолчание) и SkipOnInput (0 — false, 2 — умолчание, флажок стоит
@@ -2362,6 +2487,14 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
             defaultItem && defaultItem->isInteger() && defaultItem->toInteger() == 1) {
             item.defaultItem = true;
         }
+        // Кнопка по умолчанию (DefaultButton): шестое поле после имени, 1 —
+        // true. Сверено с Form.xml по 294 кнопкам корпуса: 4 кнопки с
+        // DefaultButton совпали, у остальных поле равно 0.
+        if (const V8TextNode *defaultButton = node.child(nameIndex + 6);
+            defaultButton && defaultButton->isInteger()
+            && defaultButton->toInteger() == 1) {
+            item.defaultButton = true;
+        }
         // Вид кнопки (Type): 0 — CommandBarButton, 1 — UsualButton,
         // 2 — Hyperlink; через 41 поле после имени. Сверено с Form.xml по
         // 294 кнопкам корпуса.
@@ -2410,6 +2543,12 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
             align && align->isInteger()) {
             item.buttonGroupVerticalAlign = static_cast<int>(align->toInteger());
         }
+        // Пределы размера кнопки — блок из пяти полей через двадцать девять
+        // после кнопки: AutoMaxWidth, MaxWidth, (поле не используется),
+        // AutoMaxHeight, MaxHeight. Сверено с Form.xml по 11 кнопкам формы
+        // «ЕдиницыИзмеренияВЕТИС/ФормаСписка» (5 с AutoMaxWidth=false, одна с
+        // AutoMaxHeight=false) и по кнопке «ПоказатьБыстрыеНастройки» с MaxWidth.
+        readFieldSizeLimits(node, nameIndex + 29, &item);
         // Ссылка на команду — через три поля после имени: {номер, GUID}.
         // Номер — идентификатор команды формы, 0 — стандартная/общая команда
         // платформы, иное — идентификатор элемента-владельца стандартной

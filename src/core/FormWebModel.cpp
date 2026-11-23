@@ -105,6 +105,20 @@ QString verticalAlignText(int code)
     }
 }
 
+// Пределы размера элемента: признаки авторазмера платформа пишет только
+// значением false (по умолчанию оба true), пределы — только заданными.
+void addSizeLimits(const FormItem &item, QJsonObject *properties)
+{
+    if (!item.autoMaxWidth)
+        properties->insert(QStringLiteral("AutoMaxWidth"), boolText(false));
+    if (!item.autoMaxHeight)
+        properties->insert(QStringLiteral("AutoMaxHeight"), boolText(false));
+    if (item.maxWidth > 0)
+        properties->insert(QStringLiteral("MaxWidth"), QString::number(item.maxWidth));
+    if (item.maxHeight > 0)
+        properties->insert(QStringLiteral("MaxHeight"), QString::number(item.maxHeight));
+}
+
 // Ширина дочерних элементов группы (ChildItemsWidth). Коды записи макета:
 // 1 — Equal, 2 — LeftWide, 3 — LeftWidest, 4 — LeftNarrow, 5 — LeftNarrowest;
 // 0 — значение по умолчанию, платформа в Form.xml его не пишет.
@@ -741,6 +755,11 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("DisplayImportance"), QStringLiteral("Usual"));
     if (item.defaultItem)
         properties.insert(QStringLiteral("DefaultItem"), boolText(true));
+    // Пределы размера кнопки пишутся только при отличии от умолчания.
+    addSizeLimits(item, &properties);
+    // Кнопка по умолчанию: платформа пишет DefaultButton только для true.
+    if (item.defaultButton)
+        properties.insert(QStringLiteral("DefaultButton"), boolText(true));
     const auto groupAlign = [](int code) -> QString {
         switch (code) {
         case 0:
@@ -980,12 +999,7 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     // Остальные свойства поля из записи макета: платформа пишет их в Form.xml
     // только при отличии от значения по умолчанию. Сверено с Form.xml по
     // 326 полям ввода и 56 полям-картинкам корпуса.
-    if (!item.autoMaxWidth)
-        properties.insert(QStringLiteral("AutoMaxWidth"), boolText(false));
-    if (!item.autoMaxHeight)
-        properties.insert(QStringLiteral("AutoMaxHeight"), boolText(false));
-    if (item.maxWidth > 0)
-        properties.insert(QStringLiteral("MaxWidth"), QString::number(item.maxWidth));
+    addSizeLimits(item, &properties);
     // Вид переключателя (RadioButtonType): платформа пишет Auto и Tumbler явно,
     // обычный переключатель (RadioButton) — значение по умолчанию, в корпусе
     // такого случая нет. Сверено с Form.xml по 9 переключателям корпуса.
@@ -995,6 +1009,12 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("RadioButtonType"), QStringLiteral("Tumbler"));
     if (!item.wrap)
         properties.insert(QStringLiteral("Wrap"), boolText(false));
+    // Многострочный режим поля: платформа пишет MultiLine при явном значении,
+    // отсутствие поля записи (2) означает значение по умолчанию.
+    if (item.multiLine == 0)
+        properties.insert(QStringLiteral("MultiLine"), boolText(false));
+    else if (item.multiLine == 1)
+        properties.insert(QStringLiteral("MultiLine"), boolText(true));
     const auto triBool = [&properties](const QString &name, int value) {
         if (value == 0 || value == 1)
             properties.insert(name, boolText(value == 1));
@@ -1439,6 +1459,10 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
     if (item.heightUnits > 0)
         properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
+    // Пределы размера таблицы: признаки авторазмера — только false,
+    // MaxWidth и MaxHeight — только заданными. Сверено с Form.xml по 54
+    // таблицам корпуса.
+    addSizeLimits(item, &properties);
     // Растяжение таблицы: платформа пишет его только у таблицы с заданными
     // шириной и высотой, значения — 0 (нет) и 1 (да); Auto (2) не пишется.
     if (item.horizontalStretch == 0)
@@ -1653,12 +1677,10 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("false"));
         else if (item.verticalStretch == 1)
             properties.insert(QStringLiteral("VerticalStretch"), QStringLiteral("true"));
-        // Пределы авторазмера декорации: платформа пишет только false
-        // (AutoMaxWidth и AutoMaxHeight по умолчанию true).
-        if (!item.autoMaxWidth)
-            properties.insert(QStringLiteral("AutoMaxWidth"), boolText(false));
-        if (!item.autoMaxHeight)
-            properties.insert(QStringLiteral("AutoMaxHeight"), boolText(false));
+        // Пределы размера декорации: платформа пишет признаки авторазмера
+        // только false (по умолчанию true), MaxWidth и MaxHeight — только
+        // заданными. Сверено с Form.xml по 112 декорациям корпуса.
+        addSizeLimits(item, &properties);
         // Перетаскивание картинки файлом: 0 — AsFile (в XML пишется только оно).
         if (item.fileDragMode == 0)
             properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));

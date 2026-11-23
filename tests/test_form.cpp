@@ -2834,6 +2834,67 @@ void TestForm::tableRepresentationAndRowFlags()
              QStringLiteral("Stretch"));
     QVERIFY(!props(reportModel, QStringLiteral("КартинкаБаннера"))
                  .contains(QStringLiteral("PictureSize")));
+
+    // Пределы размера декорации: MaxWidth — двадцать второе поле после имени,
+    // MaxHeight — двадцать пятое (в том же блоке, что и признаки авторазмера).
+    const QJsonObject navigationPicture = props(uploadModel, QStringLiteral("НавигацияКартинка"));
+    QCOMPARE(navigationPicture.value(QStringLiteral("MaxWidth")).toString(),
+             QStringLiteral("90"));
+    QCOMPARE(navigationPicture.value(QStringLiteral("MaxHeight")).toString(),
+             QStringLiteral("3"));
+    const QJsonObject waitingDecoration =
+        props(processorModel, QStringLiteral("ДекорацияОжидание"));
+    QCOMPARE(waitingDecoration.value(QStringLiteral("MaxWidth")).toString(),
+             QStringLiteral("4"));
+    QCOMPARE(waitingDecoration.value(QStringLiteral("MaxHeight")).toString(),
+             QStringLiteral("1"));
+
+    // Пределы размера таблицы стоят блоком в конце записи (AutoMaxWidth,
+    // MaxWidth, AutoMaxHeight, MaxHeight): у шаблона заполнения календаря
+    // авторазмер по ширине выключен, у соседней таблицы свойства нет.
+    QCOMPARE(templateTable.value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QVERIFY(!templateTable.contains(QStringLiteral("MaxWidth")));
+    QVERIFY(!props(actsModel, QStringLiteral("Список"))
+                 .contains(QStringLiteral("AutoMaxWidth")));
+
+    // Пределы размера кнопки — блок через двадцать девять полей после имени:
+    // у кнопки «Показать быстрые настройки» авторазмер по ширине выключен.
+    QCOMPARE(props(reportModel, QStringLiteral("ПоказатьБыстрыеНастройки"))
+                 .value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QVERIFY(!props(reportModel, QStringLiteral("СформироватьОтчет"))
+                 .contains(QStringLiteral("AutoMaxWidth")));
+    // Кнопка по умолчанию (DefaultButton) — шестое поле после имени.
+    QCOMPARE(props(reportModel, QStringLiteral("СформироватьОтчет"))
+                 .value(QStringLiteral("DefaultButton")).toString(),
+             QStringLiteral("true"));
+
+    // Многострочный режим (MultiLine) — восьмое поле записи макета поля ввода:
+    // 1 — true, 0 — false, 2 — значение не задано.
+    FormDocument news;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("Новости"),
+                      QStringLiteral("ФормаДокумента"), &news),
+             qPrintable(error));
+    const QJsonObject newsModel = QJsonDocument::fromJson(formWebModelJson(news)).object();
+    QCOMPARE(props(newsModel, QStringLiteral("БинарныеДанныеДанныеСтрока64"))
+                 .value(QStringLiteral("MultiLine")).toString(),
+             QStringLiteral("true"));
+    QVERIFY(!props(newsModel, QStringLiteral("Наименование"))
+                 .contains(QStringLiteral("MultiLine")));
+
+    // Пределы размера HTML-документа лежат блоком в записи макета {3,…}:
+    // у примеров новости на странице текстов выключены оба авторазмера.
+    const QJsonObject newsExample =
+        props(newsModel, QStringLiteral("ПримерНовостиДляВнешнихИсточников"));
+    QCOMPARE(newsExample.value(QStringLiteral("AutoMaxWidth")).toString(),
+             QStringLiteral("false"));
+    QCOMPARE(newsExample.value(QStringLiteral("AutoMaxHeight")).toString(),
+             QStringLiteral("false"));
+
+    // Предел высоты надписи (MaxHeight) — девятнадцатое поле записи {11,…}.
+    QCOMPARE(resultText.value(QStringLiteral("MaxHeight")).toString(),
+             QStringLiteral("2"));
 }
 
 } // namespace
