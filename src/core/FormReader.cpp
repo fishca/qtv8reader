@@ -905,13 +905,19 @@ void readDecorationExtras(const V8TextNode &node, int nameIndex,
         if (kind && kind->isInteger())
             item->pictureDecoration = kind->toInteger() != 0;
     }
-    // Размер картинки: 1 — Stretch, 2 — Proportionally; по умолчанию 0.
+    // Размер картинки (PictureSize) лежит в записи оформления {4,…} третьим
+    // полем: 0 — не задан (платформа свойства не пишет), 1 — Stretch,
+    // 2 — Proportionally. Сверено с Form.xml по 39 декорациям-картинкам
+    // корпуса: 2 с Stretch и 5 с Proportionally совпали.
     if (item->pictureDecoration) {
-        const V8TextNode *size = node.child(nameIndex + 6);
-        if (size && size->isInteger()) {
-            const int value = static_cast<int>(size->toInteger());
-            if (value >= 1 && value <= 2)
-                item->pictureSize = value;
+        if (const V8TextNode *size = node.child(nameIndex + 12)) {
+            if (size->isList() && size->children.size() > 3) {
+                const V8TextNode *value = size->child(3);
+                if (value && value->isInteger() && value->toInteger() >= 1
+                    && value->toInteger() <= 2) {
+                    item->pictureSize = static_cast<int>(value->toInteger());
+                }
+            }
         }
     }
     // Пределы авторазмера декорации: двадцать первое поле после имени —

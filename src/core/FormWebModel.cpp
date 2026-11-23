@@ -1676,6 +1676,15 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         // commonPictures модели.
         if (isPictureDecoration(item) && !item.pictureRef.isEmpty())
             properties.insert(QStringLiteral("Picture"), item.pictureRef);
+        // Размер картинки декорации: платформа пишет Stretch и Proportionally,
+        // третий вариант (AutoSize) в корпусе встречается только у поля-картинки.
+        if (isPictureDecoration(item)) {
+            if (item.pictureSize == 1)
+                properties.insert(QStringLiteral("PictureSize"), QStringLiteral("Stretch"));
+            else if (item.pictureSize == 2)
+                properties.insert(QStringLiteral("PictureSize"),
+                                  QStringLiteral("Proportionally"));
+        }
         addStyleProperties(item, &properties);
         QJsonObject json;
         json.insert(QStringLiteral("tag"),

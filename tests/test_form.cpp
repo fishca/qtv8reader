@@ -2826,6 +2826,14 @@ void TestForm::tableRepresentationAndRowFlags()
     QCOMPARE(props(uploadModel, QStringLiteral("ПредложениеПеретащитьИзображение"))
                  .value(QStringLiteral("AutoMaxWidth")).toString(),
              QStringLiteral("false"));
+
+    // Размер картинки декорации (PictureSize) — третье поле записи оформления
+    // {4,…}: 1 — Stretch, 2 — Proportionally; у соседних декораций свойства нет.
+    QCOMPARE(props(reportModel, QStringLiteral("Разделитель"))
+                 .value(QStringLiteral("PictureSize")).toString(),
+             QStringLiteral("Stretch"));
+    QVERIFY(!props(reportModel, QStringLiteral("КартинкаБаннера"))
+                 .contains(QStringLiteral("PictureSize")));
 }
 
 } // namespace

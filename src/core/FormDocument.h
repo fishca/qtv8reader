@@ -383,7 +383,8 @@ struct FormItem
     int buttonGroupHorizontalAlign = -1; // 3 — Auto (по умолчанию)
     int buttonGroupVerticalAlign = -1;   // 3 — Auto (по умолчанию)
     int displayImportance = -1;          // 3 — Usual
-    // Декорация-картинка: размер (1 — Stretch, 2 — Proportionally).
+    // Декорация-картинка: размер (1 — Stretch, 2 — Proportionally; 0 — не
+    // задан, платформа свойства не пишет).
     int pictureSize = -1;
     // Оформление элемента. Ссылка на общий стиль конфигурации записана в форме
     // GUID-ом, на стиль платформы — отрицательным кодом, абсолютный цвет —
