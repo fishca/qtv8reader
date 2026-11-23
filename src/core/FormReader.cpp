@@ -1414,6 +1414,11 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         // Сверено с Form.xml: AutoMaxWidth — 15 надписей, AutoMaxHeight — 3.
         item->autoMaxWidth = intAt(15) != 0;
         item->autoMaxHeight = intAt(18) != 0;
+        // Вид флажка: двенадцатое поле равно 3 у переключателя, 0 — у обычного
+        // флажка (платформа пишет в Form.xml CheckBoxType=Auto).
+        const int checkBox = intAt(12);
+        if (checkBox == 3)
+            item->checkBoxType = 3;
     }
 }
 

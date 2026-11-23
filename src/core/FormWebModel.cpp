@@ -680,7 +680,9 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     if (item.fieldKind == FormFieldKind::CheckBox
         || (item.valueKind == FormValueKind::Boolean
             && item.fieldKind != FormFieldKind::Label && !item.labelOnly)) {
-        properties.insert(QStringLiteral("CheckBoxType"), QStringLiteral("Auto"));
+        properties.insert(QStringLiteral("CheckBoxType"),
+                          item.checkBoxType == 3 ? QStringLiteral("Switcher")
+                                                 : QStringLiteral("Auto"));
     }
     // EditMode: 0 — Directly, 2 — EnterOnInput; 1 — значение по умолчанию,
     // платформа свойства в Form.xml не пишет. Пишется и у флажков: в форме

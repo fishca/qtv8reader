@@ -258,6 +258,11 @@ struct FormItem
     int choiceHistoryOnInput = -1; // 0 — Auto, 1 — DontUse
     int choiceButtonRepresentation = -1; // 0 — по умолчанию, 2/3 — явно
     int choiceFoldersAndItems = -1; // 0 — Items, 1 — Folders, 2 — FoldersAndItems
+    // Вид флажка (CheckBoxType) из записи надписи/флажка {11,…}: двенадцатое
+    // поле равно 3 у переключателя, 0 — вид по умолчанию (платформа пишет в
+    // Form.xml Auto). Сверено с Form.xml по 3 переключателям корпуса (все три
+    // совпали) и 55 флажкам с явным Auto.
+    int checkBoxType = 0;
     int fileDragMode = -1;         // поле-картинка: 0 — AsFile, 1 — UseAsFile
     // Таблица: настройки, которые платформа пишет в Form.xml только для
     // отличающегося значения. Сверено с Form.xml по 48 таблицам корпуса.
