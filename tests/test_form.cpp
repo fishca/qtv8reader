@@ -141,6 +141,7 @@ private slots:
     void userVisiblePageAlignAndRowsPicture();
     void collapsedPageTitleCommandBarAndSource();
     void tableSearchLocations();
+    void layoutNodeIsNotItemReference();
 };
 
 void TestForm::parseSynthetic()
@@ -3151,6 +3152,58 @@ void TestForm::tableSearchLocations()
     QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("SearchStringLocation")));
     QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("ViewStatusLocation")));
     QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("SearchControlLocation")));
+}
+
+// Ссылка на элемент формы — {номер, GUID}, и у группы номер часто равен 28
+// или 29, то есть совпадает с кодом узла макета {28|29, …}. Макет должен
+// находиться, а не ссылка: иначе группа теряет ориентацию, поведение,
+// отступы и сквозное выравнивание.
+void TestForm::layoutNodeIsNotItemReference()
+{
+    const QString text = QStringLiteral(
+        "{4,{50,0,"
+        // Группа с номером 29: макет записан кодом 29 и стоит после имени.
+        "{22,{29,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+        "\"ГруппаВертикальная\",{1,1,{\"ru\",\"Вертикальная\"}},"
+        "{29,\"0\",\"0\",\"0\",\"0\",{\"0\"},{\"1\",\"0\"},{\"Pattern\"},\"\","
+        "{\"3\",\"4\",{\"0\"}},\"0\",\"0\",\"0\",\"0\",{\"1\",\"0\"},\"0\",\"0\","
+        "\"3\",\"3\",\"2\",\"0\",\"1\",\"0\",{\"3\",\"4\",{\"0\"}},\"0\",\"2\",\"0\",\"0\"},"
+        // Вложенная группа с другим номером и горизонтальным макетом.
+        "{22,{30,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+        "\"ГруппаГоризонтальная\",{1,1,{\"ru\",\"Горизонтальная\"}},"
+        "{28,\"1\",\"0\",\"0\",\"1\"}"
+        "}"
+        "}"
+        "},"
+        "\"\","
+        "{4,\"0\"},"
+        "{0,0},"
+        "{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}"
+        "}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error), qPrintable(error));
+
+    const FormItem *vertical =
+        findItemByName(document.items, QStringLiteral("ГруппаВертикальная"));
+    QVERIFY(vertical);
+    QCOMPARE(vertical->id, 29);
+    QCOMPARE(vertical->orientation, 0);
+    QCOMPARE(vertical->groupMode, 0);
+    QVERIFY(!vertical->showTitle);
+    QCOMPARE(static_cast<int>(vertical->representation),
+             static_cast<int>(FormGroupRepresentation::None));
+    QCOMPARE(static_cast<int>(vertical->behavior),
+             static_cast<int>(FormGroupBehavior::Usual));
+    QVERIFY(vertical->hasBehavior);
+
+    const FormItem *horizontal =
+        findItemByName(document.items, QStringLiteral("ГруппаГоризонтальная"));
+    QVERIFY(horizontal);
+    QCOMPARE(horizontal->id, 30);
+    QCOMPARE(horizontal->orientation, 1);
+    QVERIFY(horizontal->showTitle);
 }
 
 } // namespace

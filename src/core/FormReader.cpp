@@ -196,10 +196,18 @@ bool readChoiceBlock(const V8TextNode &node, QStringList *target, int depth = 0)
 // (3), показ заголовка (4) и поведение (10–12). Код узла зависит от сборки,
 // которой сделана форма: из 199 групп корпуса 165 записаны кодом 29, а 34 —
 // кодом 28; по составу полей записи совпадают.
+//
+// Ссылка на элемент формы — тоже список из двух элементов, {номер, GUID},
+// а номер у групп небольшой и часто равен 28 или 29. Поэтому запись с двумя
+// полями и нечисловым вторым полем — ссылка, а не макет: без этой проверки
+// группа с номером 28/29 теряла ориентацию, поведение, отступы и сквозное
+// выравнивание (группа «ГруппаПодтверждениеРасхода» формы «УчетНДС» —
+// пример).
 const V8TextNode *findLayoutNode(const V8TextNode &node)
 {
-    for (const V8TextNode &child : node.children) {
-        if (!child.isList() || child.children.isEmpty())
+    for (int i = 2; i < node.children.size(); ++i) {
+        const V8TextNode &child = node.children.at(i);
+        if (!child.isList() || child.children.size() <= 2)
             continue;
         const V8TextNode *first = child.child(0);
         if (!first)
