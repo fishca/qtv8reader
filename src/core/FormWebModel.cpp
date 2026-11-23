@@ -474,7 +474,7 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document);
 QString kindTagFor(const QString &ownerTitle);
 
 QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &document,
-                                const QJsonArray &leading, bool autofill,
+                                const QJsonArray &leading,
                                 const QString &defaultName);
 
 // Своя командная панель форматированного документа: платформа заполняет её
@@ -955,8 +955,10 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         // рендерер без Autofill сам подставляет стандартные команды.
     } else if (tag == QLatin1String("ButtonGroup")) {
         // У группы кнопок платформа пишет Representation только при
-        // «компактном» отображении, а в бинарной форме этот признак не
-        // читается — значение по умолчанию не подставляем.
+        // «компактном» отображении (кнопки-значки без подписей): в бинарной
+        // записи группы это четвёртое поле блока {2, …, 2, вид}.
+        if (item.compactButtonGroup)
+            properties.insert(QStringLiteral("Representation"), QStringLiteral("Compact"));
     } else if (tag == QLatin1String("ColumnGroup")) {
         // Группа колонок таблицы: группировка, закрепление и заголовок.
         // Группировка группы колонок: Horizontal (0) или InCell (2). Значение
@@ -1237,7 +1239,7 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     json.insert(QStringLiteral("events"), QJsonArray());
     if (tableBar && !mainList) {
         json.insert(QStringLiteral("autoCommandBar"),
-                    buildCommandBarNode(tableBar, document, QJsonArray(), true,
+                    buildCommandBarNode(tableBar, document, QJsonArray(),
                                         item.name + QStringLiteral("КоманднаяПанель")));
     }
     return json;
@@ -1415,7 +1417,7 @@ bool hasStandardButton(const QVector<FormItem> &items, const QString &title)
 // Узел командной панели: собственные кнопки формы плюс (для корневой панели)
 // стандартные команды платформы, которые 1С добавляет сама.
 QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &document,
-                                const QJsonArray &leading, bool autofill,
+                                const QJsonArray &leading,
                                 const QString &defaultName)
 {
     QJsonArray buttons = leading;
@@ -1427,7 +1429,11 @@ QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &documen
         }
     }
     QJsonObject properties;
-    properties.insert(QStringLiteral("Autofill"), boolText(autofill));
+    // Автозаполнение: платформа пишет Autofill в Form.xml только когда его
+    // сняли, а по умолчанию панель заполняется стандартными командами. Поэтому
+    // и в модели признак есть только для панели без автозаполнения.
+    if (bar && bar->autoFillFlag == 0)
+        properties.insert(QStringLiteral("Autofill"), boolText(false));
     QJsonObject json;
     json.insert(QStringLiteral("tag"), QStringLiteral("AutoCommandBar"));
     json.insert(QStringLiteral("name"),
@@ -1514,7 +1520,7 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
     // показывает именно её: кнопки записи и проведения заданы в ней, а панель
     // автозаполнения остаётся пустой.
     if (authoredBarPresent) {
-        QJsonObject bar = buildCommandBarNode(autoBar, document, standard, false,
+        QJsonObject bar = buildCommandBarNode(autoBar, document, standard,
                                               QStringLiteral("ФормаКоманднаяПанель"));
         return bar;
     }
@@ -1547,7 +1553,7 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
         standard.append(makePopup(QStringLiteral("_global_create_based_on"),
                                   QStringLiteral("Создать на основании"), QJsonArray()));
     }
-    QJsonObject bar = buildCommandBarNode(autoBar, document, standard, false,
+    QJsonObject bar = buildCommandBarNode(autoBar, document, standard,
                                           QStringLiteral("ФормаКоманднаяПанель"));
     moveCreateBasedOnAfterImportantCommands(&bar);
     return bar;

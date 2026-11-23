@@ -134,6 +134,7 @@ private slots:
     void sizesStretchAndPages();
     void formattedTitlesAndGroupFlags();
     void pageOrientation();
+    void commandBarAutofillAndCompactGroups();
 };
 
 void TestForm::parseSynthetic()
@@ -2356,6 +2357,104 @@ void TestForm::pageOrientation()
                  .value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("Group")).toString(),
              QStringLiteral("Horizontal"));
+}
+
+// Автозаполнение командной панели и компактная группа кнопок: в записи панели
+// признак стоит через 14 полей после имени (третье поле списка из трёх чисел),
+// у группы кнопок — четвёртым полем блока {2, …, 2, вид}.
+void TestForm::commandBarAutofillAndCompactGroups()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    auto loadForm = [&reader, &error](const QString &typeTitle, const QString &objectName,
+                                      const QString &formName, FormDocument *document) {
+        MetadataObject *object = nullptr;
+        for (MetadataCategory &category : reader.configuration().categories) {
+            if (!category.typeTitle.startsWith(typeTitle))
+                continue;
+            for (MetadataObject &candidate : category.objects) {
+                if (candidate.name == objectName) {
+                    object = &candidate;
+                    break;
+                }
+            }
+            if (object)
+                break;
+        }
+        if (!object)
+            return false;
+        reader.loadSections(*object);
+        const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+        if (!forms)
+            return false;
+        const MetadataEntry *formEntry = nullptr;
+        for (const MetadataEntry &entry : forms->entries) {
+            if (entry.name.compare(formName, Qt::CaseInsensitive) == 0) {
+                formEntry = &entry;
+                break;
+            }
+        }
+        if (!formEntry)
+            return false;
+        const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+        if (!element)
+            return false;
+        QByteArray payload;
+        if (!reader.container().elementPayload(*element, &payload, nullptr, &error))
+            return false;
+        FormBindingResolver resolver;
+        resolver.addObject(*object);
+        if (!FormReader::parseBytes(payload, document, &error, &resolver))
+            return false;
+        applyOwnerMetadata(*object, document);
+        return true;
+    };
+
+    // Панель без автозаполнения: разработчик снял флажок, Form.xml пишет
+    // Autofill=false, и модель отдаёт признак рендереру.
+    FormDocument withoutAutofill;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"),
+                      QStringLiteral("АктыОтбораПробЗЕРНО"),
+                      QStringLiteral("ФормаСписка"), &withoutAutofill),
+             qPrintable(error));
+    QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(withoutAutofill)).object();
+    QCOMPARE(model.value(QStringLiteral("autoCommandBar")).toObject()
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Autofill")).toString(),
+             QStringLiteral("false"));
+
+    // Панель с автозаполнением (значение по умолчанию): свойства в модели нет,
+    // рендерер сам подставляет стандартные команды.
+    FormDocument withAutofill;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"),
+                      QStringLiteral("БанкиУниверсальногоОбмена"),
+                      QStringLiteral("ФормаЭлемента"), &withAutofill),
+             qPrintable(error));
+    model = QJsonDocument::fromJson(formWebModelJson(withAutofill)).object();
+    QVERIFY(!model.value(QStringLiteral("autoCommandBar")).toObject()
+                 .value(QStringLiteral("properties")).toObject()
+                 .contains(QStringLiteral("Autofill")));
+
+    // Группа кнопок «компактно»: платформа пишет Representation=Compact,
+    // кнопки рисуются значками без подписей.
+    FormDocument compact;
+    QVERIFY2(loadForm(QStringLiteral("Отчет"),
+                      QStringLiteral("АнализДвиженийДенежныхСредств"),
+                      QStringLiteral("ФормаОтчета"), &compact),
+             qPrintable(error));
+    model = QJsonDocument::fromJson(formWebModelJson(compact)).object();
+    QCOMPARE(findModelNode(model.value(QStringLiteral("childItemsRoot")).toArray(),
+                           QStringLiteral("ГруппаРаботаВТаблице"))
+                 .value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("Compact"));
 }
 
 } // namespace

@@ -2000,6 +2000,44 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
             if (contentVertical >= 0 && contentVertical <= 2)
                 item.contentVerticalAlign = contentVertical;
         }
+        // Автозаполнение командной панели: третье поле списка из трёх чисел,
+        // который стоит через 14 полей после имени панели. Ноль — разработчик
+        // снял автозаполнение (Form.xml пишет Autofill=false), единица —
+        // значение по умолчанию. Сверено с Form.xml по 80 панелям корпуса.
+        if (item.groupKind == 9 && nameIndex >= 0) {
+            const V8TextNode *flags = node.child(nameIndex + 14);
+            if (flags && flags->isList() && flags->children.size() >= 3) {
+                const V8TextNode *autoFill = flags->child(2);
+                if (autoFill && autoFill->isInteger())
+                    item.autoFillFlag = autoFill->toInteger() != 0 ? 1 : 0;
+            }
+        }
+        // Компактное отображение группы кнопок: блок {2, […], 2, вид} в записи
+        // группы, четвёртое поле равно 2 при «компактно» и нулю при обычном
+        // отображении. Сверено с Form.xml по 62 группам кнопок корпуса.
+        if (item.groupKind == 6) {
+            const auto isNumber = [](const V8TextNode &value, int code) {
+                return (value.isInteger() && value.toInteger() == code)
+                    || (value.isScalar()
+                        && value.scalar().trimmed() == QString::number(code));
+            };
+            for (const V8TextNode &child : node.children) {
+                if (!child.isList() || child.children.size() < 4)
+                    continue;
+                const V8TextNode *kind = child.child(0);
+                const V8TextNode *payload = child.child(1);
+                const V8TextNode *mode = child.child(2);
+                const V8TextNode *view = child.child(3);
+                if (!kind || !isNumber(*kind, 2))
+                    continue;
+                if (!payload || !payload->isList() || !mode || !mode->isInteger()
+                    || !view || !view->isInteger())
+                    continue;
+                if (view->toInteger() == 2)
+                    item.compactButtonGroup = true;
+                break;
+            }
+        }
     }
 
     // Группа колонок таблицы: в её записи {2, группировка, …, показ заголовка,
