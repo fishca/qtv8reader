@@ -136,6 +136,7 @@ private slots:
     void pageOrientation();
     void commandBarAutofillAndCompactGroups();
     void formattedDocumentCommandBar();
+    void tableRepresentationAndRowFlags();
 };
 
 void TestForm::parseSynthetic()
@@ -2566,6 +2567,129 @@ void TestForm::formattedDocumentCommandBar()
     QCOMPARE(last.value(QStringLiteral("properties")).toObject()
                  .value(QStringLiteral("LocationInCommandBar")).toString(),
              QStringLiteral("InAdditionalSubmenu"));
+}
+
+// Отображение таблицы и признаки строк: Representation (List/Tree/умолчание),
+// представление подсказки, запрет менять состав и порядок строк, пропуск при
+// вводе и DefaultItem. Все значения сверены с Form.xml корпуса.
+void TestForm::tableRepresentationAndRowFlags()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    auto loadForm = [&reader, &error](const QString &typeTitle, const QString &objectName,
+                                      const QString &formName, FormDocument *document) {
+        MetadataObject *object = nullptr;
+        for (MetadataCategory &category : reader.configuration().categories) {
+            if (!category.typeTitle.startsWith(typeTitle))
+                continue;
+            for (MetadataObject &candidate : category.objects) {
+                if (candidate.name == objectName) {
+                    object = &candidate;
+                    break;
+                }
+            }
+            if (object)
+                break;
+        }
+        if (!object)
+            return false;
+        reader.loadSections(*object);
+        const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+        if (!forms)
+            return false;
+        const MetadataEntry *formEntry = nullptr;
+        for (const MetadataEntry &entry : forms->entries) {
+            if (entry.name.compare(formName, Qt::CaseInsensitive) == 0) {
+                formEntry = &entry;
+                break;
+            }
+        }
+        if (!formEntry)
+            return false;
+        const V8Element *element = reader.container().find(formEntry->guid + QStringLiteral(".0"));
+        if (!element)
+            return false;
+        QByteArray payload;
+        if (!reader.container().elementPayload(*element, &payload, nullptr, &error))
+            return false;
+        FormBindingResolver resolver;
+        resolver.addObject(*object);
+        if (!FormReader::parseBytes(payload, document, &error, &resolver))
+            return false;
+        applyOwnerMetadata(*object, document);
+        return true;
+    };
+
+    const auto props = [](const QJsonObject &model, const QString &name) {
+        return findModelNode(model.value(QStringLiteral("childItemsRoot")).toArray(), name)
+            .value(QStringLiteral("properties")).toObject();
+    };
+
+    // Табличная часть документа: Representation=List, а подсказка выводится
+    // сверху (ToolTipRepresentation=ShowTop). У соседней таблицы «Билеты»
+    // отображение не задано — в модели свойства нет.
+    FormDocument document;
+    QVERIFY2(loadForm(QStringLiteral("Документ"), QStringLiteral("АвансовыйОтчет"),
+                      QStringLiteral("ФормаДокумента"), &document),
+             qPrintable(error));
+    QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    QCOMPARE(props(model, QStringLiteral("Товары"))
+                 .value(QStringLiteral("Representation")).toString(),
+             QStringLiteral("List"));
+    QCOMPARE(props(model, QStringLiteral("Билеты"))
+                 .value(QStringLiteral("ToolTipRepresentation")).toString(),
+             QStringLiteral("ShowTop"));
+    QVERIFY(!props(model, QStringLiteral("Билеты"))
+                 .contains(QStringLiteral("Representation")));
+
+    // Данные отчёта — дерево: Representation=Tree, а ввод в таблицу настроек
+    // не переходит (SkipOnInput=false). Важность отображения группы кнопок
+    // платформа пишет значением Usual (код 3).
+    FormDocument report;
+    QVERIFY2(loadForm(QStringLiteral("Отчет"),
+                      QStringLiteral("АнализДвиженийДенежныхСредств"),
+                      QStringLiteral("ФормаОтчета"), &report),
+             qPrintable(error));
+    model = QJsonDocument::fromJson(formWebModelJson(report)).object();
+    const QJsonObject filter = props(model, QStringLiteral("Отборы"));
+    QCOMPARE(filter.value(QStringLiteral("Representation")).toString(), QStringLiteral("Tree"));
+    QCOMPARE(filter.value(QStringLiteral("SkipOnInput")).toString(), QStringLiteral("false"));
+    QCOMPARE(props(model, QStringLiteral("ГруппаРаботаВТаблице"))
+                 .value(QStringLiteral("DisplayImportance")).toString(),
+             QStringLiteral("Usual"));
+
+    // Дерево значений обработки: строки неизменяемы — платформа пишет
+    // ChangeRowSet и ChangeRowOrder значением false.
+    FormDocument processor;
+    QVERIFY2(loadForm(QStringLiteral("Обработка"),
+                      QStringLiteral("КлассификацияВыручкиПоОКВЭД"),
+                      QStringLiteral("Форма"), &processor),
+             qPrintable(error));
+    model = QJsonDocument::fromJson(formWebModelJson(processor)).object();
+    const QJsonObject valueTree = props(model, QStringLiteral("ДеревоДанных"));
+    QCOMPARE(valueTree.value(QStringLiteral("Representation")).toString(), QStringLiteral("Tree"));
+    QCOMPARE(valueTree.value(QStringLiteral("ChangeRowSet")).toString(), QStringLiteral("false"));
+    QCOMPARE(valueTree.value(QStringLiteral("ChangeRowOrder")).toString(), QStringLiteral("false"));
+
+    // Поле-число: кнопка прокрутки, предел значения и формат из записи макета;
+    // поле года — формат редактирования.
+    FormDocument calendar;
+    QVERIFY2(loadForm(QStringLiteral("Справочник"), QStringLiteral("Календари"),
+                      QStringLiteral("ФормаЭлемента"), &calendar),
+             qPrintable(error));
+    model = QJsonDocument::fromJson(formWebModelJson(calendar)).object();
+    const QJsonObject cycleLength = props(model, QStringLiteral("ДлинаЦикла"));
+    QCOMPARE(cycleLength.value(QStringLiteral("SpinButton")).toString(), QStringLiteral("true"));
+    QCOMPARE(cycleLength.value(QStringLiteral("MinValue")).toString(), QStringLiteral("1"));
+    QCOMPARE(props(model, QStringLiteral("НомерТекущегоГода"))
+                 .value(QStringLiteral("EditFormat")).toString(),
+             QStringLiteral("ЧГ="));
 }
 
 } // namespace

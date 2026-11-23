@@ -258,6 +258,17 @@ struct FormItem
     int choiceHistoryOnInput = -1; // 0 — Auto, 1 — DontUse
     int choiceButtonRepresentation = -1; // 0 — по умолчанию, 2/3 — явно
     int choiceFoldersAndItems = -1; // 0 — Items, 1 — Folders, 2 — FoldersAndItems
+    // Формат поля и предел значения из записи поля ввода {36,…}: двадцать
+    // девятое и тридцатое поля — строки формата, шестнадцатое и семнадцатое —
+    // пределы MinValue и MaxValue, шестьдесят шестое — признак расширенного
+    // редактирования нескольких значений. Сверено с Form.xml по 7 форматам,
+    // 6 форматам редактирования, 5 пределам и 34 полям с расширенным
+    // редактированием корпуса.
+    QString format;                  // Format
+    QString editFormat;              // EditFormat
+    QString minValue;                // MinValue
+    QString maxValue;                // MaxValue
+    bool extendedEditMultipleValues = false; // ExtendedEditMultipleValues
     // Вид флажка (CheckBoxType) из записи надписи/флажка {11,…}: двенадцатое
     // поле равно 3 у переключателя, 0 — вид по умолчанию (платформа пишет в
     // Form.xml Auto). Сверено с Form.xml по 3 переключателям корпуса (все три
@@ -266,6 +277,11 @@ struct FormItem
     int fileDragMode = -1;         // поле-картинка: 0 — AsFile, 1 — UseAsFile
     // Таблица: настройки, которые платформа пишет в Form.xml только для
     // отличающегося значения. Сверено с Form.xml по 48 таблицам корпуса.
+    // Отображение таблицы (Representation): 0 — List, 1 — Table (по
+    // умолчанию, в XML не пишется), 2 — Tree; −1 — не задано. Код лежит
+    // третьим полем записи, сразу после ссылки на имя. Сверено с Form.xml по
+    // 54 таблицам корпуса: 25 List, 15 умолчаний и 4 Tree совпали.
+    int tableRepresentation = -1;
     bool useAlternationRowColor = false; // UseAlternationRowColor
     bool autoInsertNewRow = false;       // AutoInsertNewRow
     bool enableStartDrag = false;        // EnableStartDrag
@@ -279,6 +295,13 @@ struct FormItem
     // пишутся только у таблиц, связанных с динамическим списком. Сверено с
     // Form.xml по 87 таблицам динамических списков и 76 обычным таблицам.
     bool tableHeader = true;             // Header (по умолчанию true)
+    // Разрешение менять состав и порядок строк таблицы: платформа пишет
+    // ChangeRowSet и ChangeRowOrder только значением false, когда строки
+    // неизменяемы. Оба кода лежат рядом с DefaultItem (0 — false, 1 —
+    // умолчание). Сверено с Form.xml по 9 таблицам корпуса, у которых
+    // свойства заданы, и по 45 таблицам без них.
+    int changeRowSet = -1;
+    int changeRowOrder = -1;
     int autoRefresh = -1;                // AutoRefresh
     int autoRefreshPeriod = -1;          // AutoRefreshPeriod
     QString period;                      // Period («Custom, начало, конец»)

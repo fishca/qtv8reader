@@ -129,15 +129,23 @@ QString fixingInTableText(int code)
     }
 }
 
+// Представление подсказки (ToolTipRepresentation). Коды: 1 — None, 3 — Button,
+// 5 — ShowTop, 7 — ShowBottom, 8 — ShowRight; 0 — значение по умолчанию, в
+// Form.xml не пишется. Сверено с Form.xml по 34 элементам корпуса (группы,
+// декорации, таблицы и поля), у которых свойство задано.
 QString toolTipRepresentationText(int code)
 {
     switch (code) {
+    case 1:
+        return QStringLiteral("None");
     case 3:
         return QStringLiteral("Button");
     case 5:
         return QStringLiteral("ShowTop");
     case 7:
         return QStringLiteral("ShowBottom");
+    case 8:
+        return QStringLiteral("ShowRight");
     default:
         return QString();
     }
@@ -689,6 +697,8 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("SkipOnInput"), boolText(item.skipOnInput != 0));
     if (item.displayImportance == 3)
         properties.insert(QStringLiteral("DisplayImportance"), QStringLiteral("Usual"));
+    if (item.defaultItem)
+        properties.insert(QStringLiteral("DefaultItem"), boolText(true));
     const auto groupAlign = [](int code) -> QString {
         switch (code) {
         case 0:
@@ -719,6 +729,10 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("Title"), title);
     if (!item.tooltip.isEmpty())
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
+    if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
+        !representation.isEmpty()) {
+        properties.insert(QStringLiteral("ToolTipRepresentation"), representation);
+    }
     // Собственная картинка кнопки: общая картинка конфигурации или
     // стандартная картинка платформы. Пиктограммы платформенных команд
     // (см. ниже) важнее — их подставляет рендерер по имени команды.
@@ -903,6 +917,21 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     }
     if (!item.inputHint.isEmpty())
         properties.insert(QStringLiteral("InputHint"), item.inputHint);
+    // Формат и предел значения поля: платформа пишет их только при явном
+    // значении. У надписи гиперссылка называется Hiperlink (так в Form.xml),
+    // у декораций и полей-картинок — Hyperlink.
+    if (!item.format.isEmpty())
+        properties.insert(QStringLiteral("Format"), item.format);
+    if (!item.editFormat.isEmpty())
+        properties.insert(QStringLiteral("EditFormat"), item.editFormat);
+    if (!item.minValue.isEmpty())
+        properties.insert(QStringLiteral("MinValue"), item.minValue);
+    if (!item.maxValue.isEmpty())
+        properties.insert(QStringLiteral("MaxValue"), item.maxValue);
+    if (item.extendedEditMultipleValues)
+        properties.insert(QStringLiteral("ExtendedEditMultipleValues"), boolText(true));
+    if (item.hyperlink && item.fieldKind == FormFieldKind::Label)
+        properties.insert(QStringLiteral("Hiperlink"), boolText(true));
 
     // Остальные свойства поля из записи макета: платформа пишет их в Form.xml
     // только при отличии от значения по умолчанию. Сверено с Form.xml по
@@ -1017,6 +1046,13 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("Title"), title);
     if (!item.tooltip.isEmpty())
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
+    if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
+        !representation.isEmpty()) {
+        properties.insert(QStringLiteral("ToolTipRepresentation"), representation);
+    }
+    // Важность отображения группы: платформа пишет только Usual (код 3).
+    if (item.displayImportance == 3)
+        properties.insert(QStringLiteral("DisplayImportance"), QStringLiteral("Usual"));
     // Выравнивание элемента внутри группы: платформа пишет GroupHorizontalAlign
     // и GroupVerticalAlign только при отличии от Auto, поэтому значения 0..2
     // уходят в модель как Left/Center/Right и Top/Center/Bottom.
@@ -1227,12 +1263,14 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     QJsonObject properties;
     if (!item.dataPathText.isEmpty() && !item.dataPathText.contains(QLatin1Char('?')))
         properties.insert(QStringLiteral("DataPath"), item.dataPathText);
-    // Отображение таблицы: платформа пишет List у таблицы, привязанной к
-    // табличной части объекта или к настройкам отчёта, а у таблицы значения
-    // из реквизита формы List — значение по умолчанию и в Form.xml не попадает.
-    // Отличить эти случаи по бинарной форме пока не удалось, поэтому List
-    // отдаётся всегда (как и до этого): 27 лишних значений в корпусе.
-    properties.insert(QStringLiteral("Representation"), QStringLiteral("List"));
+    // Отображение таблицы: платформа пишет Representation только при отличии
+    // от умолчания (Table) — List у таблицы-списка и Tree у дерева. Код
+    // отображения читается из записи таблицы (0 — List, 1 — умолчание,
+    // 2 — Tree). Сверено с Form.xml по 54 таблицам корпуса: расхождений нет.
+    if (item.tableRepresentation == 0)
+        properties.insert(QStringLiteral("Representation"), QStringLiteral("List"));
+    else if (item.tableRepresentation == 2)
+        properties.insert(QStringLiteral("Representation"), QStringLiteral("Tree"));
     // AutoInsertNewRow платформа пишет только для true; по умолчанию строка
     // не добавляется автоматически.
     if (item.autoInsertNewRow)
@@ -1246,6 +1284,17 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     // Перетаскивание файлов в таблицу: платформа пишет только AsFile.
     if (item.fileDragMode == 0)
         properties.insert(QStringLiteral("FileDragMode"), QStringLiteral("AsFile"));
+    // DefaultItem таблицы и разрешение менять состав (ChangeRowSet) и порядок
+    // (ChangeRowOrder) строк: платформа пишет их только при отличии от
+    // умолчания (false для первых двух, true для DefaultItem).
+    if (item.defaultItem)
+        properties.insert(QStringLiteral("DefaultItem"), boolText(true));
+    if (item.changeRowSet == 0)
+        properties.insert(QStringLiteral("ChangeRowSet"), boolText(false));
+    if (item.changeRowOrder == 0)
+        properties.insert(QStringLiteral("ChangeRowOrder"), boolText(false));
+    if (item.skipOnInput >= 0)
+        properties.insert(QStringLiteral("SkipOnInput"), boolText(item.skipOnInput != 0));
     if (const QString location = commandBarLocationText(item.commandBarLocation);
         !location.isEmpty()) {
         properties.insert(QStringLiteral("CommandBarLocation"), location);
@@ -1263,6 +1312,10 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("Title"), item.synonym);
     if (!item.tooltip.isEmpty())
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
+    if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
+        !representation.isEmpty()) {
+        properties.insert(QStringLiteral("ToolTipRepresentation"), representation);
+    }
     if (item.widthUnits > 0)
         properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
     if (item.heightUnits > 0)
@@ -1436,6 +1489,10 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("TitleFormatted"), boolText(item.titleFormatted));
         if (!item.tooltip.isEmpty())
             properties.insert(QStringLiteral("ToolTip"), item.tooltip);
+        if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
+            !representation.isEmpty()) {
+            properties.insert(QStringLiteral("ToolTipRepresentation"), representation);
+        }
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
         if (item.hyperlink)

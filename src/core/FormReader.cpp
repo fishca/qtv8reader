@@ -1148,8 +1148,14 @@ const V8TextNode *findFieldLayout(const V8TextNode &node, QString *code)
         if (!first || !first->isScalar())
             continue;
         const QString value = first->scalar().trimmed();
-        if (value == QLatin1String("36") || value == QLatin1String("11")
-            || value == QLatin1String("10") || value == QLatin1String("6")) {
+        // Запись макета поля: {36,…} — поле ввода, {32,…} — то же для полей
+        // некоторых видов (период, число с кнопками), {11,…} — надпись и
+        // флажок, {10,…} — поле-картинка, {6,…} — прочие. Поля записи 32
+        // совпадают по смыслу с 36 (сверено с Form.xml по 4 полям с
+        // SpinButton и MinValue).
+        if (value == QLatin1String("36") || value == QLatin1String("32")
+            || value == QLatin1String("11") || value == QLatin1String("10")
+            || value == QLatin1String("6")) {
             if (code)
                 *code = value;
             return &child;
@@ -1375,6 +1381,18 @@ void readFieldInputHint(const V8TextNode &node, FormItem *item)
 // {10,…} — поле-картинка. Номера полей записи сверены с Form.xml по 326 полям
 // ввода и 56 полям-картинкам корпуса; значение по умолчанию платформа в XML не
 // пишет, поэтому «не равно умолчанию» и есть признак явно заданного свойства.
+// Число из типизированной записи «N» («N», «-99») или пустая строка, если
+// запись означает отсутствие значения («U» — пустая ссылка).
+QString numberNodeText(const V8TextNode &node)
+{
+    if (!node.isList() || !node.child(0) || !node.child(0)->isScalar())
+        return QString();
+    if (node.child(0)->scalar() != QLatin1String("N"))
+        return QString();
+    const V8TextNode *value = node.child(1);
+    return value && value->isScalar() ? value->scalar() : QString();
+}
+
 void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
 {
     QString code;
@@ -1404,6 +1422,21 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         item->choiceHistoryOnInput = intAt(48);
         item->choiceButtonRepresentation = intAt(46);
         item->choiceFoldersAndItems = intAt(24);
+        // Формат и предел значения: двадцать девятое и тридцатое поля —
+        // локализованные строки Format и EditFormat, шестнадцатое и
+        // семнадцатое — пределы MinValue и MaxValue (число или пустая ссылка
+        // <U>), шестьдесят шестое — ExtendedEditMultipleValues. Сверено с
+        // Form.xml по 7 форматам, 6 форматам редактирования, 5 пределам и
+        // 34 полям с расширенным редактированием корпуса.
+        if (const V8TextNode *format = layout->child(29))
+            item->format = localizedText(*format);
+        if (const V8TextNode *editFormat = layout->child(30))
+            item->editFormat = localizedText(*editFormat);
+        if (const V8TextNode *minValue = layout->child(16))
+            item->minValue = numberNodeText(*minValue);
+        if (const V8TextNode *maxValue = layout->child(17))
+            item->maxValue = numberNodeText(*maxValue);
+        item->extendedEditMultipleValues = intAt(65) == 1;
     } else if (code == QLatin1String("10")) {
         // Поле-картинка: режим перетаскивания файлов и признак гиперссылки.
         item->fileDragMode = intAt(22);
@@ -1419,6 +1452,10 @@ void readFieldLayoutFlags(const V8TextNode &node, FormItem *item)
         const int checkBox = intAt(12);
         if (checkBox == 3)
             item->checkBoxType = 3;
+        // Гиперссылка в надписи: седьмое поле записи равно 1. Сверено с
+        // Form.xml по 4 надписям с Hiperlink и 600 без него.
+        if (intAt(7) == 1)
+            item->hyperlink = true;
     }
 }
 
@@ -1573,6 +1610,15 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
         return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
     };
 
+    // Отображение таблицы: третье поле записи, сразу после ссылки на имя
+    // (0 — List, 1 — Table по умолчанию, 2 — Tree). Положение не зависит от
+    // того, где в записи стоит имя: у 13 таблиц корпуса имя сдвинуто на поле
+    // вперёд, а код отображения остаётся третьим. Сверено с Form.xml по
+    // 54 таблицам: 25 List, 15 умолчаний и 4 Tree совпали.
+    if (const V8TextNode *representation = node.child(3)) {
+        if (representation->isInteger())
+            item->tableRepresentation = static_cast<int>(representation->toInteger());
+    }
     // TitleLocation таблицы: 0 — None (по умолчанию), 1 — Auto, 3 — Top.
     const int title = codeAt(1);
     if (title > 0 && title <= 5)
@@ -1585,6 +1631,25 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item)
     item->autoInsertNewRow = codeAt(32) == 1;
     item->enableStartDrag = codeAt(47) == 1;
     item->enableDrag = codeAt(48) == 1;
+    // Признаки, которые платформа пишет в Form.xml только при отличии от
+    // умолчания: DefaultItem (0/1), ChangeRowSet и ChangeRowOrder (0 — false,
+    // 1 — умолчание) и SkipOnInput (0 — false, 2 — умолчание, флажок стоит
+    // тридцатым с конца записи). Сверено с Form.xml по 54 таблицам корпуса.
+    const V8TextNode *defaultItem = node.child(nameIndex + 11);
+    if (defaultItem && defaultItem->isInteger())
+        item->defaultItem = defaultItem->toInteger() == 1;
+    const V8TextNode *changeRowSet = node.child(nameIndex + 12);
+    if (changeRowSet && changeRowSet->isInteger())
+        item->changeRowSet = static_cast<int>(changeRowSet->toInteger());
+    const V8TextNode *changeRowOrder = node.child(nameIndex + 13);
+    if (changeRowOrder && changeRowOrder->isInteger())
+        item->changeRowOrder = static_cast<int>(changeRowOrder->toInteger());
+    const V8TextNode *skipOnInput = node.child(static_cast<int>(node.children.size()) - 30);
+    if (skipOnInput && skipOnInput->isInteger()) {
+        const int skip = static_cast<int>(skipOnInput->toInteger());
+        if (skip == 0 || skip == 1)
+            item->skipOnInput = skip;
+    }
     // Перетаскивание файлов в таблицу: 0 — AsFile, 1 — UseAsFile (по
     // умолчанию). Признак стоит вторым с конца записи, потому что после него
     // идут только необязательные вложенные узлы. Сверено с Form.xml по
@@ -1635,6 +1700,34 @@ int visibleOffsetFromTooltip(int typeCode)
     default:
         return -1;
     }
+}
+
+// Представление подсказки (ToolTipRepresentation) лежит в «хвосте» записи
+// вторым полем перед расширенной подсказкой — одинаково у групп, декораций,
+// кнопок и таблиц. Коды: 0 — умолчание (в Form.xml не пишется), 1 — None,
+// 3 — Button, 5 — ShowTop, 7 — ShowBottom, 8 — ShowRight. Сверено с Form.xml
+// по 34 элементам корпуса, у которых свойство задано (все значения совпали),
+// и по 1600 элементам без свойства (там всегда 0). У полей то же значение
+// стоит на фиксированном месте после имени (см. readFieldFlags).
+int tooltipRepresentationCode(const V8TextNode &node)
+{
+    int tooltipIndex = -1;
+    for (int i = 0; i < node.children.size(); ++i) {
+        const V8TextNode *child = node.child(i);
+        if (!child || !isItemNode(*child))
+            continue;
+        const QString childName = findName(*child, 2);
+        if (childName.endsWith(QStringLiteral("РасширеннаяПодсказка"))
+            || childName.endsWith(QStringLiteral("ExtendedTooltip"))) {
+            tooltipIndex = i;
+        }
+    }
+    if (tooltipIndex < 2)
+        return -1;
+    const V8TextNode *code = node.child(tooltipIndex - 2);
+    if (!code || !code->isInteger())
+        return -1;
+    return static_cast<int>(code->toInteger());
 }
 
 // Значения стилей-цветов, на которые ссылается форма: рендерер получает их
@@ -1886,6 +1979,15 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         }
     }
 
+    // Представление подсказки у групп, декораций, кнопок и таблиц: лежит
+    // вторым полем перед расширенной подсказкой (у полей — фиксированное
+    // место после имени, см. readFieldFlags).
+    if (!isFieldCode(item.typeCode) && nameIndex >= 0) {
+        const int toolTipCode = tooltipRepresentationCode(node);
+        if (toolTipCode > 0)
+            item.toolTipRepresentation = toolTipCode;
+    }
+
     // Декорации: вид (надпись или картинка), признак гиперссылки и картинка.
     if (item.typeCode == 12 && nameIndex >= 1)
         readDecorationExtras(node, nameIndex, pictures, &item);
@@ -1895,6 +1997,14 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     if (item.typeCode == 22) {
         if (const V8TextNode *layout = findLayoutNode(node))
             item.orientation = layoutInteger(*layout, 1);
+        // Важность отображения (DisplayImportance) у группы записана
+        // последним полем записи: 0 — Auto (умолчание), 3 — Usual. Сверено с
+        // Form.xml по 1605 группам корпуса: 4 с Usual и 1601 без свойства.
+        if (const V8TextNode *importance =
+                node.child(static_cast<int>(node.children.size()) - 1)) {
+            if (importance->isInteger())
+                item.displayImportance = static_cast<int>(importance->toInteger());
+        }
     }
 
     switch (item.typeCode) {
@@ -2094,6 +2204,11 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         const V8TextNode *onBar = node.child(nameIndex + 10);
         if (onBar && onBar->isInteger())
             item.onCommandBar = onBar->toInteger() != 0;
+        // DefaultItem кнопки: восьмое поле после имени, 1 — true.
+        if (const V8TextNode *defaultItem = node.child(nameIndex + 8);
+            defaultItem && defaultItem->isInteger() && defaultItem->toInteger() == 1) {
+            item.defaultItem = true;
+        }
         // Вид кнопки (Type): 0 — CommandBarButton, 1 — UsualButton,
         // 2 — Hyperlink; через 41 поле после имени. Сверено с Form.xml по
         // 294 кнопкам корпуса.
