@@ -114,6 +114,8 @@ private slots:
     void ownerMetadataAndTableColumns();
     void dynamicListColumns();
     void fieldKindsFromForm();
+    void decorationKindsAndHyperlinks();
+    void commandBarGroupKinds();
 };
 
 void TestForm::parseSynthetic()
@@ -1037,6 +1039,219 @@ void TestForm::fieldKindsFromForm()
                                            QStringLiteral("СписокДокументовЗначение"));
     QVERIFY(value);
     QCOMPARE(value->dataPathText, QStringLiteral("СписокДокументов.Value"));
+}
+
+// Вид декорации (надпись или картинка), гиперссылка и картинка записаны в
+// записи оформления, а не в имени: по Form.xml формы «Авансовый отчёт»
+// проверяются обе декорации баннера — обычная надпись и картинка-крестик,
+// которая закрывает баннер.
+void TestForm::decorationKindsAndHyperlinks()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("АвансовыйОтчет"),
+                                       Qt::CaseInsensitive) == 0) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаДокумента")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error), qPrintable(error));
+
+    // id 784 — надпись баннера, id 787 — картинка-крестик с гиперссылкой.
+    const FormItem *text = findItemById(document.items, 784);
+    QVERIFY(text);
+    QVERIFY(!text->pictureDecoration);
+    QVERIFY(!text->hyperlink);
+
+    const FormItem *close = findItemById(document.items, 787);
+    QVERIFY(close);
+    QVERIFY(close->pictureDecoration);
+    QVERIFY(close->hyperlink);
+    // Картинка крестика — стандартная (−2), её имя известно платформе.
+    QCOMPARE(close->pictureStandardCode, -2);
+
+    // Надпись-гиперссылка «Параметры прописи валюты» в форме справочника.
+    MetadataObject *catalog = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("Валюты"), Qt::CaseInsensitive) == 0) {
+                catalog = &candidate;
+                break;
+            }
+        }
+        if (catalog)
+            break;
+    }
+    QVERIFY(catalog);
+    reader.loadSections(*catalog);
+    const MetadataSection *catalogForms = catalog->section(MetadataSectionKind::Forms);
+    QVERIFY(catalogForms);
+    const MetadataEntry *elementForm = nullptr;
+    for (const MetadataEntry &entry : catalogForms->entries) {
+        if (entry.name == QStringLiteral("ФормаЭлемента")) {
+            elementForm = &entry;
+            break;
+        }
+    }
+    QVERIFY(elementForm);
+    const V8Element *currencyForm =
+        reader.container().find(elementForm->guid + QStringLiteral(".0"));
+    QVERIFY(currencyForm);
+    QVERIFY2(reader.container().elementPayload(*currencyForm, &payload, nullptr, &error),
+             qPrintable(error));
+    FormDocument currency;
+    QVERIFY2(FormReader::parseBytes(payload, &currency, &error), qPrintable(error));
+    const FormItem *link = findItemByName(currency.items,
+                                          QStringLiteral("ГиперссылкаПараметрыПрописиВалюты"));
+    QVERIFY(link);
+    QVERIFY(link->hyperlink);
+    QVERIFY(!link->pictureDecoration);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(currency)).object();
+    const QJsonArray root = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject linkNode = findModelNode(root,
+                                               QStringLiteral("ГиперссылкаПараметрыПрописиВалюты"));
+    QVERIFY(!linkNode.isEmpty());
+    QCOMPARE(linkNode.value(QStringLiteral("tag")).toString(),
+             QStringLiteral("LabelDecoration"));
+    QCOMPARE(linkNode.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Hyperlink")).toString(),
+             QStringLiteral("true"));
+
+    const QJsonObject bannerModel = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonObject closeNode = findModelNode(
+        bannerModel.value(QStringLiteral("childItemsRoot")).toArray(),
+        QStringLiteral("КартинкаЗакрытьБаннер"));
+    QVERIFY(!closeNode.isEmpty());
+    QCOMPARE(closeNode.value(QStringLiteral("tag")).toString(),
+             QStringLiteral("PictureDecoration"));
+    const QJsonObject closeProperties = closeNode.value(QStringLiteral("properties")).toObject();
+    QCOMPARE(closeProperties.value(QStringLiteral("Picture")).toString(),
+             QStringLiteral("StdPicture.InputFieldClear"));
+    QCOMPARE(closeProperties.value(QStringLiteral("Hyperlink")).toString(),
+             QStringLiteral("true"));
+}
+
+// Своя командная панель формы записана группой с кодом 0, панель
+// автозаполнения — кодом 9; раньше коды были перепутаны, и панель с кнопками
+// вместе с её содержимым пропадала из модели.
+void TestForm::commandBarGroupKinds()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("Банки"), Qt::CaseInsensitive) == 0) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаСписка")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error), qPrintable(error));
+
+    const FormItem *bar = findItemByName(document.items,
+                                         QStringLiteral("ГруппаКоманднаяПанель"));
+    QVERIFY(bar);
+    QCOMPARE(bar->groupKind, 0);
+    QVERIFY(!bar->children.isEmpty());
+
+    const FormItem *autoBar = findItemByName(document.items,
+                                             QStringLiteral("ФормаКоманднаяПанель"));
+    QVERIFY(autoBar);
+    QCOMPARE(autoBar->groupKind, 9);
+
+    // Панель остаётся в дереве формы узлом CommandBar, а панель автозаполнения
+    // уходит в отдельный узел autoCommandBar.
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray root = model.value(QStringLiteral("childItemsRoot")).toArray();
+    QJsonObject barNode;
+    for (const QJsonValue &value : root) {
+        const QJsonObject node = value.toObject();
+        if (node.value(QStringLiteral("name")).toString()
+            == QStringLiteral("ГруппаКоманднаяПанель")) {
+            barNode = node;
+        }
+    }
+    QVERIFY(!barNode.isEmpty());
+    QCOMPARE(barNode.value(QStringLiteral("tag")).toString(), QStringLiteral("CommandBar"));
+    QVERIFY(!barNode.value(QStringLiteral("childItems")).toArray().isEmpty());
+
+    // Дополнения поиска самой таблицы в модель не попадают (в Form.xml их нет),
+    // а вынесенные в панель — попадают как элементы панели.
+    const QJsonObject autoNode = model.value(QStringLiteral("autoCommandBar")).toObject();
+    QCOMPARE(autoNode.value(QStringLiteral("tag")).toString(),
+             QStringLiteral("AutoCommandBar"));
+    QVERIFY(autoNode.value(QStringLiteral("childItems")).toArray().isEmpty());
+    bool sawSearchAddition = false;
+    const QJsonArray barChildren = barNode.value(QStringLiteral("childItems")).toArray();
+    for (const QJsonValue &value : barChildren) {
+        const QJsonObject node = value.toObject();
+        if (node.value(QStringLiteral("tag")).toString()
+            == QLatin1String("SearchStringAddition")) {
+            sawSearchAddition = true;
+        }
+    }
+    QVERIFY(sawSearchAddition);
 }
 
 } // namespace

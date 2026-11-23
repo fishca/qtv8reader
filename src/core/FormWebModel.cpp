@@ -9,6 +9,8 @@
 #include <QJsonValue>
 #include <QStringList>
 
+#include <functional>
+
 namespace v8reader {
 
 namespace {
@@ -24,8 +26,11 @@ enum : int {
     kItemTable = 55
 };
 
-// Коды вида группы (второй код в узле группы).
+// Коды вида группы (второй код в узле группы). Сверено с Form.xml по 1387
+// группам 26 форм: каждый код встретился только со своим тегом и ни разу
+// с чужим.
 enum : int {
+    kGroupCommandBar = 0,   // CommandBar  — своя командная панель формы/таблицы
     kGroupPopup = 1,
     kGroupColumnGroup = 2,
     kGroupPages = 3,
@@ -33,7 +38,7 @@ enum : int {
     kGroupUsual = 5,
     kGroupButtons = 6,
     kGroupContextMenu = 8,
-    kGroupCommandBar = 9
+    kGroupAutoCommandBar = 9 // AutoCommandBar — панель, которую заполняет платформа
 };
 
 QString boolText(bool value)
@@ -43,8 +48,8 @@ QString boolText(bool value)
 
 QString groupText(int orientation)
 {
-    return orientation == 1 ? QStringLiteral("Horizontal")
-                            : QStringLiteral("Vertical");
+    return orientation == 0 ? QStringLiteral("Vertical")
+                            : QStringLiteral("Horizontal");
 }
 
 QString representationText(FormGroupRepresentation representation)
@@ -104,8 +109,18 @@ bool isServiceTooltip(const FormItem &item)
 
 bool isPictureDecoration(const FormItem &item)
 {
-    return item.name.startsWith(QStringLiteral("Картинка"))
-        || item.name.startsWith(QStringLiteral("Picture"));
+    return item.pictureDecoration;
+}
+
+// Стандартная картинка платформы в бинарной форме записана отрицательным
+// числом, а в XCF — именем StdPicture.<Имя>. Пока подтверждён один код:
+// −2 — «очистить» у поля ввода (StdPicture.InputFieldClear). Остальные коды
+// в корпусе из 26 форм не встретились, поэтому название не угадывается.
+QString standardPictureName(int code)
+{
+    if (code == -2)
+        return QStringLiteral("StdPicture.InputFieldClear");
+    return QString();
 }
 
 // Элемент, который имеет смысл отдавать рендереру.
@@ -113,14 +128,17 @@ bool isRenderable(const FormItem &item)
 {
     switch (item.type) {
     case FormItem::Type::Group:
-        return item.groupKind != kGroupContextMenu;
+        // Панель, заполняемую платформой, рендерер получает отдельным узлом
+        // autoCommandBar, а не элементом дерева.
+        return item.groupKind != kGroupContextMenu
+            && item.groupKind != kGroupAutoCommandBar;
     case FormItem::Type::Field:
     case FormItem::Type::Button:
     case FormItem::Type::Table:
+    case FormItem::Type::Search:
         return true;
     case FormItem::Type::Decoration:
-        return !isServiceTooltip(item) && !isPictureDecoration(item);
-    case FormItem::Type::Search:
+        return !isServiceTooltip(item);
     case FormItem::Type::AutoCommandBar:
     case FormItem::Type::Column:
     case FormItem::Type::Other:
@@ -212,6 +230,8 @@ QString elementTag(const FormItem &item, bool insideTable = false)
             return QStringLiteral("ButtonGroup");
         case kGroupCommandBar:
             return QStringLiteral("CommandBar");
+        case kGroupAutoCommandBar:
+            return QStringLiteral("AutoCommandBar");
         case kGroupUsual:
             return QStringLiteral("UsualGroup");
         default:
@@ -272,7 +292,20 @@ QString elementTag(const FormItem &item, bool insideTable = false)
     case FormItem::Type::Table:
         return QStringLiteral("Table");
     case FormItem::Type::Decoration:
-        return QStringLiteral("LabelDecoration");
+        return item.pictureDecoration ? QStringLiteral("PictureDecoration")
+                                      : QStringLiteral("LabelDecoration");
+    case FormItem::Type::Search:
+        // Дополнение панели: строка поиска таблицы, состояние просмотра или
+        // управление поиском. Код вида записан так же, как у групп, — перед
+        // именем (0, 1 и 2 соответственно).
+        switch (item.groupKind) {
+        case 1:
+            return QStringLiteral("ViewStatusAddition");
+        case 2:
+            return QStringLiteral("SearchControlAddition");
+        default:
+            return QStringLiteral("SearchStringAddition");
+        }
     default:
         break;
     }
@@ -287,6 +320,42 @@ QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &documen
                                 const QJsonArray &leading, bool autofill,
                                 const QString &defaultName);
 
+// Своя командная панель форматированного документа: платформа заполняет её
+// командами форматирования (шрифт, начертание, выравнивание, цвет, картинка),
+// а в бинарной форме сама панель пустая — состав команд задаёт CommandSource
+// на поле форматированного документа. Рендерер собирает те же кнопки из
+// CommandSource, поэтому пустую панель достаточно связать с полем рядом с ней.
+void linkFormattedDocumentBars(QJsonArray *children)
+{
+    QString fieldName;
+    for (int i = 0; i < children->size(); ++i) {
+        const QJsonObject entry = children->at(i).toObject();
+        if (entry.value(QStringLiteral("tag")).toString()
+            == QLatin1String("FormattedDocumentField")) {
+            fieldName = entry.value(QStringLiteral("name")).toString();
+            break;
+        }
+    }
+    if (fieldName.isEmpty())
+        return;
+    for (int i = 0; i < children->size(); ++i) {
+        QJsonObject entry = children->at(i).toObject();
+        if (entry.value(QStringLiteral("tag")).toString() != QLatin1String("CommandBar"))
+            continue;
+        if (!entry.value(QStringLiteral("childItems")).toArray().isEmpty())
+            continue;
+        const QJsonObject source = entry.value(QStringLiteral("properties")).toObject();
+        if (source.contains(QStringLiteral("CommandSource")))
+            continue;
+        QJsonObject properties = source;
+        properties.insert(QStringLiteral("CommandSource"),
+                          QStringLiteral("Item.") + fieldName);
+        entry.insert(QStringLiteral("properties"), properties);
+        entry.insert(QStringLiteral("authoredProperties"), properties);
+        (*children)[i] = entry;
+    }
+}
+
 void appendChildren(const QVector<FormItem> &items, const FormDocument &document,
                     QJsonArray *target)
 {
@@ -297,6 +366,7 @@ void appendChildren(const QVector<FormItem> &items, const FormDocument &document
             continue;
         target->append(makeItem(item, document));
     }
+    linkFormattedDocumentBars(target);
 }
 
 // Человекочитаемый заголовок из имени элемента: «ПоказатьДвиженияДокумента» →
@@ -473,6 +543,10 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         for (const FormItem &child : item.children) {
             if (!isRenderable(child))
                 continue;
+            // Дополнения поиска принадлежат панели, а не полю: в выгрузке
+            // Form.xml их у поля нет.
+            if (child.type == FormItem::Type::Search)
+                continue;
             if (insideTable && child.type == FormItem::Type::Field) {
                 children.append(makeField(child, document, true, tableName));
                 continue;
@@ -499,20 +573,40 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("PagesRepresentation"), QStringLiteral("TabsOnTop"));
     } else if (tag == QLatin1String("Page")) {
         // Заголовок страницы уже в Title.
+    } else if (tag == QLatin1String("CommandBar")) {
+        // Своя командная панель формы: платформа хранит у неё только заголовок,
+        // группировка и оформление у неё не настраиваются.
+        if (!item.visible)
+            properties.insert(QStringLiteral("Visible"), boolText(false));
+    } else if (tag == QLatin1String("AutoCommandBar")) {
+        properties.insert(QStringLiteral("Autofill"), boolText(false));
     } else if (tag == QLatin1String("ButtonGroup")) {
         properties.insert(QStringLiteral("Representation"), QStringLiteral("None"));
-    } else {
+    } else if (tag == QLatin1String("ColumnGroup")) {
+        // Группа колонок таблицы: рамка и растяжение, как у обычной группы.
+        if (item.widthUnits > 0)
+            properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+        if (item.horizontalStretch == 1)
+            properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
+        if (!item.visible)
+            properties.insert(QStringLiteral("Visible"), boolText(false));
+    } else if (tag == QLatin1String("UsualGroup")) {
+        // У обычной группы платформа показывает заголовок только если он
+        // задан, а ориентацию по умолчанию считает горизонтальной — как и
+        // рендерер, поэтому Group отдаём всегда, а ShowTitle только для
+        // скрытого заголовка.
         properties.insert(QStringLiteral("Group"), groupText(item.orientation));
         properties.insert(QStringLiteral("Representation"),
                           representationText(item.representation));
         properties.insert(QStringLiteral("Behavior"), behaviorText(item.behavior));
-        properties.insert(QStringLiteral("ShowTitle"), boolText(item.showTitle));
+        if (!item.showTitle)
+            properties.insert(QStringLiteral("ShowTitle"), boolText(false));
         if (item.horizontalStretch == 1)
             properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
         else if (item.horizontalStretch == 2)
             properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("Auto"));
         if (!item.visible)
-            properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
+            properties.insert(QStringLiteral("Visible"), boolText(false));
     }
 
     QJsonObject json;
@@ -614,10 +708,7 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         if (!isRenderable(child))
             continue;
         if (child.type == FormItem::Type::Group) {
-            if (!tableBar
-                && (child.groupKind == kGroupCommandBar
-                    || child.name.contains(QStringLiteral("КоманднаяПанель"),
-                                           Qt::CaseInsensitive))) {
+            if (!tableBar && child.groupKind == kGroupCommandBar) {
                 tableBar = &child;
                 continue;
             }
@@ -627,6 +718,12 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
             continue;
         }
         if (child.type == FormItem::Type::AutoCommandBar)
+            continue;
+        // Дополнения поиска самой таблицы платформа не описывает в форме: они
+        // появляются, только если вынесены в панель (тогда их и разбираем как
+        // элементы панели). В таблице они — служебные: в выгрузке Form.xml их
+        // нет, поэтому и модель их не получает.
+        if (child.type == FormItem::Type::Search)
             continue;
         if (child.type == FormItem::Type::Field) {
             columns.append(makeField(child, document, true, tableName));
@@ -669,6 +766,36 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
         return makeTable(item, document);
     case FormItem::Type::Group:
         return makeGroup(item, document);
+    // Дополнение панели (строка поиска, состояние просмотра, управление
+    // поиском) — самостоятельный элемент панели, платформа подставляет его
+    // данные из таблицы, на которую оно ссылается (AdditionSource).
+    case FormItem::Type::Search: {
+        QJsonObject properties;
+        const QString title = item.titleText();
+        if (!title.isEmpty())
+            properties.insert(QStringLiteral("Title"), title);
+        const QString table = mainAttributeName(document);
+        if (!table.isEmpty()) {
+            const QString source = elementTag(item) == QLatin1String("ViewStatusAddition")
+                ? QStringLiteral("ViewStatus")
+                : (elementTag(item) == QLatin1String("SearchControlAddition")
+                       ? QStringLiteral("SearchControl")
+                       : QStringLiteral("SearchStringRepresentation"));
+            properties.insert(QStringLiteral("AdditionSource"),
+                              QStringLiteral("%1, %2").arg(table, source));
+        }
+        if (!item.visible)
+            properties.insert(QStringLiteral("Visible"), boolText(false));
+        QJsonObject json;
+        json.insert(QStringLiteral("tag"), elementTag(item));
+        json.insert(QStringLiteral("name"), item.name);
+        json.insert(QStringLiteral("id"), QString::number(item.id));
+        json.insert(QStringLiteral("properties"), properties);
+        json.insert(QStringLiteral("authoredProperties"), properties);
+        json.insert(QStringLiteral("childItems"), QJsonArray());
+        json.insert(QStringLiteral("events"), QJsonArray());
+        return json;
+    }
     case FormItem::Type::Decoration: {
         QJsonObject properties;
         const QString text = item.titleText();
@@ -676,8 +803,22 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("Title"), text);
         if (!item.visible)
             properties.insert(QStringLiteral("Visible"), boolText(false));
+        if (item.hyperlink)
+            properties.insert(QStringLiteral("Hyperlink"), boolText(true));
+        if (item.widthUnits > 0)
+            properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+        if (item.heightUnits > 0)
+            properties.insert(QStringLiteral("Height"), QString::number(item.heightUnits));
+        // Картинку отдаём только если знаем её имя: общая картинка
+        // конфигурации (GUID) потребовала бы байтов из контейнера, поэтому
+        // такая декорация остаётся пустым местом нужного размера.
+        const QString picture = standardPictureName(item.pictureStandardCode);
+        if (isPictureDecoration(item) && !picture.isEmpty())
+            properties.insert(QStringLiteral("Picture"), picture);
         QJsonObject json;
-        json.insert(QStringLiteral("tag"), QStringLiteral("LabelDecoration"));
+        json.insert(QStringLiteral("tag"),
+                    isPictureDecoration(item) ? QStringLiteral("PictureDecoration")
+                                              : QStringLiteral("LabelDecoration"));
         json.insert(QStringLiteral("name"), item.name);
         json.insert(QStringLiteral("id"), QString::number(item.id));
         json.insert(QStringLiteral("properties"), properties);
@@ -837,9 +978,17 @@ void moveCreateBasedOnAfterImportantCommands(QJsonObject *bar)
 }
 
 QJsonObject buildAutoCommandBar(const FormDocument &document,
-                                const FormItem *authoredBar)
+                                const FormItem *autoBar, bool authoredBarPresent)
 {
     QJsonArray standard;
+    // Если в форме есть своя командная панель (группа CommandBar), платформа
+    // показывает именно её: кнопки записи и проведения заданы в ней, а панель
+    // автозаполнения остаётся пустой.
+    if (authoredBarPresent) {
+        QJsonObject bar = buildCommandBarNode(autoBar, document, standard, false,
+                                              QStringLiteral("ФормаКоманднаяПанель"));
+        return bar;
+    }
     if (document.runtimeDocumentCommands) {
         // Порядок кнопок как в клиенте 1С: «Провести и закрыть» (по умолчанию),
         // «Записать», «Провести».
@@ -869,7 +1018,7 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
         standard.append(makePopup(QStringLiteral("_global_create_based_on"),
                                   QStringLiteral("Создать на основании"), QJsonArray()));
     }
-    QJsonObject bar = buildCommandBarNode(authoredBar, document, standard, false,
+    QJsonObject bar = buildCommandBarNode(autoBar, document, standard, false,
                                           QStringLiteral("ФормаКоманднаяПанель"));
     moveCreateBasedOnAfterImportantCommands(&bar);
     return bar;
@@ -1106,36 +1255,44 @@ QByteArray formWebModelJson(const FormDocument &document)
     }
     model.insert(QStringLiteral("properties"), properties);
 
-    // Корневые элементы формы: командную панель формы отдаём отдельным узлом
-    // autoCommandBar (так её ожидает рендерер), остальные — в childItemsRoot.
-    // Панель узнаём и по имени: платформа восстанавливает CommandBar из группы
-    // «ГруппаКоманднаяПанель», у которой в бинарной форме нет кода 9. Если
-    // таких групп несколько (служебная «ФормаКоманднаяПанель» и настоящая
-    // панель с кнопками), в панель берём ту, где больше содержимого.
-    auto isCommandBarGroup = [](const FormItem &item) {
-        return item.type == FormItem::Type::Group
-            && (item.groupKind == kGroupCommandBar
-                || item.name.contains(QStringLiteral("КоманднаяПанель"),
-                                      Qt::CaseInsensitive));
-    };
-    const FormItem *authoredBar = nullptr;
+    // Корневые элементы формы: панель, которую заполняет платформа
+    // (AutoCommandBar, код группы 9), отдаём отдельным узлом autoCommandBar —
+    // так её ожидает рендерер. Собственная панель формы (CommandBar, код 0)
+    // остаётся обычным элементом дерева: платформа тоже хранит её отдельно от
+    // авто-панели, и в форме списка кнопки живут именно в ней.
+    const FormItem *autoBar = nullptr;
     for (const FormItem &item : document.items) {
-        if (!isCommandBarGroup(item))
-            continue;
-        if (!authoredBar || item.children.size() > authoredBar->children.size())
-            authoredBar = &item;
+        if (item.type == FormItem::Type::Group
+            && item.groupKind == kGroupAutoCommandBar) {
+            autoBar = &item;
+            break;
+        }
     }
+    // Своя командная панель может стоять не только в корне формы, но и внутри
+    // группы («ГруппаВерхняяПанельНовости» в справочнике «Новости»): тогда
+    // платформа показывает именно её, а панель автозаполнения остаётся пустой.
+    std::function<bool(const QVector<FormItem> &)> hasAuthoredBar =
+        [&hasAuthoredBar](const QVector<FormItem> &items) {
+            for (const FormItem &item : items) {
+                if (item.type == FormItem::Type::Group
+                    && item.groupKind == kGroupCommandBar)
+                    return true;
+                if (hasAuthoredBar(item.children))
+                    return true;
+            }
+            return false;
+        };
+    const bool authoredBarPresent = hasAuthoredBar(document.items);
     QJsonArray rootItems;
     for (const FormItem &item : document.items) {
-        if (isCommandBarGroup(item))
-            continue;
         if (!isRenderable(item) || item.type == FormItem::Type::AutoCommandBar)
             continue;
         rootItems.append(makeItem(item, document));
     }
+    linkFormattedDocumentBars(&rootItems);
     model.insert(QStringLiteral("childItemsRoot"), rootItems);
     model.insert(QStringLiteral("autoCommandBar"),
-                 buildAutoCommandBar(document, authoredBar));
+                 buildAutoCommandBar(document, autoBar, authoredBarPresent));
 
     QJsonArray attributes;
     // Основная таблица динамического списка — для настроек реквизита.
