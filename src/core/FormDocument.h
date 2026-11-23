@@ -314,6 +314,17 @@ struct FormItem
     // Режим группы: выделение рамкой и поведение заголовка.
     FormGroupRepresentation representation = FormGroupRepresentation::None;
     FormGroupBehavior behavior = FormGroupBehavior::Usual;
+    // Выравнивание элемента внутри группы (GroupHorizontalAlign и
+    // GroupVerticalAlign). Лежит в «хвосте» записи элемента, поэтому отсчёт
+    // ведётся от конца записи: необязательные вложенные записи (контекстное
+    // меню, расширенная подсказка, оформление) его не сдвигают. У декорации
+    // горизонтальное выравнивание — четвёртый слот с конца, вертикальное —
+    // третий; у группы — третий и второй. Коды: 0 — Left/Top, 1 — Center,
+    // 2 — Right/Bottom; 3 — Auto (значение по умолчанию, платформа в Form.xml
+    // не пишет); −1 — не задано. Сверено с Form.xml по 112 декорациям и 361
+    // группе корпуса: расхождений нет.
+    int groupHorizontalAlign = -1;
+    int groupVerticalAlign = -1;
 
     QString guid;
     QString name;

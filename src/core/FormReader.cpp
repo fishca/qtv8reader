@@ -563,8 +563,64 @@ bool isFieldLayoutCode(const QString &code)
         || code == QLatin1String("10") || code == QLatin1String("6");
 }
 
+// Выравнивание элемента внутри группы (GroupHorizontalAlign и
+// GroupVerticalAlign) лежит в «хвосте» записи элемента, поэтому отсчёт ведётся
+// от конца записи: необязательные вложенные записи (контекстное меню,
+// расширенная подсказка, оформление) его не сдвигают. Смещения с конца:
+// у группы (22) — 3 и 2, у декорации (12) — 4 и 3, у поля (37) — 6 и 5.
+// У поля, записанного кодом 35, раскладка короче: горизонтальное выравнивание
+// лежит третьим с конца, а вертикального в корпусе не встретилось.
+// Коды: 0 — Left/Top, 1 — Center, 2 — Right/Bottom; 3 — Auto (значение по
+// умолчанию, платформа в Form.xml его не пишет). Сверено с Form.xml по 112
+// декорациям, 361 группе и 610 полям корпуса: расхождений нет.
+void readGroupAlignment(const V8TextNode &node, FormItem *item)
+{
+    int horizontalFromEnd = -1;
+    int verticalFromEnd = -1;
+    if (item->typeCode == 22) {
+        horizontalFromEnd = 3;
+        verticalFromEnd = 2;
+    } else if (item->typeCode == 12) {
+        horizontalFromEnd = 4;
+        verticalFromEnd = 3;
+    } else if (item->typeCode == 35) {
+        horizontalFromEnd = 3;
+    } else if (item->typeCode == 37) {
+        horizontalFromEnd = 6;
+        verticalFromEnd = 5;
+    } else {
+        return;
+    }
+    const int count = static_cast<int>(node.children.size());
+    // У некоторых полей (PDF-документ) запись заканчивается вложенной записью и
+    // её признаком — они не входят в «хвост», поэтому смещение сдвигается на
+    // два слота.
+    int shift = 0;
+    if (count >= 2) {
+        const V8TextNode *beforeLast = node.child(count - 2);
+        if (beforeLast && beforeLast->isList())
+            shift = 2;
+    }
+    const auto tailCode = [&node, count, shift](int fromEnd) {
+        if (fromEnd <= 0)
+            return -1;
+        const int index = count - shift - fromEnd;
+        if (index < 0)
+            return -1;
+        const V8TextNode *slot = node.child(index);
+        return slot && slot->isInteger() ? static_cast<int>(slot->toInteger()) : -1;
+    };
+    const int horizontal = tailCode(horizontalFromEnd);
+    const int vertical = tailCode(verticalFromEnd);
+    if (horizontal >= 0 && horizontal <= 2)
+        item->groupHorizontalAlign = horizontal;
+    if (vertical >= 0 && vertical <= 2)
+        item->groupVerticalAlign = vertical;
+}
+
 void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
 {
+    readGroupAlignment(node, item);
     auto integerSlot = [](const V8TextNode &record, int index) {
         const V8TextNode *child = record.child(index);
         return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;

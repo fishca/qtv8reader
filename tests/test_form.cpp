@@ -40,7 +40,13 @@ QByteArray makeSyntheticForm()
         "\"Поле2\",\"3\",{1,1,{\"ru\",\"Поле 2\"}}},"
         "},"
         "{31,{4,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\","
-        "\"Кнопка1\",{1,1,{\"ru\",\"Кнопка\"}}}"
+        "\"Кнопка1\",{1,1,{\"ru\",\"Кнопка\"}}},"
+        // группа без детей с «хвостом»: GroupHorizontalAlign 1 (Center),
+        // GroupVerticalAlign 2 (Bottom), затем служебный слот.
+        "{22,{6,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+        "\"ГруппаХвост\",{1,1,{\"ru\",\"Хвост\"}},"
+        "{29,\"1\",\"0\",\"0\",\"1\",{\"0\"},{\"1\",\"0\"}},"
+        "\"1\",\"2\",\"0\"}"
         "}"
         "},"
         "\"Процедура Тест()\\nКонецПроцедуры\","
@@ -124,6 +130,7 @@ private slots:
     void tableAndColumnProperties();
     void fieldTableListProperties();
     void columnGroupModes();
+    void groupAlignment();
 };
 
 void TestForm::parseSynthetic()
@@ -158,12 +165,13 @@ void TestForm::parseSynthetic()
     QCOMPARE(group.name, QStringLiteral("ГруппаШапка"));
     QCOMPARE(group.synonym, QStringLiteral("Шапка"));
     QCOMPARE(group.orientation, 1);
-    QCOMPARE(group.children.size(), 2);
+    QCOMPARE(group.children.size(), 3);
     QCOMPARE(group.children.first().orientation, 0);
+    QCOMPARE(group.children.at(2).name, QStringLiteral("ГруппаХвост"));
     QVERIFY(findItemByName(document.items, QStringLiteral("Поле1")) != nullptr);
     QVERIFY(findItemByName(document.items, QStringLiteral("Кнопка1")) != nullptr);
     QCOMPARE(document.fieldCount(), 2);
-    QVERIFY(document.itemCount() >= 4);
+    QVERIFY(document.itemCount() >= 5);
 }
 
 // TitleLocation и режимы групп разобраны из узла макета {29,...}:
@@ -1990,6 +1998,42 @@ void TestForm::columnGroupModes()
     QVERIFY(!findModelNode(columns, QStringLiteral("ГруппаПоУмолчанию"))
                  .value(QStringLiteral("properties")).toObject()
                  .contains(QStringLiteral("ShowInHeader")));
+}
+
+// Выравнивание элемента внутри группы (GroupHorizontalAlign и
+// GroupVerticalAlign) лежит в «хвосте» записи: у группы — 3-й и 2-й слоты с
+// конца, у декорации — 4-й и 3-й, у поля — 6-й и 5-й. Коды 0..2 — Left/Top,
+// Center, Right/Bottom, 3 — Auto (платформа в Form.xml не пишет).
+void TestForm::groupAlignment()
+{
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(makeSyntheticForm(), &document, &error),
+             qPrintable(error));
+    const FormItem *group = findItemByName(document.items, QStringLiteral("ГруппаХвост"));
+    QVERIFY(group);
+    QCOMPARE(group->groupHorizontalAlign, 1);
+    QCOMPARE(group->groupVerticalAlign, 2);
+    const FormItem *plain = findItemByName(document.items, QStringLiteral("ГруппаЛевая"));
+    QVERIFY(plain);
+    QCOMPARE(plain->groupHorizontalAlign, -1);
+    QCOMPARE(plain->groupVerticalAlign, -1);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    const QJsonObject properties =
+        findModelNode(roots, QStringLiteral("ГруппаХвост"))
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(properties.value(QStringLiteral("GroupHorizontalAlign")).toString(),
+             QStringLiteral("Center"));
+    QCOMPARE(properties.value(QStringLiteral("GroupVerticalAlign")).toString(),
+             QStringLiteral("Bottom"));
+    const QJsonObject plainProperties =
+        findModelNode(roots, QStringLiteral("ГруппаЛевая"))
+            .value(QStringLiteral("properties")).toObject();
+    QVERIFY(!plainProperties.contains(QStringLiteral("GroupHorizontalAlign")));
+    QVERIFY(!plainProperties.contains(QStringLiteral("GroupVerticalAlign")));
 }
 
 } // namespace

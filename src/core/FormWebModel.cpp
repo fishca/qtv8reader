@@ -556,7 +556,9 @@ QJsonObject makeButton(const FormItem &item, const FormDocument &document)
         !align.isEmpty()) {
         properties.insert(QStringLiteral("GroupHorizontalAlign"), align);
     }
-    if (const QString align = groupAlign(item.buttonGroupVerticalAlign);
+    // Вертикальное выравнивание кнопки — Top/Center/Bottom, поэтому его код
+    // переводится отдельно: та же цифра 2 значит «Bottom», а не «Right».
+    if (const QString align = verticalAlignText(item.buttonGroupVerticalAlign);
         !align.isEmpty()) {
         properties.insert(QStringLiteral("GroupVerticalAlign"), align);
     }
@@ -706,6 +708,14 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("FooterHorizontalAlign"), align);
     if (const QString align = verticalAlignText(item.verticalAlign); !align.isEmpty())
         properties.insert(QStringLiteral("VerticalAlign"), align);
+    // Выравнивание поля внутри группы: платформа пишет эти свойства только при
+    // отличии от Auto, поэтому сюда доходят коды 0..2.
+    if (const QString align = alignText(item.groupHorizontalAlign); !align.isEmpty())
+        properties.insert(QStringLiteral("GroupHorizontalAlign"), align);
+    if (const QString align = verticalAlignText(item.groupVerticalAlign);
+        !align.isEmpty()) {
+        properties.insert(QStringLiteral("GroupVerticalAlign"), align);
+    }
     if (const QString representation = toolTipRepresentationText(item.toolTipRepresentation);
         !representation.isEmpty()) {
         properties.insert(QStringLiteral("ToolTipRepresentation"), representation);
@@ -826,6 +836,15 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("Title"), title);
     if (!item.tooltip.isEmpty())
         properties.insert(QStringLiteral("ToolTip"), item.tooltip);
+    // Выравнивание элемента внутри группы: платформа пишет GroupHorizontalAlign
+    // и GroupVerticalAlign только при отличии от Auto, поэтому значения 0..2
+    // уходят в модель как Left/Center/Right и Top/Center/Bottom.
+    if (const QString align = alignText(item.groupHorizontalAlign); !align.isEmpty())
+        properties.insert(QStringLiteral("GroupHorizontalAlign"), align);
+    if (const QString align = verticalAlignText(item.groupVerticalAlign);
+        !align.isEmpty()) {
+        properties.insert(QStringLiteral("GroupVerticalAlign"), align);
+    }
 
     if (tag == QLatin1String("Popup")) {
         properties.insert(QStringLiteral("Representation"), QStringLiteral("Text"));
@@ -1167,6 +1186,14 @@ QJsonObject makeItem(const FormItem &item, const FormDocument &document)
             properties.insert(QStringLiteral("Visible"), boolText(false));
         if (item.hyperlink)
             properties.insert(QStringLiteral("Hyperlink"), boolText(true));
+        // Выравнивание декорации внутри группы: платформа пишет
+        // GroupHorizontalAlign и GroupVerticalAlign только при отличии от Auto.
+        if (const QString align = alignText(item.groupHorizontalAlign); !align.isEmpty())
+            properties.insert(QStringLiteral("GroupHorizontalAlign"), align);
+        if (const QString align = verticalAlignText(item.groupVerticalAlign);
+            !align.isEmpty()) {
+            properties.insert(QStringLiteral("GroupVerticalAlign"), align);
+        }
         if (item.widthUnits > 0)
             properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
         if (item.heightUnits > 0)
