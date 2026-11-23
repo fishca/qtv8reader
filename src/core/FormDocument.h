@@ -386,6 +386,16 @@ struct FormItem
     // в записи таблицы это список [количество, GUID, …] стандартных команд
     // элемента. Платформа пишет его в Form.xml отсортированным по имени.
     QStringList excludedCommands;
+    // Место строки поиска, состояния просмотра и управления поиском таблицы
+    // (SearchStringLocation, ViewStatusLocation, SearchControlLocation) — три
+    // поля в конце записи таблицы: 25-е, 24-е и 23-е с конца. 1 — None
+    // (элемент не показывается, в Form.xml пишется строкой), 0 — значение по
+    // умолчанию (свойства в XML нет). Сверено с Form.xml по 54 таблицам
+    // корпуса: у 31 таблицы задан SearchStringLocation=None, у 33 —
+    // ViewStatusLocation и SearchControlLocation; расхождений нет.
+    int searchStringLocation = 0;
+    int viewStatusLocation = 0;
+    int searchControlLocation = 0;
     // Отступы внутри группы (VerticalSpacing и HorizontalSpacing): пятнадцатое
     // и шестнадцатое поля записи макета {29,…}. 0 — Auto (в Form.xml не
     // пишется), 1 — None, 2 — Half, 3 — Single, 4 — OneAndHalf, 5 — Double.

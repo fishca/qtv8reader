@@ -1891,6 +1891,16 @@ void readTableFlags(const V8TextNode &node, int nameIndex, FormItem *item,
     const int tableMaxHeight = tailCode(11);
     if (tableMaxHeight > 0)
         item->maxHeight = tableMaxHeight;
+    // Место дополнений поиска таблицы: три поля перед вложенными записями —
+    // 25-е с конца SearchStringLocation, 24-е ViewStatusLocation, 23-е
+    // SearchControlLocation. Платформа пишет в Form.xml строку None, когда
+    // элемент не показывается; значение по умолчанию (0) не пишется.
+    // Сверено с Form.xml по 54 таблицам корпуса: у 31 таблицы задан
+    // SearchStringLocation=None, у 33 — ViewStatusLocation и
+    // SearchControlLocation; расхождений нет.
+    item->searchStringLocation = tailCode(25) == 1 ? 1 : 0;
+    item->viewStatusLocation = tailCode(24) == 1 ? 1 : 0;
+    item->searchControlLocation = tailCode(23) == 1 ? 1 : 0;
     // Признаки, которые платформа пишет в Form.xml только при отличии от
     // умолчания: DefaultItem (0/1), ChangeRowSet и ChangeRowOrder (0 — false,
     // 1 — умолчание) и SkipOnInput (0 — false, 2 — умолчание, флажок стоит

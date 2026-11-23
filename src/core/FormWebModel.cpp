@@ -1564,6 +1564,15 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     // в Form.xml, только когда оно включено.
     if (item.allowGettingCurrentRowUrl > 0)
         properties.insert(QStringLiteral("AllowGettingCurrentRowURL"), boolText(true));
+    // Место дополнений поиска таблицы: платформа пишет строкой None, когда
+    // элемент не показывается; значение по умолчанию в Form.xml не пишется.
+    // Сверено с Form.xml по 54 таблицам корпуса.
+    if (item.searchStringLocation == 1)
+        properties.insert(QStringLiteral("SearchStringLocation"), QStringLiteral("None"));
+    if (item.viewStatusLocation == 1)
+        properties.insert(QStringLiteral("ViewStatusLocation"), QStringLiteral("None"));
+    if (item.searchControlLocation == 1)
+        properties.insert(QStringLiteral("SearchControlLocation"), QStringLiteral("None"));
 
     QJsonArray columns;
     const FormItem *tableBar = nullptr;

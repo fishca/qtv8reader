@@ -139,6 +139,7 @@ private slots:
     void tableRepresentationAndRowFlags();
     void userVisiblePageAlignAndRowsPicture();
     void collapsedPageTitleCommandBarAndSource();
+    void tableSearchLocations();
 };
 
 void TestForm::parseSynthetic()
@@ -3077,6 +3078,67 @@ void TestForm::collapsedPageTitleCommandBarAndSource()
              QStringLiteral("Form"));
     QCOMPARE(props(QStringLiteral("СтраницаБезЗаголовка")).value(QStringLiteral("ShowTitle")).toString(),
              QStringLiteral("false"));
+}
+
+// Место дополнений поиска таблицы: три поля перед вложенными записями
+// (25-е с конца SearchStringLocation, 24-е ViewStatusLocation, 23-е
+// SearchControlLocation). Единица — None, ноль — значение по умолчанию,
+// которое платформа в Form.xml не пишет.
+void TestForm::tableSearchLocations()
+{
+    const QString text = QStringLiteral(
+        "{4,"
+        "{50,0,"
+        // Таблица со всеми тремя дополнениями поиска, скрытыми платформой.
+        "{55,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"1\",\"0\","
+        "\"СписокСПоиском\","
+        // Шестое и седьмое поля — DefaultItem, ChangeRowSet и ChangeRowOrder.
+        "\"0\",\"0\",\"1\",\"1\",\"1\","
+        "\"0\",\"0\",\"0\",\"0\",\"0\",\"1\",\"1\",\"1\",\"0\",\"0\",\"1\",\"0\","
+        "\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\"},"
+        // Та же таблица без свойств: те же поля, но нули на месте признаков.
+        "{55,{2,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"1\",\"0\","
+        "\"СписокБезПоиска\","
+        "\"0\",\"0\",\"0\",\"0\",\"0\","
+        "\"0\",\"0\",\"0\",\"0\",\"0\",\"1\",\"1\",\"1\",\"0\",\"0\",\"1\",\"0\","
+        "\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\",\"0\"}"
+        "},"
+        "\"Процедура Тест()\\nКонецПроцедуры\","
+        "{4,\"2\",{9,{\"1\"},\"0\",\"Атрибут1\",{1,1,{\"ru\",\"Атрибут 1\"}},"
+        "{\"Pattern\",{\"S\"}}}},"
+        "{0,0},"
+        "{0,\"1\",{9,{\"1\"},\"Команда1\",{1,1,{\"ru\",\"Команда\"}}}}"
+        "}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error), qPrintable(error));
+
+    const FormItem *hidden = findItemByName(document.items, QStringLiteral("СписокСПоиском"));
+    QVERIFY(hidden);
+    QCOMPARE(hidden->searchStringLocation, 1);
+    QCOMPARE(hidden->viewStatusLocation, 1);
+    QCOMPARE(hidden->searchControlLocation, 1);
+    const FormItem *shown = findItemByName(document.items, QStringLiteral("СписокБезПоиска"));
+    QVERIFY(shown);
+    QCOMPARE(shown->searchStringLocation, 0);
+    QCOMPARE(shown->viewStatusLocation, 0);
+    QCOMPARE(shown->searchControlLocation, 0);
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+    auto props = [&roots](const QString &name) {
+        return findModelNode(roots, name).value(QStringLiteral("properties")).toObject();
+    };
+    QCOMPARE(props(QStringLiteral("СписокСПоиском")).value(QStringLiteral("SearchStringLocation")).toString(),
+             QStringLiteral("None"));
+    QCOMPARE(props(QStringLiteral("СписокСПоиском")).value(QStringLiteral("ViewStatusLocation")).toString(),
+             QStringLiteral("None"));
+    QCOMPARE(props(QStringLiteral("СписокСПоиском")).value(QStringLiteral("SearchControlLocation")).toString(),
+             QStringLiteral("None"));
+    QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("SearchStringLocation")));
+    QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("ViewStatusLocation")));
+    QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("SearchControlLocation")));
 }
 
 } // namespace
