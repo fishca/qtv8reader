@@ -179,14 +179,6 @@ void MainWindow::setupUi()
     m_tree->setAlternatingRowColors(true);
     m_tree->setUniformRowHeights(true);
     m_tree->setSelectionMode(QAbstractItemView::SingleSelection);
-    // Строка дерева больше не заливается системным синим: такая заливка
-    // перекрывает значки и текст. Выбранный узел отмечается нейтральным
-    // светло-серым, а не цветом акцента Windows; полоса ветвления получает
-    // тот же цвет, поэтому синих полей и полоски слева не остаётся.
-    QPalette treePalette = m_tree->palette();
-    treePalette.setColor(QPalette::Highlight, QColor(0xe8, 0xe8, 0xe8));
-    treePalette.setColor(QPalette::HighlightedText, treePalette.color(QPalette::Text));
-    m_tree->setPalette(treePalette);
     leftLayout->addWidget(m_tree, 1);
 
     m_treeHint = new QLabel(QStringLiteral("Файл не открыт"), leftPanel);
@@ -1012,6 +1004,26 @@ void MainWindow::applyTheme(const QString &theme, bool persist)
         ? QStringLiteral("dark")
         : QStringLiteral("light");
     m_themeController->apply(m_theme, persist);
+    applyTreeSelectionPalette(m_theme == QStringLiteral("dark"));
+}
+
+void MainWindow::applyTreeSelectionPalette(bool dark)
+{
+    if (!m_tree)
+        return;
+    // Строка дерева не заливается системным синим: заливка перекрывает значки
+    // и текст. В светлой теме выбранный узел отмечается нейтральным
+    // светло-серым (полоса ветвления получает тот же цвет, поэтому синей
+    // полоски слева не остаётся), в тёмной — штатным цветом темы.
+    QPalette treePalette = m_tree->palette();
+    if (dark) {
+        treePalette.setColor(QPalette::Highlight, QColor(0x2f, 0x65, 0xca));
+        treePalette.setColor(QPalette::HighlightedText, QColor(0xff, 0xff, 0xff));
+    } else {
+        treePalette.setColor(QPalette::Highlight, QColor(0xe8, 0xe8, 0xe8));
+        treePalette.setColor(QPalette::HighlightedText, treePalette.color(QPalette::Text));
+    }
+    m_tree->setPalette(treePalette);
 }
 
 void MainWindow::showAbout()

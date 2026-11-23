@@ -101,6 +101,9 @@ private:
     void setupTree();
     void setupTabs();
     void applyHighlightSettings();
+    // Цвет выделения строки дерева метаданных: в светлой теме нейтральный
+    // светло-серый вместо системного синего, в тёмной — штатный.
+    void applyTreeSelectionPalette(bool dark);
 
     void buildTree();
     void addRootModuleItems(QTreeWidgetItem *rootItem);
