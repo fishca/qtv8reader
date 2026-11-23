@@ -109,6 +109,7 @@ private slots:
     void tree();
     void missingFile();
     void extractObject();
+    void kindQualifiedObject();
 };
 
 void TestCli::info()
@@ -208,6 +209,36 @@ void TestCli::extractObject()
     QVERIFY(result.out.contains(QStringLiteral("сохранён")));
     const QDir outputDir(output);
     QVERIFY(!outputDir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+}
+
+// Уточнение вида в запросе: имена объектов в больших конфигурациях
+// повторяются («ВидыКонтактнойИнформации» есть и у справочника, и у
+// обработки), поэтому «Справочник.Имя» и «Справочники.Имя» должны находить
+// объект, а чужой вид — честно сообщать, что объект не найден.
+void TestCli::kindQualifiedObject()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QString error;
+    const QString path = writeFixture(temp.path(), &error);
+    QVERIFY2(!path.isEmpty(), qPrintable(error));
+
+    for (const QString &query : {QStringLiteral("Справочник.Справочник1"),
+                                 QStringLiteral("Справочники.Справочник1")}) {
+        const CliResult result = runCli(QStringLiteral("metadata"), path, query);
+        QCOMPARE(result.code, 0);
+        QVERIFY(result.out.contains(QStringLiteral("Справочник1")));
+    }
+
+    const CliResult wrongKind =
+        runCli(QStringLiteral("metadata"), path, QStringLiteral("Документ.Справочник1"));
+    QCOMPARE(wrongKind.code, 1);
+    QVERIFY(wrongKind.err.contains(QStringLiteral("не найден")));
+
+    // Неизвестный префикс не считается видом: запрос ищется как есть.
+    const CliResult unknownPrefix =
+        runCli(QStringLiteral("metadata"), path, QStringLiteral("Нечто.Справочник1"));
+    QCOMPARE(unknownPrefix.code, 1);
 }
 
 int main(int argc, char **argv)

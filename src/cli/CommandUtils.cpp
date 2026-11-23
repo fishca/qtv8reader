@@ -9,6 +9,29 @@
 
 namespace v8reader::cli {
 
+namespace {
+
+// Вид объекта для уточнения имени: «Документ.АвансовыйОтчет». Принимаются и
+// единственное число («Документ»), как в 1С, и название категории
+// («Документы»).
+bool matchesKindFilter(const MetadataObject &object, const QString &filter)
+{
+    return object.typeTitle.compare(filter, Qt::CaseInsensitive) == 0
+        || object.categoryTitle.compare(filter, Qt::CaseInsensitive) == 0;
+}
+
+bool isKnownKind(const Configuration &configuration, const QString &prefix)
+{
+    for (const MetadataCategory &category : configuration.categories) {
+        if (category.title.compare(prefix, Qt::CaseInsensitive) == 0
+            || category.typeTitle.compare(prefix, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
 MetadataObject *findObject(Configuration &configuration, const QString &query,
                            QString *error)
 {
@@ -24,12 +47,32 @@ MetadataObject *findObject(Configuration &configuration, const QString &query,
             return object;
     }
 
+    // Уточнение вида: «Документ.АвансовыйОтчет» — имена объектов в больших
+    // конфигурациях повторяются (например, «ВидыКонтактнойИнформации» есть и
+    // у справочника, и у обработки), и без вида поиск просит уточнить запрос.
+    QString nameQuery = query;
+    QString kindQuery;
+    const int dot = query.indexOf(QLatin1Char('.'));
+    if (dot > 0) {
+        const QString prefix = query.left(dot).trimmed();
+        if (isKnownKind(configuration, prefix)) {
+            kindQuery = prefix;
+            nameQuery = query.mid(dot + 1).trimmed();
+        }
+    }
+
+    const auto kindMatches = [&kindQuery](const MetadataObject &object) {
+        return kindQuery.isEmpty() || matchesKindFilter(object, kindQuery);
+    };
+
     QVector<MetadataObject *> exactMatches;
     for (MetadataCategory &category : configuration.categories) {
         for (MetadataObject &object : category.objects) {
-            if (object.name.compare(query, Qt::CaseInsensitive) == 0
-                || object.displayName().compare(query, Qt::CaseInsensitive) == 0
-                || object.synonym.compare(query, Qt::CaseInsensitive) == 0) {
+            if (!kindMatches(object))
+                continue;
+            if (object.name.compare(nameQuery, Qt::CaseInsensitive) == 0
+                || object.displayName().compare(nameQuery, Qt::CaseInsensitive) == 0
+                || object.synonym.compare(nameQuery, Qt::CaseInsensitive) == 0) {
                 exactMatches.append(&object);
             }
         }
@@ -42,8 +85,10 @@ MetadataObject *findObject(Configuration &configuration, const QString &query,
     if (matches.isEmpty()) {
         for (MetadataCategory &category : configuration.categories) {
             for (MetadataObject &object : category.objects) {
-                if (object.name.contains(query, Qt::CaseInsensitive)
-                    || object.synonym.contains(query, Qt::CaseInsensitive)) {
+                if (!kindMatches(object))
+                    continue;
+                if (object.name.contains(nameQuery, Qt::CaseInsensitive)
+                    || object.synonym.contains(nameQuery, Qt::CaseInsensitive)) {
                     matches.append(&object);
                 }
             }
@@ -60,10 +105,15 @@ MetadataObject *findObject(Configuration &configuration, const QString &query,
     }
 
     QStringList names;
-    for (const MetadataObject *object : matches)
-        names.append(QStringLiteral("%1 [%2]").arg(object->displayName(), object->guid));
+    for (const MetadataObject *object : matches) {
+        const QString kind = object->typeTitle.isEmpty() ? object->categoryTitle
+                                                         : object->typeTitle;
+        names.append(QStringLiteral("%1 %2 [%3]")
+                         .arg(kind, object->displayName(), object->guid));
+    }
     if (error) {
-        *error = QStringLiteral("Уточните объект, найдено несколько совпадений: %1")
+        *error = QStringLiteral("Уточните объект, найдено несколько совпадений: %1. "
+                                "Вид можно указать в запросе: «Документ.Имя».")
                      .arg(names.join(QStringLiteral("; ")));
     }
     return nullptr;
