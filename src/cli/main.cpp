@@ -44,6 +44,9 @@ int main(int argc, char **argv)
     parser.addOption(QCommandLineOption(
         QStringLiteral("items"),
         QStringLiteral("Показать дерево элементов формы (для form-model)")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("nodes"),
+        QStringLiteral("Показать узлы формы в порядке сериализации (для form-model)")));
     parser.addPositionalArgument(QStringLiteral("команда"),
                                  QStringLiteral("Команда: info, list, tree, dump, metadata, "
                                                 "modules, composition, form-model, mxl, "
@@ -69,6 +72,7 @@ int main(int argc, char **argv)
     options.raw = parser.isSet(QStringLiteral("raw"));
     options.form = parser.value(QStringLiteral("form"));
     options.items = parser.isSet(QStringLiteral("items"));
+    options.nodes = parser.isSet(QStringLiteral("nodes"));
 
     v8reader::CliApplication application;
     return application.run(options, out, err);

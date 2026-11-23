@@ -1,6 +1,7 @@
 #include "cli/CommandCommon.h"
 
 #include "core/FormBindings.h"
+#include "core/FormOwner.h"
 #include "core/FormReader.h"
 #include "core/FormWebModel.h"
 
@@ -92,31 +93,11 @@ void printItemTree(const QVector<FormItem> &items, int depth)
     }
 }
 
-bool sameType(const QString &left, const QString &right)
-{
-    return left.compare(right, Qt::CaseInsensitive) == 0;
-}
-
-bool containsListTable(const QVector<FormItem> &items, const QString &objectName)
-{
-    for (const FormItem &item : items) {
-        if (item.type == FormItem::Type::Table
-            && (item.name == QStringLiteral("Список")
-                || item.synonym == QStringLiteral("Список")
-                || (!objectName.isEmpty()
-                    && (item.name == objectName || item.synonym == objectName)))) {
-            return true;
-        }
-        if (containsListTable(item.children, objectName))
-            return true;
-    }
-    return false;
-}
-
 } // namespace
 
 int commandFormModel(const QString &path, const QString &objectQuery,
-                     const QString &formQuery, const QString &output, bool itemsOnly)
+                     const QString &formQuery, const QString &output, bool itemsOnly,
+                     bool nodes)
 {
     ConfigurationReader reader;
     if (!loadConfiguration(path, &reader))
@@ -170,34 +151,35 @@ int commandFormModel(const QString &path, const QString &objectQuery,
 
     document.name = formEntry->name;
     document.synonym = formEntry->synonym;
-    if (!object->name.isEmpty()) {
-        document.ownerTitle = object->typeTitle.isEmpty()
-            ? object->name
-            : QStringLiteral("%1.%2").arg(object->typeTitle, object->name);
-        document.ownerSynonym = object->synonym;
-    }
-    for (const MetadataSection &section : object->sections) {
-        for (const MetadataEntry &sectionEntry : section.entries) {
-            if (!sectionEntry.name.isEmpty() && !sectionEntry.synonym.isEmpty())
-                document.titles.insert(sectionEntry.name, sectionEntry.synonym);
-            for (const MetadataEntry &child : sectionEntry.children) {
-                if (!child.name.isEmpty() && !child.synonym.isEmpty())
-                    document.titles.insert(child.name, child.synonym);
-            }
-        }
-    }
-    const bool hasTable = containsListTable(document.items, object->name);
-    const bool isDocument = sameType(object->typeTitle, QStringLiteral("Документ"));
-    const bool isCatalog = sameType(object->typeTitle, QStringLiteral("Справочник"));
-    document.runtimeListCommands = isDocument && hasTable;
-    document.runtimeDocumentCommands = isDocument && !hasTable;
-    document.runtimeCatalogCommands = isCatalog && !hasTable;
-    document.runtimeCatalogListCommands = isCatalog && hasTable;
+    applyOwnerMetadata(*object, &document);
 
     if (itemsOnly) {
         out() << QStringLiteral("Форма: %1 (%2)\n")
                      .arg(document.name, document.synonym);
         printItemTree(document.items, 0);
+        return 0;
+    }
+
+    if (nodes) {
+        const QByteArray described = FormReader::describeNodes(payload, &error);
+        if (described.isEmpty()) {
+            err() << QStringLiteral("Ошибка: не удалось описать узлы формы «%1»: %2\n")
+                         .arg(formEntry->displayName(), error);
+            return 1;
+        }
+        if (output.isEmpty()) {
+            out() << QString::fromUtf8(described) << QLatin1Char('\n');
+            return 0;
+        }
+        QFile nodeFile(output);
+        if (!nodeFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            err() << QStringLiteral("Ошибка: не удалось записать «%1»\n").arg(output);
+            return 1;
+        }
+        nodeFile.write(described);
+        out() << QStringLiteral("Узлы формы сохранены: %1 (%2 байт)\n")
+                     .arg(output)
+                     .arg(described.size());
         return 0;
     }
 

@@ -1,5 +1,7 @@
 #include "core/FormBindings.h"
 
+#include "core/FormOwner.h"
+
 #include <QRegularExpression>
 
 #include <cmath>
@@ -33,20 +35,25 @@ void FormBindingResolver::clear()
 
 void FormBindingResolver::addObject(const MetadataObject &object)
 {
-    auto insert = [this](const MetadataEntry &entry) {
-        if (entry.guid.isEmpty() || entry.typeText.isEmpty())
+    auto insert = [this](const MetadataEntry &entry, bool tabularSection) {
+        if (entry.guid.isEmpty())
             return;
         Entry value;
         value.name = entry.name;
         value.synonym = entry.synonym;
         value.typeText = entry.typeText;
+        value.tabularSection = tabularSection;
         m_byGuid.insert(entry.guid.toLower(), value);
     };
     for (const MetadataSection &section : object.sections) {
+        const bool tabular = section.kind == MetadataSectionKind::TabularSections;
         for (const MetadataEntry &entry : section.entries) {
-            insert(entry);
+            // Табличные части в таблицу поиска входят ради имён: путь колонки
+            // адресуется через них («Объект.Товары.Количество»), хотя типа
+            // у самой табличной части нет.
+            insert(entry, tabular);
             for (const MetadataEntry &child : entry.children)
-                insert(child);
+                insert(child, false);
         }
     }
 }
@@ -159,30 +166,82 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
     if (path.isEmpty())
         return binding;
 
+    // Односегментный путь адресует реквизит формы. Номер реквизита в записи
+    // пути не совпадает с порядком реквизитов (сверено по форме «Авансовый
+    // отчет»), поэтому привязку определяем по имени элемента: если среди
+    // реквизитов формы есть элемент с тем же именем, путь ведёт к нему.
+    // Иначе путь не расшифровывается — лучше показать поле без привязки,
+    // чем привязать его к чужому реквизиту с другим типом.
+    if (path.size() == 1 && path.at(0).kind == FormPathSegment::Kind::Index) {
+        if (fallbackName.isEmpty())
+            return binding;
+        for (const FormAttribute &attribute : document.attributes) {
+            if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) != 0)
+                continue;
+            binding.text = attribute.name;
+            binding.title = attribute.synonym;
+            if (!attribute.typeHint.isEmpty()) {
+                binding.typeText = attribute.typeHint;
+                binding.kind = kindForTypeText(attribute.typeHint);
+                binding.chars = charsForType(attribute.typeHint, binding.kind);
+            }
+            return binding;
+        }
+        // Реквизит не опознан: рендерер показывает поле только с путём
+        // к данным, поэтому оставляем путь по имени элемента — тип остаётся
+        // неизвестным, но поле и его заголовок не пропадают.
+        binding.text = fallbackName;
+        return binding;
+    }
+
     QStringList parts;
     const Entry *last = nullptr;
+    // Признак того, что предыдущий сегмент — табличная часть: стандартный
+    // реквизит «-2» внутри неё означает номер строки, а не номер/код.
+    bool insideTable = false;
+    const QString kind = ownerKindTag(document.ownerTitle);
     for (int i = 0; i < path.size(); ++i) {
         const FormPathSegment &segment = path.at(i);
         switch (segment.kind) {
         case FormPathSegment::Kind::Index: {
             if (i == 0) {
-                // Корневой реквизит формы: «Объект», «Список», «Отчет» …
-                // Идентификаторы реквизитов формы нумеруются с единицы,
-                // а в документе они лежат в порядке объявления.
-                const int index = segment.code - 1;
-                if (index >= 0 && index < document.attributes.size()) {
-                    const FormAttribute &attribute = document.attributes.at(index);
-                    parts.append(attribute.name);
-                    // Путь из одного сегмента — это сам реквизит формы:
-                    // его тип объявлен в самой форме (например, «Булево»).
-                    if (path.size() == 1 && !attribute.typeHint.isEmpty()) {
-                        binding.typeText = attribute.typeHint;
-                        binding.kind = kindForTypeText(attribute.typeHint);
-                        binding.chars = charsForType(attribute.typeHint, binding.kind);
+                // Односегментный путь адресует реквизит формы. Номер реквизита
+                // в бинарной форме нумеруется не так, как в Form.xml, поэтому
+                // привязку уточняем по имени элемента: поле с именем реквизита
+                // привязано именно к нему.
+                if (path.size() == 1 && !fallbackName.isEmpty()) {
+                    for (const FormAttribute &attribute : document.attributes) {
+                        if (attribute.name.compare(fallbackName, Qt::CaseInsensitive) != 0)
+                            continue;
+                        parts.append(attribute.name);
+                        if (!attribute.typeHint.isEmpty()) {
+                            binding.typeText = attribute.typeHint;
+                            binding.kind = kindForTypeText(attribute.typeHint);
+                            binding.chars = charsForType(attribute.typeHint, binding.kind);
+                        }
                         binding.title = attribute.synonym;
+                        break;
                     }
-                } else {
-                    parts.append(QStringLiteral("Объект"));
+                }
+                if (parts.isEmpty()) {
+                    // Корневой реквизит формы: «Объект», «Список», «Отчет» …
+                    // Идентификаторы реквизитов формы нумеруются с единицы,
+                    // а в документе они лежат в порядке объявления.
+                    const int index = segment.code - 1;
+                    if (index >= 0 && index < document.attributes.size()) {
+                        const FormAttribute &attribute = document.attributes.at(index);
+                        parts.append(attribute.name);
+                        // Путь из одного сегмента — это сам реквизит формы:
+                        // его тип объявлен в самой форме (например, «Булево»).
+                        if (path.size() == 1 && !attribute.typeHint.isEmpty()) {
+                            binding.typeText = attribute.typeHint;
+                            binding.kind = kindForTypeText(attribute.typeHint);
+                            binding.chars = charsForType(attribute.typeHint, binding.kind);
+                            binding.title = attribute.synonym;
+                        }
+                    } else {
+                        parts.append(QStringLiteral("Объект"));
+                    }
                 }
             } else {
                 parts.append(QStringLiteral("#%1").arg(segment.code));
@@ -196,31 +255,53 @@ FormBinding FormBindingResolver::resolve(const QVector<FormPathSegment> &path,
                     parts.append(fallbackName);
                 else
                     parts.append(QStringLiteral("?"));
+                insideTable = false;
                 break;
             }
             parts.append(it->name);
-            last = &it.value();
+            insideTable = it->tabularSection;
+            if (i == path.size() - 1) {
+                last = &it.value();
+            } else if (!it->typeText.isEmpty()) {
+                // Табличная часть: тип у неё не объявлен, но синоним нужен
+                // (заголовок самой таблицы).
+                last = &it.value();
+            }
             break;
         }
         case FormPathSegment::Kind::StandardAttribute: {
-            const QString standard = typeTextForStandardCode(segment.code);
-            if (i == path.size() - 1 && !fallbackName.isEmpty()) {
-                parts.append(fallbackName);
+            QString standardName;
+            if (segment.code == -2) {
+                if (insideTable)
+                    standardName = QStringLiteral("LineNumber");
+                else if (kind == QLatin1String("Catalog"))
+                    standardName = QStringLiteral("Code");
+                else
+                    standardName = QStringLiteral("Number");
+            } else if (segment.code == -3) {
+                standardName = QStringLiteral("Date");
             } else {
-                parts.append(QStringLiteral("Стандартный%1").arg(segment.code));
+                standardName = typeTextForStandardCode(segment.code);
             }
-            if (!standard.isEmpty()) {
-                binding.typeText = standard;
-                binding.kind = kindForTypeText(standard);
-                binding.chars = charsForType(standard, binding.kind);
+            if (standardName.isEmpty())
+                standardName = QStringLiteral("Стандартный%1").arg(segment.code);
+            parts.append(standardName);
+
+            const QString standardType = typeTextForStandardCode(segment.code);
+            if (!standardType.isEmpty()) {
+                binding.typeText = standardType;
+                binding.kind = kindForTypeText(standardType);
+                binding.chars = charsForType(standardType, binding.kind);
             }
+            last = nullptr;
+            insideTable = false;
             break;
         }
         }
     }
 
     binding.text = parts.join(QLatin1Char('.'));
-    if (last) {
+    if (last && !last->tabularSection) {
         binding.title = last->synonym;
         if (binding.typeText.isEmpty()) {
             binding.typeText = last->typeText;

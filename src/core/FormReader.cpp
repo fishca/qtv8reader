@@ -5,6 +5,10 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 
 #include <algorithm>
 
@@ -222,44 +226,44 @@ QString typeHintFromAttributes(const V8TextNode &node)
 
 void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
 {
-    // Поля (InputField/LabelField/PictureField/CheckBoxField): вложенная
-    // layout-структура с кодом 10/11/32:
-    //   10/11: [1] Width, [2] Height, [3] HorizontalStretch, [4] VerticalStretch
-    //   32:    [2] Width, [3] Height, [4] HorizontalStretch, [5] VerticalStretch
+    auto integerSlot = [](const V8TextNode &record, int index) {
+        const V8TextNode *child = record.child(index);
+        return child && child->isInteger() ? static_cast<int>(child->toInteger()) : -1;
+    };
+
+    // Поля (InputField/LabelField/CheckBoxField/PictureField): геометрия лежит
+    // в записи макета, первым элементом которой стоит её код:
+    //   36 — поле ввода:   [2] Width, [3] Height, [4] HorizontalStretch,
+    //                      [5] VerticalStretch;
+    //   11 — метка/флажок: [1] Width, [2] Height, [3] HorizontalStretch,
+    //                      [4] VerticalStretch.
+    // Раскладка сверена с Form.xml по 229 полям формы «Авансовый отчет»
+    // и подтверждена корреляцией по корпусу из 15 форм БП.
     if (item->typeCode == 37) {
         for (const V8TextNode &child : node.children) {
-            if (!child.isList() || child.children.size() < 8)
+            if (!child.isList() || child.children.size() < 6)
                 continue;
             const V8TextNode *first = child.child(0);
-            if (!first || !first->isInteger())
+            if (!first || !first->isScalar())
                 continue;
-            const int kind = static_cast<int>(first->toInteger());
-            if (kind == 10 || kind == 11) {
-                item->labelOnly = true;
-                if (child.child(1) && child.child(1)->isInteger())
-                    item->widthUnits = static_cast<int>(child.child(1)->toInteger());
-                if (child.child(2) && child.child(2)->isInteger())
-                    item->heightUnits = static_cast<int>(child.child(2)->toInteger());
-                if (child.child(3) && child.child(3)->isInteger())
-                    item->horizontalStretch = static_cast<int>(child.child(3)->toInteger());
-                if (child.child(4) && child.child(4)->isInteger())
-                    item->verticalStretch = static_cast<int>(child.child(4)->toInteger());
-                continue;
-            }
-            if (kind == 32) {
+            const QString code = first->scalar().trimmed();
+            if (code == QLatin1String("36")) {
                 item->labelOnly = false;
-                if (child.child(2) && child.child(2)->isInteger())
-                    item->widthUnits = static_cast<int>(child.child(2)->toInteger());
-                if (child.child(3) && child.child(3)->isInteger())
-                    item->heightUnits = static_cast<int>(child.child(3)->toInteger());
-                if (child.child(4) && child.child(4)->isInteger())
-                    item->horizontalStretch = static_cast<int>(child.child(4)->toInteger());
-                if (child.child(5) && child.child(5)->isInteger())
-                    item->verticalStretch = static_cast<int>(child.child(5)->toInteger());
+                item->widthUnits = integerSlot(child, 2);
+                item->heightUnits = integerSlot(child, 3);
+                item->horizontalStretch = integerSlot(child, 4);
+                item->verticalStretch = integerSlot(child, 5);
+                return;
+            }
+            if (code == QLatin1String("11")) {
+                item->labelOnly = true;
+                item->widthUnits = integerSlot(child, 1);
+                item->heightUnits = integerSlot(child, 2);
+                item->horizontalStretch = integerSlot(child, 3);
+                item->verticalStretch = integerSlot(child, 4);
                 return;
             }
         }
-        return;
     }
 
     // Группа: ширина в поле 12, высота — в поле 13; растяжение —
@@ -567,6 +571,77 @@ bool FormReader::parseFile(const QString &path, FormDocument *document,
         return false;
     }
     return parseBytes(file.readAll(), document, error, resolver);
+}
+
+namespace {
+
+QJsonValue slotToJson(const V8TextNode &node, int depth)
+{
+    if (node.isScalar())
+        return QJsonValue(node.scalar());
+    if (!node.isList())
+        return QJsonValue();
+    if (depth <= 0)
+        return QJsonValue(QStringLiteral("..."));
+    QJsonArray array;
+    for (const V8TextNode &child : node.children)
+        array.append(slotToJson(child, depth - 1));
+    return array;
+}
+
+void appendNodeDescription(const V8TextNode &node, QJsonArray *target, int depth)
+{
+    for (const V8TextNode &child : node.children) {
+        if (!isItemNode(child))
+            continue;
+        QJsonObject item;
+        item.insert(QStringLiteral("typeCode"),
+                    static_cast<int>(child.child(0)->toInteger()));
+        int nameIndex = -1;
+        item.insert(QStringLiteral("name"), findName(child, 2, &nameIndex));
+        if (nameIndex >= 0)
+            item.insert(QStringLiteral("nameIndex"), nameIndex);
+        if (child.child(1)->children.size() >= 1
+            && child.child(1)->child(0)->isInteger()) {
+            item.insert(QStringLiteral("id"),
+                        static_cast<int>(child.child(1)->child(0)->toInteger()));
+        }
+        QJsonArray slotValues;
+        for (const V8TextNode &slot : child.children)
+            slotValues.append(slotToJson(slot, 3));
+        item.insert(QStringLiteral("slots"), slotValues);
+        QJsonArray children;
+        if (depth > 1)
+            appendNodeDescription(child, &children, depth - 1);
+        item.insert(QStringLiteral("childItems"), children);
+        target->append(item);
+    }
+}
+
+} // namespace
+
+QByteArray FormReader::describeNodes(const QByteArray &data, QString *error)
+{
+    const QString text = V8Text::decode(data, nullptr, nullptr);
+    V8TextNode root;
+    V8TextError parseError;
+    if (text.isEmpty() || !V8Text::parse(text, root, &parseError)) {
+        if (error)
+            *error = QStringLiteral("Не удалось разобрать форму: %1")
+                         .arg(parseError.toString());
+        return QByteArray();
+    }
+    const V8TextNode *header = root.child(1);
+    if (!header || !header->isList()) {
+        if (error)
+            *error = QStringLiteral("В форме отсутствует заголовок (элемент 2).");
+        return QByteArray();
+    }
+    QJsonObject result;
+    QJsonArray items;
+    appendNodeDescription(*header, &items, 40);
+    result.insert(QStringLiteral("items"), items);
+    return QJsonDocument(result).toJson(QJsonDocument::Compact);
 }
 
 } // namespace v8reader

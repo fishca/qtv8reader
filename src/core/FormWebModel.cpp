@@ -1,6 +1,7 @@
 #include "core/FormWebModel.h"
 
 #include "core/FormDocument.h"
+#include "core/FormOwner.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -26,6 +27,7 @@ enum : int {
 // Коды вида группы (второй код в узле группы).
 enum : int {
     kGroupPopup = 1,
+    kGroupColumnGroup = 2,
     kGroupPages = 3,
     kGroupPage = 4,
     kGroupUsual = 5,
@@ -193,13 +195,15 @@ const StandardBarCommand *standardBarCommand(const QString &commandName)
     return nullptr;
 }
 
-QString elementTag(const FormItem &item)
+QString elementTag(const FormItem &item, bool insideTable = false)
 {
     switch (item.type) {
     case FormItem::Type::Group:
         switch (item.groupKind) {
         case kGroupPopup:
             return QStringLiteral("Popup");
+        case kGroupColumnGroup:
+            return QStringLiteral("ColumnGroup");
         case kGroupPages:
             return QStringLiteral("Pages");
         case kGroupPage:
@@ -213,12 +217,16 @@ QString elementTag(const FormItem &item)
         default:
             break;
         }
-        return QStringLiteral("UsualGroup");
+        return insideTable ? QStringLiteral("ColumnGroup") : QStringLiteral("UsualGroup");
     case FormItem::Type::Field:
-        if (item.labelOnly)
-            return QStringLiteral("LabelField");
+        // Порядок важен: булево значение рисуется флажком даже если у элемента
+        // нет поля ввода (labelOnly), а картинка — PictureField.
         if (item.valueKind == FormValueKind::Boolean)
             return QStringLiteral("CheckBoxField");
+        if (item.labelOnly && item.valueKind == FormValueKind::Picture)
+            return QStringLiteral("PictureField");
+        if (item.labelOnly)
+            return QStringLiteral("LabelField");
         return QStringLiteral("InputField");
     case FormItem::Type::Button:
         return QStringLiteral("Button");
@@ -233,6 +241,8 @@ QString elementTag(const FormItem &item)
 }
 
 QJsonObject makeItem(const FormItem &item, const FormDocument &document);
+
+QString kindTagFor(const QString &ownerTitle);
 
 QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &document,
                                 const QJsonArray &leading, bool autofill,
@@ -363,7 +373,13 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     if (!dataPath.isEmpty())
         properties.insert(QStringLiteral("DataPath"), dataPath);
 
-    const QString title = item.titleText();
+    // Заголовок колонки таблицы рендерер выводит из DataPath и метаданных,
+    // поэтому собственный заголовок отдаём только если он задан в форме:
+    // иначе стандартная колонка «Номер строки» получила бы подпись
+    // «Выданные авансы номер строки» вместо «N».
+    QString title = item.synonym;
+    if (title.isEmpty() && !insideTable)
+        title = item.dataTitle;
     if (!title.isEmpty())
         properties.insert(QStringLiteral("Title"), title);
     if (item.valueKind == FormValueKind::Boolean) {
@@ -382,16 +398,12 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
         properties.insert(QStringLiteral("Width"),
                           QString::number(item.widthUnits));
     }
-    if (item.horizontalStretch == 1)
+    if (item.horizontalStretch == 0)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("false"));
+    else if (item.horizontalStretch == 1)
         properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
-    else if (item.horizontalStretch == 2)
-        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("Auto"));
     if (!item.visible)
         properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
-    if (insideTable) {
-        if (!item.children.isEmpty())
-            properties.insert(QStringLiteral("ShowInHeader"), QStringLiteral("true"));
-    }
 
     QJsonObject json;
     json.insert(QStringLiteral("tag"), elementTag(item));
@@ -461,6 +473,43 @@ QJsonObject makeGroup(const FormItem &item, const FormDocument &document)
     return json;
 }
 
+// Группа колонок таблицы: заголовок над несколькими колонками. В таблице
+// рендерера это узел ColumnGroup с дочерними InputField.
+QJsonObject makeColumnGroup(const FormItem &item, const FormDocument &document,
+                            const QString &tableName)
+{
+    QJsonObject properties;
+    if (!item.synonym.isEmpty())
+        properties.insert(QStringLiteral("Title"), item.synonym);
+    if (item.widthUnits > 0)
+        properties.insert(QStringLiteral("Width"), QString::number(item.widthUnits));
+    if (item.horizontalStretch == 1)
+        properties.insert(QStringLiteral("HorizontalStretch"), QStringLiteral("true"));
+    if (!item.visible)
+        properties.insert(QStringLiteral("Visible"), QStringLiteral("false"));
+
+    QJsonArray children;
+    for (const FormItem &child : item.children) {
+        if (!isRenderable(child))
+            continue;
+        if (child.type == FormItem::Type::Field)
+            children.append(makeField(child, document, true, tableName));
+        else if (child.type == FormItem::Type::Group
+                 && child.groupKind == kGroupColumnGroup)
+            children.append(makeColumnGroup(child, document, tableName));
+    }
+
+    QJsonObject json;
+    json.insert(QStringLiteral("tag"), QStringLiteral("ColumnGroup"));
+    json.insert(QStringLiteral("name"), item.name);
+    json.insert(QStringLiteral("id"), QString::number(item.id));
+    json.insert(QStringLiteral("properties"), properties);
+    json.insert(QStringLiteral("authoredProperties"), properties);
+    json.insert(QStringLiteral("childItems"), children);
+    json.insert(QStringLiteral("events"), QJsonArray());
+    return json;
+}
+
 QJsonObject makeTable(const FormItem &item, const FormDocument &document)
 {
     QJsonObject properties;
@@ -489,9 +538,15 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         if (!isRenderable(child))
             continue;
         if (child.type == FormItem::Type::Group) {
-            if (child.groupKind == kGroupCommandBar && !tableBar) {
+            if (!tableBar
+                && (child.groupKind == kGroupCommandBar
+                    || child.name.contains(QStringLiteral("КоманднаяПанель"),
+                                           Qt::CaseInsensitive))) {
                 tableBar = &child;
                 continue;
+            }
+            if (child.groupKind == kGroupColumnGroup) {
+                columns.append(makeColumnGroup(child, document, tableName));
             }
             continue;
         }
@@ -512,7 +567,15 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
     json.insert(QStringLiteral("authoredProperties"), properties);
     json.insert(QStringLiteral("childItems"), columns);
     json.insert(QStringLiteral("events"), QJsonArray());
-    if (tableBar) {
+    // Свою командную панель таблица показывает только если она описана в форме.
+    // Иначе платформа кладёт команды таблицы в общую панель формы, и отдельная
+    // панель вроде «Создать» у списка была бы лишней. У основной таблицы списка
+    // («Список») своей панели нет — команды живут в панели формы.
+    const bool mainList = tableName.compare(QStringLiteral("Список"),
+                                            Qt::CaseInsensitive) == 0;
+    if (mainList)
+        properties.insert(QStringLiteral("CommandBarLocation"), QStringLiteral("None"));
+    if (tableBar && !mainList) {
         json.insert(QStringLiteral("autoCommandBar"),
                     buildCommandBarNode(tableBar, document, QJsonArray(), true,
                                         item.name + QStringLiteral("КоманднаяПанель")));
@@ -717,15 +780,19 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
         standard.append(makeStandardButton(
             QStringLiteral("_stdPost"), QStringLiteral("Провести"),
             QStringLiteral("Form.StandardCommand.Post")));
-    } else if (document.runtimeCatalogCommands || document.runtimeCatalogListCommands
-               || document.runtimeListCommands) {
+    } else if (document.runtimeCatalogCommands) {
+        // Форма элемента справочника: панель начинается с «Записать».
         standard.append(makeStandardButton(
             QStringLiteral("_stdWrite"), QStringLiteral("Записать"),
             QStringLiteral("Form.StandardCommand.Write")));
     }
-    // «Создать на основании» — стандартное подменю рядом с «Записать».
-    standard.append(makePopup(QStringLiteral("_global_create_based_on"),
-                              QStringLiteral("Создать на основании"), QJsonArray()));
+    // «Создать на основании» платформа добавляет только документам
+    // и справочникам; в формах отчётов и обработок этой команды нет.
+    const QString kind = kindTagFor(document.ownerTitle);
+    if (kind == QLatin1String("Document") || kind == QLatin1String("Catalog")) {
+        standard.append(makePopup(QStringLiteral("_global_create_based_on"),
+                                  QStringLiteral("Создать на основании"), QJsonArray()));
+    }
     QJsonObject bar = buildCommandBarNode(authoredBar, document, standard, false,
                                           QStringLiteral("ФормаКоманднаяПанель"));
     moveCreateBasedOnAfterImportantCommands(&bar);
@@ -734,28 +801,9 @@ QJsonObject buildAutoCommandBar(const FormDocument &document,
 
 QString kindTagFor(const QString &ownerTitle)
 {
-    if (ownerTitle.startsWith(QStringLiteral("Документ")))
-        return QStringLiteral("Document");
-    if (ownerTitle.startsWith(QStringLiteral("Справочник")))
-        return QStringLiteral("Catalog");
-    if (ownerTitle.startsWith(QStringLiteral("Обработка")))
-        return QStringLiteral("DataProcessor");
-    if (ownerTitle.startsWith(QStringLiteral("Отчет")))
-        return QStringLiteral("Report");
-    if (ownerTitle.startsWith(QStringLiteral("ПланВидовХарактеристик")))
-        return QStringLiteral("ChartOfCharacteristicTypes");
-    if (ownerTitle.startsWith(QStringLiteral("ПланСчетов")))
-        return QStringLiteral("ChartOfAccounts");
-    if (ownerTitle.startsWith(QStringLiteral("ПланОбмена")))
-        return QStringLiteral("ExchangePlan");
-    if (ownerTitle.startsWith(QStringLiteral("Задача")))
-        return QStringLiteral("Task");
-    if (ownerTitle.startsWith(QStringLiteral("БизнесПроцесс")))
-        return QStringLiteral("BusinessProcess");
-    if (ownerTitle.startsWith(QStringLiteral("РегистрСведений")))
-        return QStringLiteral("InformationRegister");
-    if (ownerTitle.startsWith(QStringLiteral("РегистрНакопления")))
-        return QStringLiteral("AccumulationRegister");
+    const QString tag = ownerKindTag(ownerTitle);
+    if (!tag.isEmpty())
+        return tag;
     return QStringLiteral("Document");
 }
 
@@ -828,11 +876,43 @@ QString ownerName(const FormDocument &document)
 
 QJsonObject buildObjectMeta(const FormDocument &document)
 {
-    const QString kindTag = kindTagFor(document.ownerTitle);
-    const QString name = ownerName(document);
+    const FormOwnerMeta &owner = document.ownerMeta;
+    const QString kindTag = owner.kindTag.isEmpty() ? kindTagFor(document.ownerTitle)
+                                                    : owner.kindTag;
+    const QString name = owner.name.isEmpty() ? ownerName(document) : owner.name;
     QJsonObject captions;
     for (auto it = document.titles.constBegin(); it != document.titles.constEnd(); ++it)
         captions.insert(it.key(), it.value());
+    for (auto it = owner.captions.constBegin(); it != owner.captions.constEnd(); ++it)
+        captions.insert(it.key(), it.value());
+
+    auto objectOf = [](const QHash<QString, QString> &source) {
+        QJsonObject result;
+        for (auto it = source.constBegin(); it != source.constEnd(); ++it)
+            result.insert(it.key(), it.value());
+        return result;
+    };
+    auto numberQualifiers = [&owner]() {
+        QJsonObject result;
+        for (auto it = owner.numberQ.constBegin(); it != owner.numberQ.constEnd(); ++it) {
+            const QStringList parts = it.value().split(QLatin1Char(':'));
+            if (parts.size() != 2)
+                continue;
+            QJsonObject qualifier;
+            qualifier.insert(QStringLiteral("digits"), parts.at(0).toInt());
+            qualifier.insert(QStringLiteral("fractionDigits"), parts.at(1).toInt());
+            qualifier.insert(QStringLiteral("allowedSign"),
+                             QStringLiteral("Nonnegative"));
+            result.insert(it.key(), qualifier);
+        }
+        return result;
+    };
+    auto stringLengths = [&owner]() {
+        QJsonObject result;
+        for (auto it = owner.stringLen.constBegin(); it != owner.stringLen.constEnd(); ++it)
+            result.insert(it.key(), it.value().toInt());
+        return result;
+    };
 
     QJsonObject meta;
     meta.insert(QStringLiteral("definedType"), QJsonValue::Null);
@@ -841,14 +921,17 @@ QJsonObject buildObjectMeta(const FormDocument &document)
     meta.insert(QStringLiteral("kindTag"), kindTag);
     meta.insert(QStringLiteral("stdCaptions"), standardCaptions(kindTag));
     meta.insert(QStringLiteral("name"), name);
-    meta.insert(QStringLiteral("synonym"), document.ownerSynonym);
-    meta.insert(QStringLiteral("listPresentation"), QString());
+    meta.insert(QStringLiteral("synonym"),
+                owner.synonym.isEmpty() ? document.ownerSynonym : owner.synonym);
+    meta.insert(QStringLiteral("listPresentation"),
+                owner.listPresentation.isEmpty() ? document.ownerSynonym
+                                                 : owner.listPresentation);
     meta.insert(QStringLiteral("captions"), captions);
-    meta.insert(QStringLiteral("stringLen"), QJsonObject());
-    meta.insert(QStringLiteral("types"), QJsonObject());
+    meta.insert(QStringLiteral("stringLen"), stringLengths());
+    meta.insert(QStringLiteral("types"), objectOf(owner.types));
     meta.insert(QStringLiteral("fillChecking"), QJsonObject());
-    meta.insert(QStringLiteral("numberQ"), QJsonObject());
-    meta.insert(QStringLiteral("dateFraction"), QJsonObject());
+    meta.insert(QStringLiteral("numberQ"), numberQualifiers());
+    meta.insert(QStringLiteral("dateFraction"), objectOf(owner.dateFraction));
     meta.insert(QStringLiteral("multiLine"), QJsonObject());
     meta.insert(QStringLiteral("kind"), kindLower(kindTag));
     meta.insert(QStringLiteral("metaClass"), kindTag);
@@ -863,10 +946,19 @@ QJsonObject buildObjectMeta(const FormDocument &document)
     return meta;
 }
 
-QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHint)
+QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHint,
+                           bool mainAttribute = false)
 {
     QJsonObject properties;
-    properties.insert(QStringLiteral("Type"), typeHint);
+    QString type = typeHint;
+    if (!typeHint.startsWith(QLatin1String("cfg:"))) {
+        const QString mapped = rendererTypeFor(typeHint);
+        if (!mapped.isEmpty())
+            type = mapped;
+    }
+    properties.insert(QStringLiteral("Type"), type);
+    if (mainAttribute)
+        properties.insert(QStringLiteral("MainAttribute"), QStringLiteral("true"));
     if (!attribute.synonym.isEmpty())
         properties.insert(QStringLiteral("Title"), attribute.synonym);
 
@@ -875,7 +967,7 @@ QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHi
     json.insert(QStringLiteral("id"), QString());
     json.insert(QStringLiteral("properties"), properties);
     json.insert(QStringLiteral("typeDescription"), QJsonValue::Null);
-    json.insert(QStringLiteral("typeRefs"), typeHint);
+    json.insert(QStringLiteral("typeRefs"), type);
     json.insert(QStringLiteral("columns"), QJsonArray());
     json.insert(QStringLiteral("stringLen"), 0);
     json.insert(QStringLiteral("numberQ"), QJsonValue::Null);
@@ -928,14 +1020,27 @@ QByteArray formWebModelJson(const FormDocument &document)
 
     // Корневые элементы формы: командную панель формы отдаём отдельным узлом
     // autoCommandBar (так её ожидает рендерер), остальные — в childItemsRoot.
+    // Панель узнаём и по имени: платформа восстанавливает CommandBar из группы
+    // «ГруппаКоманднаяПанель», у которой в бинарной форме нет кода 9. Если
+    // таких групп несколько (служебная «ФормаКоманднаяПанель» и настоящая
+    // панель с кнопками), в панель берём ту, где больше содержимого.
+    auto isCommandBarGroup = [](const FormItem &item) {
+        return item.type == FormItem::Type::Group
+            && (item.groupKind == kGroupCommandBar
+                || item.name.contains(QStringLiteral("КоманднаяПанель"),
+                                      Qt::CaseInsensitive));
+    };
     const FormItem *authoredBar = nullptr;
+    for (const FormItem &item : document.items) {
+        if (!isCommandBarGroup(item))
+            continue;
+        if (!authoredBar || item.children.size() > authoredBar->children.size())
+            authoredBar = &item;
+    }
     QJsonArray rootItems;
     for (const FormItem &item : document.items) {
-        if (item.type == FormItem::Type::Group
-            && item.groupKind == kGroupCommandBar && !authoredBar) {
-            authoredBar = &item;
+        if (isCommandBarGroup(item))
             continue;
-        }
         if (!isRenderable(item) || item.type == FormItem::Type::AutoCommandBar)
             continue;
         rootItems.append(makeItem(item, document));
@@ -945,12 +1050,35 @@ QByteArray formWebModelJson(const FormDocument &document)
                  buildAutoCommandBar(document, authoredBar));
 
     QJsonArray attributes;
-    attributes.append(buildAttribute(
-        FormAttribute{QStringLiteral("Объект"), QString(), QString()},
-        QStringLiteral("cfg:%1Object.%2")
-            .arg(kindTagFor(document.ownerTitle), ownerName(document))));
-    for (const FormAttribute &attribute : document.attributes)
+    // Главный реквизит формы («Объект»/«Список») сама форма уже объявляет:
+    // дублировать его нельзя — от порядка реквизитов зависят пути к данным.
+    bool mainAttributeFound = false;
+    for (const FormAttribute &attribute : document.attributes) {
+        const bool main = attribute.name.compare(QStringLiteral("Объект"),
+                                                 Qt::CaseInsensitive) == 0
+            || attribute.name.compare(QStringLiteral("Object"), Qt::CaseInsensitive) == 0;
+        if (main && !mainAttributeFound) {
+            mainAttributeFound = true;
+            attributes.append(buildAttribute(
+                FormAttribute{QStringLiteral("Объект"),
+                              attribute.synonym,
+                              QStringLiteral("cfg:%1Object.%2")
+                                  .arg(kindTagFor(document.ownerTitle),
+                                       ownerName(document))},
+                QStringLiteral("cfg:%1Object.%2")
+                    .arg(kindTagFor(document.ownerTitle), ownerName(document)),
+                true));
+            continue;
+        }
         attributes.append(buildAttribute(attribute, attribute.typeHint));
+    }
+    if (!mainAttributeFound) {
+        attributes.prepend(buildAttribute(
+            FormAttribute{QStringLiteral("Объект"), QString(), QString()},
+            QStringLiteral("cfg:%1Object.%2")
+                .arg(kindTagFor(document.ownerTitle), ownerName(document)),
+            true));
+    }
     model.insert(QStringLiteral("attributes"), attributes);
     model.insert(QStringLiteral("baseAttributes"), QJsonArray());
 

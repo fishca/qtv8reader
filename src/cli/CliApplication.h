@@ -21,6 +21,8 @@ public:
         bool raw = false;
         // Только дерево элементов формы (отладка разбора).
         bool items = false;
+        // Узлы формы в порядке сериализации (отладка разбора).
+        bool nodes = false;
     };
 
     int run(const Options &options, QTextStream &out, QTextStream &err);

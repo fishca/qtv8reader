@@ -49,6 +49,7 @@ private:
         QString name;
         QString synonym;
         QString typeText;
+        bool tabularSection = false;
     };
 
     QHash<QString, Entry> m_byGuid;

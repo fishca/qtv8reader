@@ -135,6 +135,23 @@ struct FormCommand
     QString synonym;
 };
 
+// Метаданные владельца формы, которые рендерер «точного вида» ожидает
+// в узле objectMeta: типы реквизитов с квалификаторами, заголовки, причём
+// для колонок табличных частей — с префиксом «ТабличнаяЧасть.».
+struct FormOwnerMeta
+{
+    bool valid = false;
+    QString kindTag;   // «Document», «Catalog», …
+    QString name;      // имя объекта метаданных («АвансовыйОтчет»)
+    QString synonym;
+    QString listPresentation;
+    QHash<QString, QString> captions;    // «Товары.Сумма» → «Сумма»
+    QHash<QString, QString> types;       // «Товары.Сумма» → «xs:decimal»
+    QHash<QString, QString> numberQ;     // «Товары.Сумма» → «15:2»
+    QHash<QString, QString> stringLen;   // «Комментарий» → «100»
+    QHash<QString, QString> dateFraction; // «Дата» → «Date»
+};
+
 struct FormDocument
 {
     bool valid = false;
@@ -144,6 +161,8 @@ struct FormDocument
     QString ownerTitle;
     // Синоним владельца: в окне 1С заголовок — «Авансовый отчет».
     QString ownerSynonym;
+    // Типы и заголовки реквизитов владельца для рендерера.
+    FormOwnerMeta ownerMeta;
     QString moduleText;
     QVector<FormItem> items;
     QVector<FormAttribute> attributes;

@@ -7,6 +7,7 @@
 #include "gui/PreviewDialog.h"
 #include "core/ConfigurationReader.h"
 #include "core/FormBindings.h"
+#include "core/FormOwner.h"
 #include "core/FormReader.h"
 #include "core/FormWebModel.h"
 #include "core/MxlReader.h"
@@ -142,61 +143,8 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
 
     document.name = entry.name;
     document.synonym = entry.synonym;
-    if (m_currentObject && !m_currentObject->name.isEmpty()) {
-        // Заголовок окна формы, как в конфигураторе: «Документ.АвансовыйОтчет».
-        document.ownerTitle = m_currentObject->typeTitle.isEmpty()
-            ? m_currentObject->name
-            : QStringLiteral("%1.%2").arg(m_currentObject->typeTitle,
-                                          m_currentObject->name);
-        document.ownerSynonym = m_currentObject->synonym;
-    }
-    {
-        bool hasTable = false;
-        const QString objectName = m_currentObject ? m_currentObject->name : QString();
-        std::function<bool(const QVector<FormItem> &)> findTable =
-            [&](const QVector<FormItem> &items) -> bool {
-                for (const FormItem &item : items) {
-                    // Основная таблица списка: «Список» или таблица с именем
-                    // самого объекта (например, «Валюты»).
-                    const bool listTable = item.name == QStringLiteral("Список")
-                        || item.synonym == QStringLiteral("Список")
-                        || (!objectName.isEmpty()
-                            && (item.name == objectName
-                                || item.synonym == objectName));
-                    if (item.type == FormItem::Type::Table && listTable)
-                        return true;
-                    if (findTable(item.children))
-                        return true;
-                }
-                return false;
-            };
-        hasTable = findTable(document.items);
-        const bool isDocument = m_currentObject
-            && m_currentObject->typeTitle.contains(QStringLiteral("Документ"),
-                                                   Qt::CaseInsensitive);
-        const bool isCatalog = m_currentObject
-            && m_currentObject->typeTitle.contains(QStringLiteral("Справочник"),
-                                                   Qt::CaseInsensitive);
-        document.runtimeListCommands = isDocument && hasTable;
-        document.runtimeDocumentCommands = isDocument && !hasTable;
-        document.runtimeCatalogCommands = isCatalog && !hasTable;
-        document.runtimeCatalogListCommands = isCatalog && hasTable;
-    }
-    if (m_currentObject) {
-        QHash<QString, QString> objectTitles;
-        for (const MetadataSection &section : m_currentObject->sections) {
-            for (const MetadataEntry &sectionEntry : section.entries) {
-                if (!sectionEntry.name.isEmpty() && !sectionEntry.synonym.isEmpty())
-                    objectTitles.insert(sectionEntry.name, sectionEntry.synonym);
-                for (const MetadataEntry &child : sectionEntry.children) {
-                    if (!child.name.isEmpty() && !child.synonym.isEmpty())
-                        objectTitles.insert(child.name, child.synonym);
-                }
-            }
-        }
-        for (auto it = objectTitles.constBegin(); it != objectTitles.constEnd(); ++it)
-            document.titles.insert(it.key(), it.value());
-    }
+    if (m_currentObject)
+        applyOwnerMetadata(*m_currentObject, &document);
     m_formDocument = document;
     m_formDocumentValid = true;
     m_formView->setDocument(document);

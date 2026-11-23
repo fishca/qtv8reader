@@ -51,6 +51,8 @@ add_library(qtv8reader_core STATIC
     src/core/MxlReader.cpp
     src/core/FormDocument.h
     src/core/FormDocument.cpp
+    src/core/FormOwner.h
+    src/core/FormOwner.cpp
     src/core/FormWebModel.h
     src/core/FormWebModel.cpp
     src/core/FormBindings.h

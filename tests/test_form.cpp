@@ -1,6 +1,7 @@
 #include "core/ConfigurationReader.h"
 #include "core/FormBindings.h"
 #include "core/FormDocument.h"
+#include "core/FormOwner.h"
 #include "core/FormReader.h"
 #include "core/FormWebModel.h"
 #include "core/V8Text.h"
@@ -110,6 +111,7 @@ private slots:
     void realBpForm();
     void realBpListFormGeometry();
     void resolvedFieldTypes();
+    void ownerMetadataAndTableColumns();
 };
 
 void TestForm::parseSynthetic()
@@ -599,6 +601,126 @@ void TestForm::resolvedFieldTypes()
     QVERIFY(sum);
     QCOMPARE(sum->valueKind, FormValueKind::Number);
     QCOMPARE(sum->dataTitle, QStringLiteral("Сумма"));
+}
+
+// Метаданные владельца для рендерера: типы реквизитов с квалификаторами,
+// полные пути колонок табличных частей и группы колонок.
+void TestForm::ownerMetadataAndTableColumns()
+{
+    const QString sample = QStringLiteral("C:/work/cpp/utils/1Cv8_bp.cf");
+    if (!QFileInfo::exists(sample))
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name == QStringLiteral("АвансовыйОтчет")) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаДокумента")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+
+    FormBindingResolver resolver;
+    resolver.addObject(*object);
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error, &resolver),
+             qPrintable(error));
+    applyOwnerMetadata(*object, &document);
+
+    QVERIFY(document.ownerMeta.valid);
+    QCOMPARE(document.ownerMeta.kindTag, QStringLiteral("Document"));
+    QCOMPARE(document.ownerMeta.types.value(QStringLiteral("Организация")),
+             QStringLiteral("cfg:CatalogRef.Организации"));
+    QVERIFY(document.ownerMeta.stringLen.contains(QStringLiteral("Комментарий")));
+    QVERIFY(document.ownerMeta.numberQ.contains(QStringLiteral("СуммаДокумента")));
+
+    // Путь колонки табличной части разобран до конца: имя табличной части
+    // встало на место неопознанного сегмента.
+    const FormItem *advance =
+        findItemByName(document.items, QStringLiteral("ВыданныеАвансыДокументАванса"));
+    QVERIFY(advance);
+    QCOMPARE(advance->dataPathText,
+             QStringLiteral("Объект.ВыданныеАвансы.ДокументАванса"));
+    // Тип колонки — составной (три вида документов-оснований).
+    QCOMPARE(advance->valueKind, FormValueKind::Composite);
+    QVERIFY2(advance->typeText.contains(QStringLiteral("ДокументСсылка")),
+             qPrintable(advance->typeText));
+
+    // Стандартная колонка «Номер строки» получает платформенное имя LineNumber:
+    // по нему рендерер рисует заголовок «N», а не имя элемента.
+    const FormItem *lineNumber =
+        findItemByName(document.items, QStringLiteral("ВыданныеАвансыНомерСтроки"));
+    QVERIFY(lineNumber);
+    QCOMPARE(lineNumber->dataPathText,
+             QStringLiteral("Объект.ВыданныеАвансы.LineNumber"));
+
+    // Группа колонок таблицы (двухуровневый заголовок).
+    const FormItem *columnGroup =
+        findItemByName(document.items, QStringLiteral("ГруппаТоварыКодАртикул"));
+    QVERIFY(columnGroup);
+    QCOMPARE(columnGroup->type, FormItem::Type::Group);
+    QCOMPARE(columnGroup->groupKind, 2);
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonObject objectMeta = model.value(QStringLiteral("objectMeta")).toObject();
+    QVERIFY(objectMeta.value(QStringLiteral("types")).toObject()
+                .contains(QStringLiteral("Организация")));
+    QVERIFY(objectMeta.value(QStringLiteral("numberQ")).toObject()
+                .contains(QStringLiteral("СуммаДокумента")));
+    // Главный реквизит формы не дублируется.
+    const QJsonArray attributes = model.value(QStringLiteral("attributes")).toArray();
+    int mainAttributes = 0;
+    for (const QJsonValue &value : attributes) {
+        const QJsonObject attribute = value.toObject();
+        if (attribute.value(QStringLiteral("name")).toString()
+            == QStringLiteral("Объект")) {
+            ++mainAttributes;
+        }
+    }
+    QCOMPARE(mainAttributes, 1);
+
+    // В модели таблицы есть группы колонок.
+    bool sawColumnGroup = false;
+    std::function<void(const QJsonArray &)> scan = [&](const QJsonArray &items) {
+        for (const QJsonValue &value : items) {
+            const QJsonObject item = value.toObject();
+            if (item.value(QStringLiteral("tag")).toString()
+                == QStringLiteral("ColumnGroup")) {
+                sawColumnGroup = true;
+            }
+            scan(item.value(QStringLiteral("childItems")).toArray());
+        }
+    };
+    scan(model.value(QStringLiteral("childItemsRoot")).toArray());
+    QVERIFY(sawColumnGroup);
 }
 
 } // namespace
