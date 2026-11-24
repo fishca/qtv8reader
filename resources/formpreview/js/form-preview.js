@@ -2483,8 +2483,12 @@ function collectCatalogRefChars(model) {
     indexCatalogRefChars(model && model.objectMeta, refChars);
     var extras = (model && model.refMeta) || {};
     for (var key in extras) {
-        if (Object.prototype.hasOwnProperty.call(extras, key))
-            indexCatalogRefChars(extras[key], refChars);
+        if (!Object.prototype.hasOwnProperty.call(extras, key)) continue;
+        /* Метаданные справочника приходят из модели формы уже разобранными
+         * (refMeta), но страница принимает и XML владельца — разбираем оба. */
+        var raw = extras[key];
+        var meta = typeof raw === 'string' ? parseObjectMeta(raw) : raw;
+        indexCatalogRefChars(meta, refChars);
     }
     return refChars;
 }
@@ -5978,14 +5982,19 @@ function presentationLengthOf(types, options) {
     } else if (kind === 'geographicalSchema') {
         length = TYPE_GEOGRAPHICAL_SCHEMA_CHARS;
     } else if (kind === 'ref') {
-        length = options.refChars > 0 ? options.refChars : TYPE_DEFAULT_REF_CHARS;
+        /* Платформа берёт ширину поля ссылки из длины представления объекта,
+         * на который ссылается реквизит, и ограничивает её 40 знаками: у
+         * «Физических лиц» 100, у «Организаций» 150 — обе дают 40 знаков
+         * (408 px), а короткий справочник даёт узкое поле. Без метаданных
+         * объекта остаётся платформенный минимум в 15 знаков. */
+        length = options.refChars > 0 ? Math.min(options.refChars, TYPE_DEFAULT_MAX_CHARS)
+            : TYPE_DEFAULT_REF_CHARS;
     } else if (kind === 'enum') {
         length = TYPE_DEFAULT_REF_CHARS;
     } else {
         length = TYPE_DEFAULT_MULTI_CHARS;
     }
     if (length === 0) length = kind === 'picture' ? TYPE_DEFAULT_PICTURE_CHARS : TYPE_DEFAULT_MULTI_CHARS;
-    if (kind === 'ref' && !options.uncappedRef) length = Math.min(length, TYPE_DEFAULT_REF_CHARS);
     return Math.min(length, TYPE_PRESENTATION_LENGTH_CAP);
 }
 
@@ -14161,6 +14170,136 @@ function fitSharedThroughAlignCaptionLane(root) {
     return changed;
 }
 
+/* Предпочтительная ширина строки поля: общая колонка подписей плюс предел
+ * ширины самого поля. У ссылки на «Физических лиц» это 98 + 6 + 410, и
+ * платформа выдаёт колонке именно её: 513 = 104 подпись + 409 поле с
+ * кнопками. Сжатая браузером ширина (369 у поля) такой суммой не является. */
+function intrinsicRowPreferredWidth(row) {
+    if (!row || !row.children || typeof getComputedStyle !== 'function') return 0;
+    var style = getComputedStyle(row);
+    var gap = parseFloat(style.columnGap || style.gap || '') || 0;
+    var total = 0;
+    var count = 0;
+    for (var i = 0; i < row.children.length; i++) {
+        var child = row.children[i];
+        if (!child.offsetWidth || !child.classList) continue;
+        var declaredMax = parseFloat((child.style && child.style.maxWidth) || '') || 0;
+        var preferred = child.classList.contains('fp-field-label')
+            ? Math.max(child.offsetWidth, declaredMax)
+            : declaredMax > 0 ? declaredMax : child.offsetWidth;
+        if (!(preferred > 0)) continue;
+        total += preferred;
+        count++;
+    }
+    return count ? Math.ceil(total + gap * (count - 1)) : 0;
+}
+
+/* Платформа отдаёт ведущим колонкам шапки их предпочтительную ширину, а
+ * последней — остаток полотна. Сверка «Авансового отчёта» (полотно 958 px):
+ * левая колонка 104 + 410 = 514, правая 958 − 514 − 8 = 436. Наша раскладка
+ * оставляла обеим колонкам измеренную (уже сжатую) ширину — 474 и 443, —
+ * поэтому шапка занимала 925 px из 958, а вторая колонка начиналась на 42 px
+ * левее, чем в конфигураторе. */
+var FP_ROOT_HEADER_MIN_FIELD_PX = 71;
+
+function fitRootHeaderColumnRemainder(root) {
+    if (!root || !root.querySelectorAll || typeof getComputedStyle !== 'function') return 0;
+    var changed = 0;
+    var groups = root.querySelectorAll('.fp-body > .fp-item');
+    for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
+        var box = group.querySelector('.fp-children-horizontal');
+        if (!box || !group.clientWidth) continue;
+        var columns = [];
+        for (var c = 0; c < box.children.length; c++) {
+            var column = box.children[c];
+            if (column.classList && column.classList.contains('fp-item')) columns.push(column);
+        }
+        if (columns.length < 2) continue;
+        var usable = columns.every(function (item) {
+            return item.classList.contains('fp-container-vertical')
+                && item.querySelector('.fp-field-row');
+        });
+        if (!usable) continue;
+        var style = getComputedStyle(box);
+        var gap = parseFloat(style.columnGap || style.gap || '') || 0;
+        /* Ширина полотна берётся у контейнера шапки, а не у самой группы:
+         * группа стоит по содержимому (flex: 0 0 auto), и её собственные
+         * clientWidth после первой укладки уже равны сумме колонок. Тогда
+         * при расширении окна шапка осталась бы прежней ширины.
+         *
+         * На первом проходе тело формы ещё держит ширину макета (1034 px при
+         * окне 1280), а расширяется оно только на отложенном проходе
+         * раскладки. Поэтому ширина полотна — максимум из измеренной и
+         * вьюпорта: у платформы форма занимает окно целиком. */
+        var host = group.parentElement;
+        var available = group.clientWidth;
+        if (host && host.clientWidth) {
+            var hostStyle = getComputedStyle(host);
+            var hostRect = host.getBoundingClientRect();
+            var paddingLeft = parseFloat(hostStyle.paddingLeft) || 0;
+            var paddingRight = parseFloat(hostStyle.paddingRight) || 0;
+            var canvasRight = hostRect.left + host.clientLeft + host.clientWidth
+                - paddingRight;
+            var measured = Math.round(canvasRight - group.getBoundingClientRect().left);
+            if (measured > 0) available = Math.max(available, measured);
+            var doc = group.ownerDocument;
+            var viewport = doc && doc.documentElement ? doc.documentElement.clientWidth : 0;
+            if (viewport > 0) {
+                var scrollbar = Math.max(0, host.offsetWidth - host.clientWidth
+                    - (parseFloat(hostStyle.borderLeftWidth) || 0)
+                    - (parseFloat(hostStyle.borderRightWidth) || 0));
+                var fromViewport = Math.round(viewport - scrollbar - paddingLeft - paddingRight);
+                if (fromViewport > 0) available = Math.max(available, fromViewport);
+            }
+        }
+        var preferred = [];
+        for (var p = 0; p < columns.length; p++) {
+            var best = 0;
+            var rows = columns[p].querySelectorAll('.fp-field-row');
+            for (var r = 0; r < rows.length; r++)
+                best = Math.max(best, intrinsicRowPreferredWidth(rows[r]));
+            preferred.push(best > 0 ? best : columns[p].offsetWidth);
+        }
+        var sizes = preferred.slice();
+        var gaps = gap * (columns.length - 1);
+        var total = sizes.reduce(function (sum, size) { return sum + size; }, 0);
+        /* Хвостовая колонка забирает остаток полотна, а при нехватке места
+         * сжимается первой — до минимума поля платформы (71 px). */
+        var last = columns.length - 1;
+        sizes[last] = available - gaps - (total - sizes[last]);
+        var minimum = FP_ROOT_HEADER_MIN_FIELD_PX + 104;
+        if (sizes[last] < minimum) {
+            var deficit = minimum - sizes[last];
+            sizes[last] = minimum;
+            for (var k = last - 1; k >= 0 && deficit > 0; k--) {
+                var room = Math.max(0, sizes[k] - minimum);
+                var cut = Math.min(room, deficit);
+                sizes[k] -= cut;
+                deficit -= cut;
+            }
+        }
+        var rowWidth = available + 'px';
+        if (box.style.width !== rowWidth || box.style.minWidth !== rowWidth) {
+            box.style.width = rowWidth;
+            box.style.minWidth = rowWidth;
+            box.style.maxWidth = 'none';
+            changed++;
+        }
+        for (var i = 0; i < columns.length; i++) {
+            var target = columns[i];
+            var size = Math.max(0, Math.round(sizes[i])) + 'px';
+            if (target.style.width === size && target.style.minWidth === size) continue;
+            target.style.flex = '0 0 ' + size;
+            target.style.width = size;
+            target.style.minWidth = size;
+            target.style.maxWidth = size;
+            changed++;
+        }
+    }
+    return changed;
+}
+
 function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
     if (!labels || !labels.length) return;
     /* A lone wrapped caption still owns the longest-line track. Without
@@ -21305,9 +21444,11 @@ function runHorizontalStrategyPass(body) {
             fitTaxi85CompactWidgetFooter(body);
             fitTaxi85CatalogSearchToolbar(body);
         });
+    /* Шапка страницы: ведущие колонки получают предпочтительную ширину,
+     * последняя — остаток полотна (см. fitRootHeaderColumnRemainder). */
+    fitRootHeaderColumnRemainder(body);
     return state;
 }
-
 var INTERFACE85_EDITOR_WIDTH = 451;
 var INTERFACE85_GRID_GAP = 16;
 
@@ -23531,6 +23672,7 @@ function render(model, container, options) {
          * pass expand the bar back to its intrinsic command width. */
         fitRightCommandBarLanes(body);
         fitAllLeadingCaptionsBeforeTitledPagesNone(body);
+        fitRootHeaderColumnRemainder(body);
         growInterface85NaturalEditorRows(body);
         spaceInterface85ColorCards(body);
         balanceDefaultSplitterPairs(body);
@@ -23569,6 +23711,9 @@ function render(model, container, options) {
                 }
             }
         }
+        /* Шапка: ширины колонок считаются на устоявшейся раскладке — после
+         * fitFormViewport, иначе полотно ещё прижато к временной ширине. */
+        fitRootHeaderColumnRemainder(body);
         publishWindowScrollStart(body);
         tolerateResidualOverflow(body);
         observeFormViewport(body);
@@ -23591,6 +23736,7 @@ function reflow(container) {
     spaceInterface85ColorCards(body);
     refitCommandBars(body);
     stretchRootCommandBarFooter(body);
+    fitRootHeaderColumnRemainder(body);
     publishWindowScrollStart(body);
     tolerateResidualOverflow(body);
     return state;
@@ -24137,6 +24283,8 @@ root.FormPreview = {
         isPopUpGroup: isPopUpGroup,
         applyLabelWidth: applyLabelWidth,
         fitWrappedSideCaptions: fitWrappedSideCaptions,
+        fitRootHeaderColumnRemainder: fitRootHeaderColumnRemainder,
+        intrinsicRowPreferredWidth: intrinsicRowPreferredWidth,
         isPairedTitledLogicalColumns: isPairedTitledLogicalColumns,
         applyPairedTitledLogicalColumnContract: applyPairedTitledLogicalColumnContract,
         collectFieldLabels: collectFieldLabels,

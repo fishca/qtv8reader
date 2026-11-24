@@ -157,6 +157,7 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
         QString objectText;
         if (m_reader->readObjectText(*m_currentObject, &objectText, nullptr))
             applyOwnerStandardAttributes(objectText, &document);
+        applyReferencedCatalogMeta(*m_reader, &document);
     }
     m_formDocument = document;
     m_formDocumentValid = true;

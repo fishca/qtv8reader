@@ -162,6 +162,7 @@ int commandFormModel(const QString &path, const QString &objectQuery,
     QString objectText;
     if (reader.readObjectText(*object, &objectText, nullptr))
         applyOwnerStandardAttributes(objectText, &document);
+    applyReferencedCatalogMeta(reader, &document);
 
     if (itemsOnly) {
         out() << QStringLiteral("Форма: %1 (%2)\n")

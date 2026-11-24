@@ -1,7 +1,9 @@
 #include "core/FormOwner.h"
 
+#include "core/ConfigurationReader.h"
 #include "core/V8Text.h"
 
+#include <QHash>
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -379,6 +381,69 @@ void applyOwnerStandardAttributes(const QString &metadataText, FormDocument *doc
             meta.types.insert(QStringLiteral("Description"), QStringLiteral("xs:string"));
             meta.stringLen.insert(QStringLiteral("Description"),
                                   QString::number(descriptionLength));
+        }
+    }
+}
+
+// Имена справочников, на которые ссылаются типы реквизитов формы. Составной
+// тип перечисляет их через запятую: «cfg:CatalogRef.ФизическиеЛица,
+// cfg:CatalogRef.ОтдельныеЛица».
+QStringList referencedCatalogNames(const FormOwnerMeta &meta)
+{
+    static const QString prefix = QStringLiteral("CatalogRef.");
+    QStringList names;
+    for (auto it = meta.types.constBegin(); it != meta.types.constEnd(); ++it) {
+        const QStringList parts = it.value().split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            QString type = part.trimmed();
+            if (type.startsWith(QLatin1String("cfg:")))
+                type = type.mid(4);
+            if (!type.startsWith(prefix))
+                continue;
+            const QString name = type.mid(prefix.size());
+            if (!name.isEmpty() && !names.contains(name))
+                names.append(name);
+        }
+    }
+    return names;
+}
+
+void applyReferencedCatalogMeta(const ConfigurationReader &reader, FormDocument *document)
+{
+    if (!document || !document->ownerMeta.valid)
+        return;
+
+    const QStringList names = referencedCatalogNames(document->ownerMeta);
+    if (names.isEmpty())
+        return;
+
+    FormOwnerMeta &meta = document->ownerMeta;
+    for (const MetadataCategory &category : reader.configuration().categories) {
+        for (const MetadataObject &object : category.objects) {
+            if (!names.contains(object.name))
+                continue;
+            // Имя может совпасть у объектов разных видов, а длина
+            // представления, по которой платформа считает ширину поля
+            // ссылки, есть только у справочника.
+            if (ownerKindTag(object.typeTitle) != QLatin1String("Catalog"))
+                continue;
+            if (meta.refMeta.contains(object.name))
+                continue;
+            QString text;
+            if (!reader.readObjectText(object, &text, nullptr))
+                continue;
+            V8TextNode root;
+            if (!V8Text::parse(text, root, nullptr))
+                continue;
+            const V8TextNode *properties = objectPropertyList(root);
+            FormRefMeta reference;
+            reference.name = object.name;
+            reference.descriptionLength = propertyInteger(properties, 19);
+            reference.codeLength = propertyInteger(properties, 17);
+            if (reference.descriptionLength <= 0 && reference.codeLength <= 0)
+                continue;
+            reference.codeType = QStringLiteral("String");
+            meta.refMeta.insert(object.name, reference);
         }
     }
 }

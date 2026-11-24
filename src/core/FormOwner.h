@@ -6,6 +6,8 @@
 
 namespace v8reader {
 
+class ConfigurationReader;
+
 // Заполняет «владельческую» часть документа формы по метаданным объекта:
 // заголовок окна, синонимы реквизитов, типы и квалификаторы для рендерера
 // (objectMeta), а также платформенные наборы команд формы (запись/проведение
@@ -19,6 +21,12 @@ void applyOwnerMetadata(const MetadataObject &object, FormDocument *document);
 // «Номер» получает ширину по умолчанию в 20 символов вместо 11 и выглядит
 // на 40 px шире, чем в конфигураторе.
 void applyOwnerStandardAttributes(const QString &metadataText, FormDocument *document);
+
+// Заполняет refMeta — метаданные справочников, на которые ссылаются реквизиты
+// формы. Платформа берёт ширину поля ссылки из длины представления объекта,
+// поэтому без этих чисел поле «Подотчетное лицо» (у «Физических лиц» 100)
+// выходит в 15 знаков — на 96 px уже, чем в конфигураторе.
+void applyReferencedCatalogMeta(const ConfigurationReader &reader, FormDocument *document);
 
 // Код вида объекта для рендерера: «Document», «Catalog», «Report», …
 QString ownerKindTag(const QString &typeTitle);

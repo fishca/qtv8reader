@@ -2148,6 +2148,27 @@ QJsonObject buildObjectMeta(const FormDocument &document)
     return meta;
 }
 
+// Метаданные справочников, на которые ссылаются реквизиты формы: рендерер
+// считает по длине представления ширину поля ссылки. Форма узла — та же, что
+// у objectMeta, только без реквизитов и заголовков.
+QJsonObject buildRefMeta(const FormDocument &document)
+{
+    QJsonObject result;
+    const FormOwnerMeta &owner = document.ownerMeta;
+    for (auto it = owner.refMeta.constBegin(); it != owner.refMeta.constEnd(); ++it) {
+        const FormRefMeta &reference = it.value();
+        QJsonObject meta;
+        meta.insert(QStringLiteral("name"), reference.name);
+        meta.insert(QStringLiteral("kind"), QStringLiteral("catalog"));
+        meta.insert(QStringLiteral("kindTag"), QStringLiteral("Catalog"));
+        meta.insert(QStringLiteral("descriptionLength"), reference.descriptionLength);
+        meta.insert(QStringLiteral("codeLength"), reference.codeLength);
+        meta.insert(QStringLiteral("codeType"), reference.codeType);
+        result.insert(it.key(), meta);
+    }
+    return result;
+}
+
 QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHint,
                            bool mainAttribute = false,
                            const QString &mainTable = QString())
@@ -2346,7 +2367,7 @@ QByteArray formWebModelJson(const FormDocument &document)
     model.insert(QStringLiteral("configInterfaceMode"),
                  QStringLiteral("TaxiEnableVersion8_2"));
     model.insert(QStringLiteral("objectMeta"), buildObjectMeta(document));
-    model.insert(QStringLiteral("refMeta"), QJsonObject());
+    model.insert(QStringLiteral("refMeta"), buildRefMeta(document));
     // Таблица стилей-цветов формы: имя стиля -> абсолютный цвет. Рендерер
     // сам разбирает ссылки «style:Имя» у элементов, но цвет берёт отсюда.
     QJsonObject styleItems;

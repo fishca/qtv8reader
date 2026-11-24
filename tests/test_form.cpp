@@ -747,6 +747,7 @@ void TestForm::ownerMetadataAndTableColumns()
     QVERIFY2(FormReader::parseBytes(payload, &document, &error, &resolver),
              qPrintable(error));
     applyOwnerMetadata(*object, &document);
+    applyReferencedCatalogMeta(reader, &document);
 
     QVERIFY(document.ownerMeta.valid);
     QCOMPARE(document.ownerMeta.kindTag, QStringLiteral("Document"));
@@ -754,6 +755,17 @@ void TestForm::ownerMetadataAndTableColumns()
              QStringLiteral("cfg:CatalogRef.Организации"));
     QVERIFY(document.ownerMeta.stringLen.contains(QStringLiteral("Комментарий")));
     QVERIFY(document.ownerMeta.numberQ.contains(QStringLiteral("СуммаДокумента")));
+
+    // Ширина поля ссылки: платформа берёт длину представления объекта, на
+    // который ссылается реквизит, и ограничивает её 40 знаками. Числа сверены
+    // с выгрузкой конфигурации в XML (Catalogs/*.xml, DescriptionLength).
+    QVERIFY(document.ownerMeta.refMeta.contains(QStringLiteral("ФизическиеЛица")));
+    QCOMPARE(document.ownerMeta.refMeta.value(QStringLiteral("ФизическиеЛица"))
+                 .descriptionLength, 100);
+    QCOMPARE(document.ownerMeta.refMeta.value(QStringLiteral("Организации"))
+                 .descriptionLength, 150);
+    QCOMPARE(document.ownerMeta.refMeta.value(QStringLiteral("Склады"))
+                 .descriptionLength, 50);
 
     // Проверка заполнения реквизитов читается из двоичных метаданных: по ней
     // рендерер рисует красное точечное подчёркивание у незаполненного поля.
@@ -828,6 +840,16 @@ void TestForm::ownerMetadataAndTableColumns()
         }
     }
     QCOMPARE(mainAttributes, 1);
+
+    // Метаданные справочников уходят в модель формы узлом refMeta: по ним
+    // рендерер считает ширину поля ссылки (40 знаков у длинных справочников).
+    const QJsonObject refMeta = model.value(QStringLiteral("refMeta")).toObject();
+    const QJsonObject physical = refMeta.value(QStringLiteral("ФизическиеЛица")).toObject();
+    QCOMPARE(physical.value(QStringLiteral("kind")).toString(),
+             QStringLiteral("catalog"));
+    QCOMPARE(physical.value(QStringLiteral("descriptionLength")).toInt(), 100);
+    QCOMPARE(refMeta.value(QStringLiteral("Организации")).toObject()
+                 .value(QStringLiteral("descriptionLength")).toInt(), 150);
 
     // В модели таблицы есть группы колонок.
     bool sawColumnGroup = false;
