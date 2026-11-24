@@ -113,8 +113,14 @@ def shoot(args, out_path: str) -> None:
         # формы (18 px, см. qv8-host.css), и место под неё входит в ширину
         # полотна. С флагом Chromium дорожку не занимает, полотно выходит шире
         # эталона, и снимок перестаёт мерить то, что видно в программе.
+        #
+        # --virtual-time-budget: кадр снимается после загрузки страницы, а
+        # model-app.js ставит __QV8_READY позже — когда раскодируются все
+        # <img>. Без бюджета снимок иногда ловил пустые кнопки-картинки
+        # (Дт/Кт, ↑↓, календарь): расхождение с эталоном гуляло на ±430 px.
         [find_chrome(), "--headless=new", "--disable-gpu",
          "--force-device-scale-factor=1",
+         "--virtual-time-budget=8000",
          "--window-size=%d,%d" % (args.width, args.height),
          "--screenshot=" + out_path,
          "%s/model.html?t=%s" % (args.url, stamp)],

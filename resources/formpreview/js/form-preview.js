@@ -8384,6 +8384,22 @@ function applyItemMetrics(div, item, tag, parentMeta, ctx, parentItem) {
         else if (/гиперссылка/i.test(tcl)) colorTarget.classList.add('fp-text-link');
         else if (/серый|gray|grey/i.test(tcl)) colorTarget.classList.add('fp-text-muted');
     }
+    /* Подпись элемента — это его заголовок, и платформа красит её
+     * TitleTextColor, а не TextColor. В форме «Авансового отчёта» служебная
+     * гиперссылка «Цены и валюта» объявлена с TitleTextColor=style:FormBackColor:
+     * платформа рисует подпись цветом фона (её не видно, остаётся только
+     * область нажатия), а предпросмотр показывал чёрное «Цены и валюта:» —
+     * 700 лишних пикселей на снимке 988x438. */
+    var titleColorProp = prop(item, ['TitleTextColor', 'ЦветТекстаЗаголовка']);
+    if (titleColorProp) {
+        var captionColor = absoluteColor(titleColorProp, ctx)
+            || styleItemColor(titleColorProp, ctx && ctx.styleItems, null, ctx);
+        if (captionColor) {
+            var captionNode = div.querySelector('.fp-field-label');
+            if (captionNode) captionNode.style.color = captionColor;
+            else if (tag === 'LabelDecoration') div.style.color = captionColor;
+        }
+    }
     if (bc && tag === 'InputField' && isInterface85Context(ctx) && /^style:/i.test(String(bc))) bc = '';
     if (bc && buttonTarget && isInterface85Context(ctx) && /^pal:/i.test(String(bc))) bc = '';
     if (bc) {
