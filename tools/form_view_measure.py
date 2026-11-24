@@ -109,7 +109,11 @@ def shoot(args, out_path: str) -> None:
     if os.path.exists(out_path):
         os.remove(out_path)
     subprocess.run(
-        [find_chrome(), "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        # Без --hide-scrollbars: приложение рисует собственную полосу прокрутки
+        # формы (18 px, см. qv8-host.css), и место под неё входит в ширину
+        # полотна. С флагом Chromium дорожку не занимает, полотно выходит шире
+        # эталона, и снимок перестаёт мерить то, что видно в программе.
+        [find_chrome(), "--headless=new", "--disable-gpu",
          "--force-device-scale-factor=1",
          "--window-size=%d,%d" % (args.width, args.height),
          "--screenshot=" + out_path,
