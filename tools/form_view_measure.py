@@ -81,7 +81,7 @@ def sync_resources(root: str) -> int:
     if not os.path.isdir(FORM_RESOURCES):
         return 0
     copied = 0
-    for name in ("model.html", "LICENSE-BslEdit-MIT.txt"):
+    for name in ("model.html", "icons.svg", "LICENSE-BslEdit-MIT.txt"):
         source = os.path.join(FORM_RESOURCES, name)
         if os.path.isfile(source):
             shutil.copy2(source, os.path.join(root, name))

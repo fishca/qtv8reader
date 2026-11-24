@@ -72,6 +72,34 @@
         if (model.autoCommandBar) attachFormVersion(model.autoCommandBar, model.version);
     }
 
+    /* The renderer paints its own glyphs (field choice/open buttons, command
+     * bar arrows, table sorters) as <svg><use href="#i-…"></svg>. The shapes
+     * live in an icon sprite, and a host page that does not carry it paints
+     * empty squares: the platform's ▾, «Открыть» and «…» buttons, the clear
+     * cross all disappear. icons.svg is loaded once, before the first paint,
+     * so every <use> resolves. A missing sprite keeps the old behaviour
+     * (invisible glyphs) instead of failing the preview. */
+    function loadIconSprite() {
+        if (document.getElementById('i-px-caret-down'))
+            return Promise.resolve(true);
+        return fetch('icons.svg', { cache: 'force-cache' })
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+            })
+            .then(function (text) {
+                var holder = document.createElement('div');
+                holder.id = 'qv8-icon-sprite';
+                holder.innerHTML = text;
+                document.body.appendChild(holder);
+                return true;
+            })
+            .catch(function (error) {
+                console.warn('[qv8-model] icon sprite unavailable', error);
+                return false;
+            });
+    }
+
     function nextFrame() {
         return new Promise(function (resolve) {
             requestAnimationFrame(function () { requestAnimationFrame(resolve); });
@@ -104,6 +132,7 @@
         setState('loading');
         var model = await loadModel();
         if (!model || !model.tag) throw new Error('JSON не похож на модель формы: нет поля tag');
+        await loadIconSprite();
         restoreModelRuntime(model);
         /* The XML viewer fills item.runtime (typeFeatures, inputButtons,
          * defaultChars) while parsing the form. A serialised model carries

@@ -61,8 +61,8 @@ var TYPE_TABLE_STRING_HEADER_CHARS = 20;
 var TYPE_TABLE_UNTYPED_CHARS = 15;
 var TYPE_TABLE_UNTYPED_EMPTY_CHARS = 1;
 var TYPE_TABLE_MULTI_TYPE_CHARS = 24;
-/* The type presentation length, then the property defaults
- * subtracts 7/3/2 and (compat > 8.3.6) adds 2 → Taxi 17/9/8. */
+/* Длина представления типа для полей даты. Ширину поля платформа считает по
+ * своей длине, которую замеряет `dateDefaultChars` ниже. */
 var TYPE_DATE_PRESENTATION_CHARS = 10;
 var TYPE_TIME_PRESENTATION_CHARS = 8;
 var TYPE_DATETIME_PRESENTATION_CHARS = 22;
@@ -5931,13 +5931,22 @@ function typeFeaturesOf(types, dateFraction, numberQ) {
     return features;
 }
 
+/* Поле даты в конфигураторе: у «Даты» документа («Авансовый отчёт», полотно
+ * 988x438, строка 67) полоса ввода 266…426 — 160 px. Правило полей формы
+ * «знаки * 10 + 10» даёт по «Номеру» (11 знаков → 120 px) 15 знаков для этого
+ * поля. Длина представления типа «Дата+время» — 22 знака, у полей «Дата»
+ * и «Время» — 10 и 8; у полей даты-времени платформа берёт 15, то есть без
+ * добавки 2, которую приписывает исходная формула. Замер: docs/form-exact-view.md.
+ * Для поля «только дата» и «только время» платформа здесь не замерена. */
+var TYPE_DATE_DEFAULT_CHARS = 9;
+var TYPE_TIME_DEFAULT_CHARS = 8;
+var TYPE_DATETIME_DEFAULT_CHARS = 15;
+
 function dateDefaultChars(fraction) {
     var key = dateFractionKey(fraction, 'date');
-    var length = TYPE_DATETIME_PRESENTATION_CHARS;
-    if (key === 'time') length = TYPE_TIME_PRESENTATION_CHARS - 2;
-    else if (key === 'date') length = TYPE_DATE_PRESENTATION_CHARS - 3;
-    else length = TYPE_DATETIME_PRESENTATION_CHARS - 7;
-    return length + 2;
+    if (key === 'time') return TYPE_TIME_DEFAULT_CHARS;
+    if (key === 'date') return TYPE_DATE_DEFAULT_CHARS;
+    return TYPE_DATETIME_DEFAULT_CHARS;
 }
 
 function numberDefaultChars(nq) {

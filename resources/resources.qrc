@@ -181,6 +181,7 @@
     <file alias="js/model-app.js">formpreview/js/model-app.js</file>
     <file alias="js/xml-util.js">formpreview/js/xml-util.js</file>
     <file alias="LICENSE-BslEdit-MIT.txt">formpreview/LICENSE-BslEdit-MIT.txt</file>
+    <file alias="icons.svg">formpreview/icons.svg</file>
     <file alias="model.html">formpreview/model.html</file>
     <file alias="platform-attribute.png">formpreview/platform-attribute.png</file>
     <file alias="platform-back.png">formpreview/platform-back.png</file>
