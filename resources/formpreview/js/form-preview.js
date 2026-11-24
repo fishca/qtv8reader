@@ -6561,7 +6561,11 @@ function taxiFixedStringEditorWidth(item, ctx) {
         chars = Math.min(objectMeta.numberLength, 50);
     if (!chars) return 0;
     if (autoShort && chars > TYPE_DEFAULT_MAX_CHARS) return 0;
-    return chars * REF_AUTHORED_CHAR_PX + 10 + inputButtonKinds(item, ctx).length * 21;
+    /* Поле «Номер» документа в эталоне («Авансовый отчёт», полотно 988x438,
+     * строка 67) занимает 114…234, то есть 121 px при 11 знаках: вставка
+     * платформы — 11 px, а не 10 (11 * 10 + 11). С вставкой 10 рамка кончалась
+     * на 233 и была на пиксель уже. Замер: docs/form-exact-view.md. */
+    return chars * REF_AUTHORED_CHAR_PX + 11 + inputButtonKinds(item, ctx).length * 21;
 }
 
 function defaultEditorPaintWidth(item, ctx, tag, appendedButtons) {
@@ -8225,10 +8229,13 @@ function applyItemMetrics(div, item, tag, parentMeta, ctx, parentItem) {
                 dw = taxiFixedStringEditorWidth(item, ctx);
             if (fixedLeadingStringBand)
                 dw = TAXI_LAYOUT_METRICS.automaticEditorPresentationWidth;
-            /* [W-DATE] Date lane = chars + inset + appended 21px buttons
-             * (121px = 100 + 21; DateTime 180px). */
+            /* [W-DATE] Date lane = chars + inset + appended 21px buttons.
+             * Полоса 15 знаков (дата-время) в эталоне — 266…426, то есть
+             * 161 px, значит вставка тоже 11 px (15 * 10 + 11), как у поля
+             * «Номер»; с вставкой 10 рамка кончалась на 425 и поле было на
+             * пиксель уже эталонного (замер: docs/form-exact-view.md). */
             if (tag === 'InputField' && fieldKind(item, ctx) === 'date')
-                dw = defaultFieldChars(item, ctx) * REF_AUTHORED_CHAR_PX + 10
+                dw = defaultFieldChars(item, ctx) * REF_AUTHORED_CHAR_PX + 11
                     + inputWrap.querySelectorAll('.fp-input-btn').length * 21;
             inputWrap.style.width = dw + 'px';
             inputWrap.style.flex = titleAbove ? '0 0 auto'
@@ -20414,10 +20421,59 @@ function commandBarOverflowCount(body) {
     return body.querySelectorAll('.fp-commandbar .fp-bar-overflow-hidden').length;
 }
 
+/* Платформа раскладывает полосу команд целыми пикселями: подпись кнопки
+ * набирается по целому шагу (GDI хинтит каждый глиф), поэтому и ширина кнопки
+ * целая. У нас ширина дробная — например 84.45 px у «Добавить», — и дробь
+ * тянется по всей цепочке: граница соседних кнопок «вверх/вниз» попадает на
+ * 154.45 и рисуется двумя пикселями вместо одной, а картинка стрелки встаёт
+ * на полпикселя и размывается (в эталоне «Добавить» — 21…104, то есть 84 px,
+ * и это же даёт округление). Проход округляет ширину элементов полосы до
+ * целого после того, как fitCommandBar выставил состав команд. */
+function snapCommandBarItems(body) {
+    if (!body || !body.querySelectorAll) return;
+    /* Только полосы команд таблиц: у них в цепочке стоят картинки (стрелки
+     * «вверх/вниз»), которым нужна целая позиция. Подписи кнопок в полосе
+     * команд формы при округлении сдвигаются на доли пикселя и расходятся
+     * сильнее (замер: 2 899 против 2 283 в полосе 24…50), поэтому там ширины
+     * не трогаются. */
+    var bars = body.querySelectorAll('.fp-table-toolbar');
+    for (var b = 0; b < bars.length; b++) {
+        var items = bars[b].children;
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (!item.classList || !item.classList.contains('fp-bar-item')) continue;
+            if (!item.classList.contains('fp-no-hstretch')) continue;
+            var rect = item.getBoundingClientRect();
+            if (!rect.width) continue;
+            var width = Math.round(rect.width);
+            if (Math.abs(rect.width - width) < 0.02) continue;
+            item.style.width = width + 'px';
+            item.style.minWidth = width + 'px';
+            item.style.maxWidth = width + 'px';
+            item.style.flex = '0 0 auto';
+            /* Ширина пункта — это ещё не ширина кнопки: кнопка внутри
+             * обёртки упирается в min-content подписи и вылезает за пункт на
+             * доли пикселя. Поэтому ширина задаётся и обёртке, и кнопке. */
+            var wrap = item.firstElementChild;
+            var button = wrap && wrap.firstElementChild;
+            if (!wrap || !button || button.tagName !== 'BUTTON') continue;
+            wrap.style.width = width + 'px';
+            wrap.style.minWidth = '0';
+            wrap.style.maxWidth = width + 'px';
+            wrap.style.flex = '0 0 auto';
+            button.style.width = width + 'px';
+            button.style.minWidth = width + 'px';
+            button.style.maxWidth = width + 'px';
+            button.style.boxSizing = 'border-box';
+        }
+    }
+}
+
 function refitCommandBars(body) {
     if (!body || !body.querySelectorAll) return;
     var bars = body.querySelectorAll('.fp-commandbar');
     for (var i = 0; i < bars.length; i++) fitCommandBar(bars[i]);
+    snapCommandBarItems(body);
 }
 
 /* HorizontalLocation=Right is a trailing lane, not intrinsic row content.

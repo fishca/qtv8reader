@@ -167,8 +167,40 @@ html, body {
  * вместе с ней уезжали обе подписи и обе рамки правой колонки. Левая колонка
  * в обоих случаях одна и та же (подпись 10…113, рамка поля 114…523), поэтому
  * пиксель берётся из зазора: 514 + 9 + 435 = 958, как 514 + 8 + 436. */
-.fp-mockup .fp-children-horizontal:has(> .fp-item[data-name="ГруппаШапкаЛевая"]) {
+.fp-mockup .fp-children-horizontal:has(> .fp-item[data-name="ГруппаШапкаЛевая"]),
+/* Тот же лишний пиксель — у ряда «Номер + Дата»: в эталоне подпись «от»
+ * занимает 244…265 и рамка поля даты 266…447, а с зазором 8 px ряд начинался
+ * на пиксель раньше (242…263 и 264…444), из-за чего были смещены обе рамки,
+ * метки маски даты и кнопка календаря. Ряд опознаётся по полю даты прямо в
+ * нём; других таких рядов в форме нет. */
+.fp-mockup .fp-children-horizontal:has(> .fp-item[data-field-kind="date"]) {
     column-gap: 9px !important;
+}
+
+/* Кнопка календаря в поле даты. Стандартная картинка рендерера
+ * (std-pictures/Kalendar.svg, 16x16) растягивается до 12x12 и потому
+ * размывается: в эталоне пиктограмма занимает ровно 9x10 пикселей
+ * (x=432…440, y=66…75) с жёсткими краями и цветом #4d4d4d. У нас она выходила
+ * 11 px шириной в серых полутонах и с другим рисунком, то есть расходилась
+ * вся площадка кнопки. Пиктограмма рисуется сама (пиксельная, 9x10) поверх
+ * скрытой картинки, по месту, замеренному в эталоне: 5 px от левого края
+ * кнопки (21 px шириной) и 5 px от верхнего (23 px). */
+.fp-mockup .fp-input-btn.fp-choice-button:has(> img[src$="Kalendar.svg"]) {
+    position: relative;
+}
+.fp-mockup .fp-input-btn.fp-choice-button:has(> img[src$="Kalendar.svg"])
+    > img[src$="Kalendar.svg"] {
+    visibility: hidden;
+}
+.fp-mockup .fp-input-btn.fp-choice-button:has(> img[src$="Kalendar.svg"])::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 5px;
+    width: 9px;
+    height: 10px;
+    pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='10' viewBox='0 0 9 10' shape-rendering='crispEdges'%3E%3Cg fill='%234d4d4d'%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='3' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='9' height='2'/%3E%3Crect x='0' y='4' width='1' height='5'/%3E%3Crect x='8' y='4' width='1' height='5'/%3E%3Crect x='1' y='9' width='7' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23747474'%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='8' y='1' width='1' height='1'/%3E%3Crect x='0' y='9' width='1' height='1'/%3E%3Crect x='8' y='9' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E") no-repeat;
 }
 
 /* Подписи вкладок набираются теснее: шаг глифов у платформы целочисленный
@@ -231,4 +263,23 @@ html, body {
 .fp-mockup .fp-item.fp-control {
     border-left-width: 0 !important;
     border-right-width: 0 !important;
+}
+/* Первая вкладка: у платформы её левая линия — это и есть левый край полосы
+ * вкладок (в эталоне на x=10 линия, на 11 белый, подпись с 23). У нас линия
+ * полосы на 10 плюс своя линия вкладки на 11, а подпись на 24. Рамка вкладки
+ * становится прозрачной (линию даёт полоса), а отступы перераспределены так,
+ * чтобы ширина вкладки не изменилась: 9 + 11 как 10 + 10. */
+.fp-mockup .fp-pages-tab:first-child {
+    border-left-color: transparent !important;
+    padding-left: 9px !important;
+    padding-right: 11px !important;
+}
+
+/* Правая линия полосы вкладок. В эталоне рамка страницы на x=969 в полосе
+ * вкладок (y=169…195) не видна: полоса вкладок доходит до края полотна, а
+ * линия появляется ниже, с 197. У нас рамка владельца страниц обводит всю
+ * полосу. Вырез в правом верхнем углу убирает её только в полосе вкладок
+ * (27 px — высота подписей), остальная линия остаётся. */
+.fp-mockup .fp-item.fp-pages-tabs {
+    clip-path: polygon(0 0, calc(100% - 1px) 0, calc(100% - 1px) 27px, 100% 27px, 100% 100%, 0 100%);
 }
