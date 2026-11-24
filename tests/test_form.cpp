@@ -3340,8 +3340,8 @@ void TestForm::formCommandBarLocation()
 
 // Стандартные реквизиты объекта в списке свойств записи: у документа длина
 // номера — 12-е поле (индекс 12), у справочника длина кода — 17-е, а
-// наименования — 19-е. Синтетический список повторяет форму реальной записи:
-// {1, {<свойства>}, …}.
+// наименования — 19-е; автонумерация у обоих — 15-е. Синтетический список
+// повторяет форму реальной записи: {1, {<свойства>}, …}.
 void TestForm::ownerStandardAttributes()
 {
     const QString documentText = QStringLiteral(
@@ -3358,6 +3358,16 @@ void TestForm::ownerStandardAttributes()
              QStringLiteral("xs:string"));
     QCOMPARE(document.ownerMeta.dateFraction.value(QStringLiteral("Date")),
              QStringLiteral("DateTime"));
+    QCOMPARE(document.ownerMeta.autonumbering, QStringLiteral("false"));
+
+    // То же свойство на той же позиции, но включённое: 15-е поле — 1.
+    FormDocument numbered;
+    numbered.ownerMeta.valid = true;
+    numbered.ownerMeta.kindTag = QStringLiteral("Document");
+    applyOwnerStandardAttributes(
+        QStringLiteral("{1,{40,0,0,0,0,0,0,0,0,0,0,0,11,0,0,1,0,0,0,0},0}"),
+        &numbered);
+    QCOMPARE(numbered.ownerMeta.autonumbering, QStringLiteral("true"));
 
     const QString catalogText = QStringLiteral(
         "{1,{56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,150},0}");
@@ -3372,6 +3382,7 @@ void TestForm::ownerStandardAttributes()
              QStringLiteral("9"));
     QCOMPARE(catalog.ownerMeta.stringLen.value(QStringLiteral("Description")),
              QStringLiteral("150"));
+    QCOMPARE(catalog.ownerMeta.autonumbering, QStringLiteral("false"));
 
     // Нулевая длина номера (автонумерация выключена) не должна давать ширину
     // в один символ.
@@ -3383,6 +3394,14 @@ void TestForm::ownerStandardAttributes()
     applyOwnerStandardAttributes(noNumber, &empty);
     QCOMPARE(empty.ownerMeta.numberLength, 0);
     QVERIFY(!empty.ownerMeta.stringLen.contains(QStringLiteral("Number")));
+
+    // Список короче 16 полей: автонумерации в записи нет, флаг остаётся
+    // пустым, и рендерер считает «Номер» активным.
+    FormDocument shortRecord;
+    shortRecord.ownerMeta.valid = true;
+    shortRecord.ownerMeta.kindTag = QStringLiteral("Catalog");
+    applyOwnerStandardAttributes(QStringLiteral("{1,{8,0,0,0},0}"), &shortRecord);
+    QVERIFY(shortRecord.ownerMeta.autonumbering.isEmpty());
 }
 
 } // namespace

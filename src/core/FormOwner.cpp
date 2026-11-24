@@ -213,6 +213,11 @@ bool containsListTable(const QVector<FormItem> &items, const QString &objectName
 // поле, длина кода справочника — 17-е, наименования — 19-е. Проверено по
 // выгрузке в XML: 7 документов (длины 0, 9, 11, 12, 13) и 7 справочников
 // (коды 3…11, наименования 10…150) — расхождений нет.
+//
+// Автонумерация — 15-е поле и у документа, и у справочника: проверено
+// сверкой с XML-выгрузкой на 16 документах и 9 справочниках, у которых
+// независимо меняются проверка уникальности (14-е поле), периодичность
+// номера (13-е) и режим проведения. Значение — 0/1.
 const V8TextNode *objectPropertyList(const V8TextNode &root)
 {
     if (!root.isList() || root.children.size() < 2)
@@ -231,6 +236,23 @@ int propertyInteger(const V8TextNode *properties, int index)
     bool ok = false;
     const qint64 value = node->toInteger(&ok);
     return ok ? int(value) : 0;
+}
+
+// Логические свойства лежат в списке числами 0/1, а рендерер ждёт строки
+// «true»/«false»: пустая строка означает «в метаданных не записано».
+QString propertyFlag(const V8TextNode *properties, int index)
+{
+    if (!properties)
+        return QString();
+    const V8TextNode *node = properties->child(index);
+    if (!node || node->isList())
+        return QString();
+    const QString value = node->scalar().trimmed();
+    if (value == QLatin1String("1"))
+        return QStringLiteral("true");
+    if (value == QLatin1String("0"))
+        return QStringLiteral("false");
+    return QString();
 }
 
 } // namespace
@@ -353,6 +375,8 @@ void applyOwnerStandardAttributes(const QString &metadataText, FormDocument *doc
 
     FormOwnerMeta &meta = document->ownerMeta;
     const QString kindTag = meta.kindTag;
+    if (kindTag == QLatin1String("Document") || kindTag == QLatin1String("Catalog"))
+        meta.autonumbering = propertyFlag(properties, 15);
     if (kindTag == QLatin1String("Document")) {
         // Номер документа платформы — строка длины NumberLength. Все документы
         // БП нумеруются строками; для числовой нумерации ширина отличалась бы

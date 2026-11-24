@@ -2138,7 +2138,7 @@ QJsonObject buildObjectMeta(const FormDocument &document)
     meta.insert(QStringLiteral("kind"), kindLower(kindTag));
     meta.insert(QStringLiteral("metaClass"), kindTag);
     meta.insert(QStringLiteral("objectBelonging"), QString());
-    meta.insert(QStringLiteral("autonumbering"), QString());
+    meta.insert(QStringLiteral("autonumbering"), owner.autonumbering);
     meta.insert(QStringLiteral("useStandardCommands"), true);
     meta.insert(QStringLiteral("hasHelp"), false);
     meta.insert(QStringLiteral("descriptionLength"), owner.descriptionLength);
