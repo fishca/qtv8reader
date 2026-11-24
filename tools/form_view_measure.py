@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import http.server
 import os
+import shutil
 import socketserver
 import subprocess
 import sys
@@ -39,6 +40,7 @@ import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = os.path.join(REPO, "out", "mingw", "v8reader_cli.exe")
+FORM_RESOURCES = os.path.join(REPO, "resources", "formpreview")
 DEFAULT_CF = r"E:\work\dt_cf\1Cv8_bp.cf"
 DEFAULT_REF = os.path.join(REPO, "out", "ref-ao.png")
 CHROME_CANDIDATES = (
@@ -69,6 +71,39 @@ def model_command(args) -> list:
             "-o", os.path.join(args.root, "model.json")]
 
 
+def sync_resources(root: str) -> int:
+    """Копирует ресурсы рендерера в каталог раздачи.
+
+    Снимок идёт по файлам из ``--root``, а правки делаются в
+    ``resources/formpreview``. Без этой копии можно смотреть на старый CSS или
+    старый скрипт и «не видеть» только что сделанное исправление.
+    """
+    if not os.path.isdir(FORM_RESOURCES):
+        return 0
+    copied = 0
+    for name in ("model.html", "LICENSE-BslEdit-MIT.txt"):
+        source = os.path.join(FORM_RESOURCES, name)
+        if os.path.isfile(source):
+            shutil.copy2(source, os.path.join(root, name))
+            copied += 1
+    for folder, suffixes in (("css", (".css",)), ("js", (".js",)), ("std-pictures", (".png", ".svg"))):
+        source_dir = os.path.join(FORM_RESOURCES, folder)
+        if not os.path.isdir(source_dir):
+            continue
+        target_dir = os.path.join(root, folder)
+        os.makedirs(target_dir, exist_ok=True)
+        for name in sorted(os.listdir(source_dir)):
+            source = os.path.join(source_dir, name)
+            if os.path.isfile(source) and name.lower().endswith(suffixes):
+                shutil.copy2(source, os.path.join(target_dir, name))
+                copied += 1
+    for name in sorted(os.listdir(FORM_RESOURCES)):
+        if name.startswith("platform-") and name.lower().endswith(".png"):
+            shutil.copy2(os.path.join(FORM_RESOURCES, name), os.path.join(root, name))
+            copied += 1
+    return copied
+
+
 def shoot(args, out_path: str) -> None:
     stamp = str(int(time.time()))
     if os.path.exists(out_path):
@@ -90,6 +125,8 @@ def command_render(args) -> None:
         raise SystemExit("сначала соберите проект: " + CLI)
     out_path = os.path.abspath(args.out)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    os.makedirs(args.root, exist_ok=True)
+    sync_resources(args.root)
     result = subprocess.run(model_command(args), capture_output=True, text=True,
                             encoding="utf-8", errors="replace", env=qt_env())
     if result.returncode != 0:
@@ -156,6 +193,11 @@ def command_pair(args) -> None:
     print("%s %dx%d" % (os.path.basename(args.out), canvas.size[0], canvas.size[1]))
 
 
+def command_sync(args) -> None:
+    count = sync_resources(os.path.abspath(args.root))
+    print("разложено файлов: %d" % count)
+
+
 def command_serve(args) -> None:
     root = os.path.abspath(args.root)
 
@@ -218,6 +260,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--root", default=os.path.join(REPO, "out", "preview"))
     serve.add_argument("--port", type=int, default=8765)
     serve.set_defaults(handler=command_serve)
+
+    sync = sub.add_parser("sync", help="разложить ресурсы рендерера в каталог раздачи")
+    sync.add_argument("--root", default=os.path.join(REPO, "out", "preview"))
+    sync.set_defaults(handler=command_sync)
     return parser
 
 

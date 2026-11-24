@@ -51,6 +51,16 @@ var TYPE_BOOLEAN_CHARS = 10;
 var TYPE_GEOGRAPHICAL_SCHEMA_CHARS = 20;
 var TYPE_TABLE_NUMBER_HEADER_CHARS = 10;
 var TYPE_TABLE_STRING_HEADER_CHARS = 20;
+/* Колонка таблицы с неустранимым типом (реквизит не найден в метаданных)
+ * получает в конфигураторе столько же знаков, сколько поле составного типа:
+ * 15. Замер — форма «Авансового отчёта»: колонки «Аванс» и «Зачтено (руб.)»
+ * шириной 168 px (15*10 + 17 + 1). Колонка без типа и без заголовка
+ * («Отступ», TitleLocation=None) сжимается до одного знака: 28 px.
+ * Составной тип (ссылка на документы нескольких видов) занимает 24 знака:
+ * «Документ аванса» — 255 px. Замеры: docs/form-exact-view.md. */
+var TYPE_TABLE_UNTYPED_CHARS = 15;
+var TYPE_TABLE_UNTYPED_EMPTY_CHARS = 1;
+var TYPE_TABLE_MULTI_TYPE_CHARS = 24;
 /* The type presentation length, then the property defaults
  * subtracts 7/3/2 and (compat > 8.3.6) adds 2 → Taxi 17/9/8. */
 var TYPE_DATE_PRESENTATION_CHARS = 10;
@@ -11446,17 +11456,26 @@ function tableColumnDataChars(col, ctx) {
     }
     var t = tableColumnTypes(col, ctx);
     var chars;
+    /* Реквизит не найден в метаданных: конфигуратор ставит ширину поля
+     * составного типа и не добавляет полос кнопок. Колонка без заголовка не
+     * показывает ничего, поэтому сжимается до одного знака. */
+    var untyped = !t.kinds.length;
+    /* Ссылка нескольких видов: ячейка показывает представление значения, а не
+     * строку фиксированной длины, и занимает 24 знака. */
+    var multiType = !untyped && t.info.types.length > 1;
     /* An unlimited string presents wider than the automatic maximum. */
     if (t.kinds.length === 1 && t.kinds[0] === 'string' && !(t.info.stringLen > 0))
         chars = TYPE_PRESENTATION_LENGTH_CAP;
-    else if (!t.kinds.length) chars = DEFAULT_FIELD_CHARS;
+    else if (untyped)
+        chars = columnCaption(col, ctx) ? TYPE_TABLE_UNTYPED_CHARS : TYPE_TABLE_UNTYPED_EMPTY_CHARS;
+    else if (multiType) chars = TYPE_TABLE_MULTI_TYPE_CHARS;
     else chars = presentationLengthOf(t.info.types, t.info);
     var autoMax = !isFalse(prop(col, ['AutoMaxWidth']));
     var maxWidth = parseInt(prop(col, ['MaxWidth', 'МаксимальнаяШирина']), 10) || 0;
     if (!autoMax && maxWidth > 0 && maxWidth < chars) return { chars: maxWidth, clamped: true };
     if (autoMax && chars > TABLE_COLUMN_METRICS.maxChars)
         return { chars: TABLE_COLUMN_METRICS.maxChars, clamped: true };
-    return { chars: chars, clamped: false };
+    return { chars: chars, clamped: untyped || multiType };
 }
 
 function tableColumnButtonCount(col, ctx) {
@@ -11529,11 +11548,15 @@ function tableColumnNaturalPx(col, ctx, charWidthOverride) {
         var authored = parseInt(prop(col, ['Width', 'Ширина']), 10) || 0;
         var dataChars = tableColumnDataChars(col, ctx);
         if (authored > 0) {
+            /* Шесть знаков — минимум поля ввода. У колонки-надписи (номер
+             * строки) редактора нет, и платформа рисует заданную ширину как
+             * есть: колонка «N» с Width=3 занимает 3*10+17 = 47 px. */
+            var noEditor = col.tag === 'LabelField' || col.tag === 'LabelDecoration';
             /* A Taxi 8.5 line-number cell uses its authored ruler without
              * the editor's six-character minimum. Other editors keep it. */
             var authoredLineNumber85 = isTableLineNumberColumn(col)
                 && isPlatform85Model(ctx && ctx.model) && !isInterface85Context(ctx);
-            data = (authoredLineNumber85 ? authored
+            data = (authoredLineNumber85 || noEditor ? authored
                 : Math.max(authored, Math.min(dataChars.chars, M.minChars))) * charWidth + M.cellIndent;
         } else {
             data = dataChars.chars * charWidth + M.cellIndent;
@@ -11601,7 +11624,13 @@ function tableColumnLayout(table, leafs, ctx) {
             && isTableLineNumberColumn(leafs[i])
             && parseInt(prop(leafs[i], ['Width', 'Ширина']), 10) > 0
             && isPlatform85Model(ctx && ctx.model) && !isInterface85Context(ctx);
+        /* Колонка номера строки с заданной шириной — это и есть ведущая
+         * полоса таблицы, поэтому отступ ведущей колонки к ней не добавляется
+         * (форма «Авансового отчёта»: «N» шириной 47 px, а не 66). */
+        var authoredLineNumberLeads = isTableLineNumberColumn(leafs[i])
+            && parseInt(prop(leafs[i], ['Width', 'Ширина']), 10) > 0;
         var add = (compactPictureList || pictureLeadsTaxi85 || authoredLineNumberLeadsTaxi85
+            || authoredLineNumberLeads
             ? 0 : TABLE_COLUMN_METRICS.masterIndent)
             + tableMasterHierarchyPx(table, ctx);
         if (!compactPictureList && prop(table, ['RowPictureDataPath']) && !tableColumnIsPicture(leafs[i]))
