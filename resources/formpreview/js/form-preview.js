@@ -20866,6 +20866,15 @@ function fitPhysicalTableColumnWidths(body, withinSelector) {
         table.style.maxWidth = total + 'px';
         var overflowX = total > viewport + 1;
         grid.classList.toggle('fp-table-overflow-x', overflowX);
+        /* Полпикселя схлопнутой рамки (border-collapse: collapse) добавляет
+         * таблице 922,5 px там, где под неё отведено ровно 922 px: Chromium
+         * видит контент в 923 px и заводит горизонтальную дорожку, а она
+         * укорачивает вертикальную — внизу справа появлялась лишняя стрелка
+         * прокрутки (28 px расхождения с эталоном, который дорожку не рисует).
+         * Если по расчёту колонок таблица помещается (допуск 1 px на
+         * округление), горизонтальную дорожку гасим явно; при настоящем
+         * переполнении остаётся auto. */
+        grid.style.overflowX = overflowX ? '' : 'hidden';
         var overflowY = table.scrollHeight > grid.clientHeight + 1;
         grid.classList.toggle('fp-table-overflow-y', overflowY);
         /* Native WebView/Edge scrollbars are visible in the real hosts and
