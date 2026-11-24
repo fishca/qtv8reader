@@ -14084,6 +14084,83 @@ function fitWrappedSideCaptions(root) {
     return changed;
 }
 
+/* ThroughAlign=Use на горизонтальной группе задаёт общую колонку подписей для
+ * всех её вертикальных колонок: платформа считает её по самой широкой подписи,
+ * разложенной не более чем в две строки, и переносит длинную подпись.
+ * Сверка «Авансового отчёта» (полотно 988x438): в конфигураторе поле «Номер»
+ * начинается на x=114 при отступе страницы 10, то есть колонка подписей —
+ * 98 px по «Подразделение:» (глифы 95); «Подотчетное лицо:» переносится на две
+ * строки, и обе колонки шапки стоят на одной подписи (правая — тоже 104 px от
+ * своего края). До прохода каждая колонка считала свою подпись целиком:
+ * левая — 119 px по «Подотчетное лицо:», правая — 101, и поле съезжало на 21 px. */
+function containedColumnCaptionLabels(box) {
+    var columns = [];
+    if (!box || !box.children) return columns;
+    for (var i = 0; i < box.children.length; i++) {
+        var child = box.children[i];
+        if (!child.classList || !child.classList.contains('fp-item')) continue;
+        if (child.dataset && child.dataset.tag === 'AutoCommandBar') return [];
+        var columnBox = child.querySelector(
+            ':scope > .fp-control-wrap > .fp-group-bare > .fp-children-vertical, '
+            + ':scope > .fp-control-wrap > .fp-group-block > .fp-children-vertical');
+        if (!columnBox) return [];
+        var labels = collectFieldLabels(columnBox, true);
+        if (!labels.length) return [];
+        columns.push(labels);
+    }
+    return columns.length >= 2 ? columns : [];
+}
+
+/* Ячейка подписи в общей колонке: глиф плюс 7 px (1 px оболочки элемента и
+ * 6 px до поля). 90.8 px у «Подразделение:» дают 98 — ровно как в
+ * конфигураторе; собственный `throughAlignTitleChrome` (11) сюда не годится,
+ * он считает одиночную колонку страницы вместе с её отступом. */
+var THROUGH_ALIGN_LANE_CHROME = 7;
+
+function sharedThroughAlignLaneWidth(columns) {
+    var widest = 0;
+    for (var c = 0; c < columns.length; c++) {
+        for (var i = 0; i < columns[c].length; i++) {
+            var label = columns[c][i];
+            /* Две строки — не более: подпись из одного слова шире не станет,
+             * а длинная переносится и не растягивает колонку на всю строку. */
+            var metric = Math.min(throughAlignGlyphMetric(label),
+                twoLineLabelMetric(label) || Infinity);
+            widest = Math.max(widest, metric);
+        }
+    }
+    if (!widest) return 0;
+    return Math.round(widest + THROUGH_ALIGN_LANE_CHROME);
+}
+
+function fitSharedThroughAlignCaptionLane(root) {
+    if (!root || !root.querySelectorAll) return 0;
+    var boxes = root.querySelectorAll('.fp-children-horizontal');
+    var changed = 0;
+    for (var i = 0; i < boxes.length; i++) {
+        var box = boxes[i];
+        if (!box.dataset
+            || String(box.dataset.fpThroughAlign || '').toLowerCase() !== 'use') continue;
+        var columns = containedColumnCaptionLabels(box);
+        if (!columns.length) continue;
+        var lane = sharedThroughAlignLaneWidth(columns);
+        if (lane < 24 || lane > 280) continue;
+        var width = lane + 'px';
+        for (var c = 0; c < columns.length; c++) {
+            for (var l = 0; l < columns[c].length; l++) {
+                var label = columns[c][l];
+                if (label.style.minWidth === width && label.style.maxWidth === width)
+                    continue;
+                label.style.minWidth = width;
+                label.style.maxWidth = width;
+                label.style.whiteSpace = 'normal';
+                changed++;
+            }
+        }
+    }
+    return changed;
+}
+
 function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
     if (!labels || !labels.length) return;
     /* A lone wrapped caption still owns the longest-line track. Without
@@ -21192,6 +21269,7 @@ function runHorizontalStrategyPass(body) {
         body.dataset.fpFittedPhysicalTableColumns = String(state.fittedPhysicalTableColumns || 0);
     }
     fitWrappedSideCaptions(body);
+    fitSharedThroughAlignCaptionLane(body);
     fitAllLeadingCaptionsBeforeTitledPagesNone(body);
     if (!version85ConfigBody(body)) fitFollowingTooltipTitleTracks(body);
     if (!version85ConfigBody(body)) fitSideEditorTooltips(body);
@@ -23443,6 +23521,7 @@ function render(model, container, options) {
             body.classList.add('fp-root-content-top-inset');
         equalizeLocalFieldBlocks(body);
         fitWrappedSideCaptions(body);
+        fitSharedThroughAlignCaptionLane(body);
         fitAllLeadingCaptionsBeforeTitledPagesNone(body);
         anchorBottomAlignedRuns(body);
         var strategyState = runHorizontalStrategyPass(body);
