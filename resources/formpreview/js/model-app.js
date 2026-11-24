@@ -128,6 +128,36 @@
         return false;
     }
 
+    /* Resolves when every <img> inside the host has finished decoding (or
+     * failed): the ready flag gates screenshots, and a picture that is still
+     * in flight paints as an empty button. */
+    function waitForImages(root) {
+        var images = root.querySelectorAll('img');
+        var waits = [];
+        function settle(img) {
+            return new Promise(function (resolve) {
+                var done = false;
+                function finish() {
+                    if (done) return;
+                    done = true;
+                    img.removeEventListener('load', finish);
+                    img.removeEventListener('error', finish);
+                    resolve();
+                }
+                img.addEventListener('load', finish);
+                img.addEventListener('error', finish);
+                setTimeout(finish, 3000);
+            });
+        }
+        for (var i = 0; i < images.length; i++) {
+            var img = images[i];
+            if (img.complete && img.naturalWidth > 0) continue;
+            waits.push(settle(img));
+        }
+        if (!waits.length) return Promise.resolve();
+        return Promise.all(waits).then(function () { return true; });
+    }
+
     async function main() {
         setState('loading');
         var model = await loadModel();
@@ -151,6 +181,13 @@
         await nextTask(0);
         var tab = params.get('tab') || '';
         var tabActivated = await activateTab(tab);
+        FormPreview.reflow(host);
+        await nextTask(0);
+        /* Pictures (standard command icons, row-move arrows, calendar and
+         * choice-button glyphs) arrive over the network after the first
+         * paint. A screenshot taken at "ready" caught empty buttons, so the
+         * gate waits for every decoded image before announcing the frame. */
+        await waitForImages(host);
         FormPreview.reflow(host);
         await nextTask(0);
         var renderMs = performance.now() - renderStarted;

@@ -7259,8 +7259,10 @@ function applyFonts(div, item, tag) {
         for (var j = 0; j < labels.length; j++) {
             setFontCss(labels[j], title);
             /* A group caption is a platform Label row: its font's line height
-             * (TitleFont 8pt bold: 13 px + 4 px padding). */
-            if (title.fontSize && labels[j].classList.contains('fp-group-title'))
+             * (TitleFont 8pt bold: 13 px + 4 px padding). A field caption
+             * follows the same table when the form authors its own size. */
+            if (title.fontSize && (labels[j].classList.contains('fp-group-title')
+                || labels[j].classList.contains('fp-field-label')))
                 labels[j].style.lineHeight = refLabelLineHeightPx(parseFloat(title.fontSize)) + 'px';
         }
     }
@@ -10733,6 +10735,42 @@ function radioOptionsLayout(item, optionCount, interface85) {
     };
 }
 
+/* Поле даты без значения платформа рисует маской. Поле «Дата» документа
+ * «Авансового отчёта» (полотно 988x438, рамка поля 266…426): метки — 2x1 px
+ * на 279 и 291 (точки даты) и 323 и 335 (двоеточия времени), то есть 12, 24,
+ * 56 и 68 px от внутреннего края поля; нижняя метка на 7 px выше нижней
+ * рамки, верхняя точка двоеточия — на 6 px выше нижней. Поля «только дата» и
+ * «только время» платформой не замерены: у них остаются метки своего вида на
+ * первых местах. */
+var DATE_MASK_DATE_OFFSETS = [12, 24];
+var DATE_MASK_TIME_OFFSETS = [56, 68];
+
+function appendDateMask(field, item, ctx) {
+    if (fieldKind(item, ctx) !== 'date') return;
+    if (isTrue(prop(item, ['PasswordMode', 'РежимПароля']))) return;
+    var fraction = dateFractionKey(metaDateFraction(item, ctx), 'date');
+    var dateOffsets = fraction === 'time' ? [] : DATE_MASK_DATE_OFFSETS;
+    var timeOffsets = fraction === 'date' ? [] : (fraction === 'time'
+        ? DATE_MASK_DATE_OFFSETS : DATE_MASK_TIME_OFFSETS);
+    if (!dateOffsets.length && !timeOffsets.length) return;
+    var mask = el('span', 'fp-date-mask');
+    var i;
+    for (i = 0; i < dateOffsets.length; i++) {
+        var dot = el('i', 'fp-date-mask-dot');
+        dot.style.left = dateOffsets[i] + 'px';
+        mask.appendChild(dot);
+    }
+    for (i = 0; i < timeOffsets.length; i++) {
+        var colon = el('i', 'fp-date-mask-colon');
+        colon.style.left = timeOffsets[i] + 'px';
+        colon.appendChild(el('b'));
+        colon.appendChild(el('b'));
+        mask.appendChild(colon);
+    }
+    mask.setAttribute('aria-hidden', 'true');
+    field.appendChild(mask);
+}
+
 function makeFieldInput(item, loc, label, ctx) {
     var multiline = isMultilineField(item, ctx);
     var multilineLayout = multilineFieldLayoutContract({
@@ -10824,6 +10862,9 @@ function makeFieldInput(item, loc, label, ctx) {
             iconIdFromRef(leadingPicture) || 'search', 'fp-input-leading-icon-85');
     }
     field.appendChild(inp);
+    /* The mask is what an empty date field shows; a filled one paints its own
+     * separators, so the overlay is skipped when the editor carries a value. */
+    if (!multiline && !inp.value) appendDateMask(field, item, ctx);
     var external85Buttons = null;
     if (!multiline) {
         appendInputButtons(field, item, ctx);
@@ -11676,6 +11717,14 @@ function makeColumnTh(col, ctx) {
     th.setAttribute('data-id', itemKey(col));
     var shownType = itemTypePresentation(col, ctx);
     if (shownType) th.title = 'Тип: ' + shownType;
+    /* HeaderHorizontalAlign: у «Авансового отчёта» четыре числовые колонки
+     * объявлены с Right, и платформа прижимает их заголовки к правому краю
+     * (подпись кончается за 10 px до линии колонки). Без разбора свойства
+     * все заголовки рисовались слева. */
+    var headerAlign = String(prop(col, ['HeaderHorizontalAlign', 'ГоризонтальноеВыравниваниеШапки']) || '')
+        .toLowerCase();
+    if (headerAlign === 'right' || headerAlign === 'справа') th.classList.add('fp-th-align-right');
+    else if (headerAlign === 'center' || headerAlign === 'по центру') th.classList.add('fp-th-align-center');
     setFontCss(th, fontCss(col && col.properties && col.properties.TitleFontSpec));
     return th;
 }
@@ -14129,11 +14178,13 @@ function containedColumnCaptionLabels(box) {
     return columns.length >= 2 ? columns : [];
 }
 
-/* Ячейка подписи в общей колонке: глиф плюс 7 px (1 px оболочки элемента и
- * 6 px до поля). 90.8 px у «Подразделение:» дают 98 — ровно как в
- * конфигураторе; собственный `throughAlignTitleChrome` (11) сюда не годится,
- * он считает одиночную колонку страницы вместе с её отступом. */
-var THROUGH_ALIGN_LANE_CHROME = 7;
+/* Ячейка подписи в общей колонке: глиф плюс 1 px оболочки элемента. Расстояние
+ * до поля добавляет сам ряд (`gap` 5 px), поэтому колонка подписей вместе с
+ * ним даёт 104 px — как в конфигураторе: «Подразделение:» занимает 98.3 px,
+ * ячейка 99, ряд начинается на 10 и поле — на 114. Собственный
+ * `throughAlignTitleChrome` (11) сюда не годится, он считает одиночную колонку
+ * страницы вместе с её отступом. */
+var THROUGH_ALIGN_LANE_CHROME = 1;
 
 function sharedThroughAlignLaneWidth(columns) {
     var widest = 0;

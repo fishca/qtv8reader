@@ -488,7 +488,7 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
     --fp-surface: #ffffff;
     --fp-focus: #1e90ff;
     --fp-link: #1c55ae;
-    --fp-tab: #e0e0e0;
+    --fp-tab: #ebebeb;
     --fp-readonly: #f2f2f2;
     --fp-chip: #ffe9a8;
     --fp-commandbar-height: 27px;
@@ -530,7 +530,7 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
     background: #f2f2f2;
     color: var(--fp-input-fg);
     font-family: Arial, 'Segoe UI', Tahoma, sans-serif;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.3;
 }
 .fp-head { display: none; }
@@ -1944,11 +1944,25 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
     > .fp-item.fp-control[data-tag="CheckBoxField"]:has(> .fp-check-row) {
     display: flex; align-items: center;
 }
-.fp-field-label { min-width: 0; flex-shrink: 0; color: var(--fp-input-fg); text-align: left; white-space: pre-line; }
+/* Платформа считает высоту строки подписи по размеру шрифта: 13 px → 16 px
+ * (`REF_LABEL_LINE_HEIGHTS`). С наследуемым `line-height: 1.3` (16.9) подпись
+ * в две строки занимает 17 px и сдвигает весь ряд на 1 px — так «Подотчетное
+ * лицо:» уводило вниз «Склад» и полосу вкладок. */
+.fp-field-label { min-width: 0; flex-shrink: 0; color: var(--fp-input-fg); text-align: left; white-space: pre-line; line-height: 16px; }
 .fp-field-row.fp-check-row .fp-field-label,
 .fp-field-row.fp-title-right .fp-field-label,
 .fp-field-row.fp-title-top .fp-field-label { text-align: left; }
-.fp-input-wrap { display: flex; flex: 0 0 auto; min-width: 80px; min-height: var(--fp-textbox-height); box-sizing: border-box; align-items: stretch; border: 1px solid var(--fp-input-border); background: var(--fp-input-bg); }
+.fp-input-wrap { display: flex; flex: 0 0 auto; min-width: 80px; min-height: var(--fp-textbox-height); box-sizing: border-box; align-items: stretch; border: 1px solid var(--fp-input-border); background: var(--fp-input-bg); position: relative; }
+/* Маска пустого поля даты: метки рисуются поверх поля (см. appendDateMask).
+ * Каждая метка — 2x1 px цвета #888: так же, как платформа, у которой
+ * точка-разделитель занимает два пикселя по 119 и 153. */
+.fp-date-mask { position: absolute; inset: 0; pointer-events: none; }
+.fp-date-mask-dot, .fp-date-mask-colon { position: absolute; width: 2px; }
+.fp-date-mask-dot { bottom: 7px; height: 1px; background: #888; }
+.fp-date-mask-colon { bottom: 7px; height: 7px; }
+.fp-date-mask-colon > b { position: absolute; left: 0; width: 2px; height: 1px; background: #888; }
+.fp-date-mask-colon > b:first-child { bottom: 0; }
+.fp-date-mask-colon > b:last-child { bottom: 6px; }
 .fp-item.fp-hstretch .fp-input-wrap { flex: 1 1 auto; }
 /* Nested 1px Pages/group/item shells inset the painted TextBox 3px past
  * native Taxi. Full-width vertical-stack editors keep that trailing inset;
@@ -3237,6 +3251,10 @@ img.fp-btn-icon { object-fit: contain; }
     position: sticky; top: 0; z-index: 1;
 }
 .fp-table-mock th.fp-th-icon { width: 22px; text-align: center; }
+/* HeaderHorizontalAlign: заголовок числовой колонки прижат вправо и кончается
+ * за 9 px до линии колонки («Аванс» в эталоне — 446…481 при линии 491). */
+.fp-table-mock th.fp-th-align-right { text-align: right; padding-right: 9px; }
+.fp-table-mock th.fp-th-align-center { text-align: center; }
 .fp-table-mock th.fp-th-group { text-align: left; font-weight: 400; border-bottom: 1px solid var(--fp-border); }
 .fp-table-mock th.selected { background: #d7ebff; outline: 2px solid var(--fp-focus); outline-offset: -2px; }
 .fp-table-mock tbody td { color: var(--fp-muted); height: 30px; }
@@ -3269,9 +3287,11 @@ img.fp-btn-icon { object-fit: contain; }
 }
 
 .fp-form-title {
-    flex: 0 0 23px; width: 100%; height: 23px; min-height: 23px;
-    box-sizing: border-box; padding: 3px 4px 2px; overflow: hidden;
-    background: #bfcdDB; color: #000; font-size: 12px; line-height: 18px;
+    flex: 0 0 21px; width: 100%; height: 21px; min-height: 21px;
+    box-sizing: border-box; padding: 2px 4px 1px; overflow: hidden;
+    /* Цвет неактивного заголовка окна (153, 180, 209) — им конфигуратор и
+     * заливает 21-пиксельную полосу над командной панелью. */
+    background: #99b4d1; color: #000; font-size: 13px; line-height: 18px;
     font-weight: 700; white-space: nowrap; text-overflow: ellipsis;
 }
 
@@ -3543,10 +3563,21 @@ img.fp-btn-icon { object-fit: contain; }
  * ellipsis; it never wraps onto a second row. */
 .fp-pages-tablist {
     display: flex; flex-wrap: nowrap; gap: 0; padding: 0; margin: 0;
-    border-bottom: none; background: transparent;
+    /* Полоса вкладок в конфигураторе закрыта снизу линией #b3b3b3 на всю
+     * ширину страницы: выбранная вкладка её перекрывает (margin-bottom -1px). */
+    border-bottom: 1px solid var(--fp-tab-border); background: transparent;
     overflow: hidden;
 }
 .fp-pages-outer.TabsOnBottom .fp-pages-tablist { margin: 0; padding: 0; border-bottom: none; border-top: 1px solid var(--fp-border-strong); }
+/* Страница-вкладка в конфигураторе обведена по бокам: линии стоят на x=10 и
+ * x=969 от верха полосы вкладок до низа полотна (сверху линия принадлежит
+ * самим вкладкам). Рамку рисует элемент-владелец страниц — она видна только
+ * по бокам, верх и низ закрывают полоса вкладок и край полотна. */
+.fp-item:has(> .fp-control-wrap > .fp-group-block > .fp-pages-outer),
+.fp-item:has(> .fp-control-wrap > .fp-group-bare > .fp-pages-outer) {
+    border-left-color: var(--fp-tab-border);
+    border-right-color: var(--fp-tab-border);
+}
 .fp-pages-tab {
     margin: 0 0 0 -1px; padding: 3px 10px; height: 27px; min-height: 27px; max-height: 27px;
     box-sizing: border-box;
@@ -6570,3 +6601,4 @@ html.theme-dark .dcsd-list-top { background:#181818; }
 .fp-calendar-taxi-now { align-self: flex-start; margin: 10px 0 0 15px; color: #3b8bd0; border-bottom: 1px dashed #3b8bd0; line-height: 16px; }
 .fp-item.fp-item:is(.fp-control, .fp-no-hstretch):has(> .fp-trackbar-taxi, > .fp-calendar-taxi) { align-self: stretch; width: auto; max-width: none; } /* stretch like the 8.3 client */
 .fp-calendar-taxi { height: 100%; box-sizing: border-box; }
+
