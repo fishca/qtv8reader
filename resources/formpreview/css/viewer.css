@@ -3622,7 +3622,7 @@ img.fp-btn-icon { object-fit: contain; }
     box-sizing: border-box;
     font: inherit; font-size: inherit; font-weight: 400;
     color: #333; background: var(--fp-tab); border: 1px solid var(--fp-tab-border);
-    border-bottom: none; border-radius: 2px 2px 0 0; cursor: pointer;
+    border-bottom: none; border-radius: 3px 3px 0 0; cursor: pointer;
     flex: 0 0 auto; min-width: 0; text-align: center;
     display: inline-flex; align-items: center; justify-content: center; gap: 4px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -3657,7 +3657,7 @@ img.fp-btn-icon { object-fit: contain; }
 }
 .fp-page-tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fp-pages-tab:first-child { margin-left: 0; }
-.fp-pages-outer.TabsOnBottom .fp-pages-tab { border-radius: 0 0 2px 2px; border-top: none; border-bottom: 1px solid var(--fp-tab-border); }
+.fp-pages-outer.TabsOnBottom .fp-pages-tab { border-radius: 0 0 3px 3px; border-top: none; border-bottom: 1px solid var(--fp-tab-border); }
 .fp-pages-tab:hover { color: inherit; background: #f4f4f4; }
 .fp-pages-tab[aria-selected='true'] {
     color: #1a1a1a; font-weight: 400; background: var(--fp-surface);
