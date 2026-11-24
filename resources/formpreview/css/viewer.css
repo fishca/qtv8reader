@@ -2101,14 +2101,17 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
 .fp-input-readonly, .fp-input-readonly-wrap { background: transparent; }
 .fp-input-readonly-wrap, .fp-input-readonly-wrap .fp-input-btn { border-color: #d7d7d7; }
 /* AutoMarkIncomplete: 1C paints a 1px red dotted rule inside the text part of
- * an unfilled mandatory field, two rows above the bottom border, 3px in from
- * the frame's left and right edges. The input sits inside the 1px frame,
- * hence 2px / 1px here. */
+ * an unfilled mandatory field, three rows above the bottom border of the frame
+ * and starting 4px from its left edge, ending 3px before its right edge. The
+ * input sits inside the 1px frame, so the rule is anchored 1px into it and
+ * keeps the 4px the frame adds: in the reference form the dots under
+ * «Организация» run over 641…923 with the frame bottom on 84, and the dots
+ * under «Дата» start on 270 with its frame left on 266. */
 .fp-input-incomplete {
     background-image: repeating-linear-gradient(90deg, #f00 0 1px, transparent 1px 2px);
     background-repeat: no-repeat;
     background-size: calc(100% - 4px) 1px;
-    background-position: 2px calc(100% - 1px);
+    background-position: 1px calc(100% - 2px);
 }
 .fp-field-row.fp-title-top, .fp-field-row.fp-title-bottom { flex-direction: column; align-items: stretch; gap: var(--fp-top-title-gap); width: 100%; }
 .fp-field-row.fp-title-right { flex-direction: row-reverse; justify-content: flex-start; }
