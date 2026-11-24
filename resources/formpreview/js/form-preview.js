@@ -13245,6 +13245,9 @@ function renderPreview(items, parentEl, ctx, parentItem) {
                 if (tableSizing.maximum) div.dataset.fpTableMaxHeight = String(tableSizing.maximum);
                 div.classList.add('fp-table-authored-height');
             }
+            /* Высота не задана в форме: в конфигураторе такая таблица забирает
+             * остаток страницы, а элементы под ней уходят за кадр формы. */
+            if (!fieldHeight(item)) div.classList.add('fp-table-auto-height');
         }
         applyTooltip(div, item, inBar, ctx);
         bindSelect(div, item, ctx);
@@ -14908,10 +14911,14 @@ function fitRootPagesPreferredHeights(body) {
         var panel = item.querySelector && item.querySelector('.fp-pages-active-panel');
         if (!panel) continue;
         /* Tables and spreadsheet documents publish their own
-         * min/preferred range and are allowed to compress inside Pages. Their
-         * browser scrollHeight is the allocated stretch track, not the page's
-         * intrinsic minimum. */
-        if (panel.querySelector && panel.querySelector(
+         * min/preferred range and are allowed to compress inside Pages.
+         * Растягиваемая таблица без заданной в форме высоты — исключение: в
+         * конфигураторе она забирает остаток формы, а её «подвал» уходит за
+         * кадр. Замер — форма «Авансового отчёта»: таблица доходит до низа
+         * полотна. */
+        var autoTableStretch = panel.querySelector && panel.querySelector(
+            '.fp-item[data-tag="Table"].fp-table-auto-height.fp-vstretch');
+        if (!autoTableStretch && panel.querySelector && panel.querySelector(
             '.fp-item[data-tag="Table"], .fp-item[data-tag="SpreadSheetDocumentField"]')) continue;
         if (panel.scrollHeight <= panel.clientHeight + 2) continue;
         var next = null;
