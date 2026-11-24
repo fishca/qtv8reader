@@ -2141,10 +2141,10 @@ QJsonObject buildObjectMeta(const FormDocument &document)
     meta.insert(QStringLiteral("autonumbering"), QString());
     meta.insert(QStringLiteral("useStandardCommands"), true);
     meta.insert(QStringLiteral("hasHelp"), false);
-    meta.insert(QStringLiteral("descriptionLength"), 0);
-    meta.insert(QStringLiteral("codeLength"), 0);
-    meta.insert(QStringLiteral("numberLength"), 0);
-    meta.insert(QStringLiteral("codeType"), QString());
+    meta.insert(QStringLiteral("descriptionLength"), owner.descriptionLength);
+    meta.insert(QStringLiteral("codeLength"), owner.codeLength);
+    meta.insert(QStringLiteral("numberLength"), owner.numberLength);
+    meta.insert(QStringLiteral("codeType"), owner.codeType);
     return meta;
 }
 

@@ -152,8 +152,12 @@ void MainWindow::loadFormPreview(const MetadataEntry &entry)
 
     document.name = entry.name;
     document.synonym = entry.synonym;
-    if (m_currentObject)
+    if (m_currentObject) {
         applyOwnerMetadata(*m_currentObject, &document);
+        QString objectText;
+        if (m_reader->readObjectText(*m_currentObject, &objectText, nullptr))
+            applyOwnerStandardAttributes(objectText, &document);
+    }
     m_formDocument = document;
     m_formDocumentValid = true;
     m_formView->setDocument(document);

@@ -159,6 +159,9 @@ int commandFormModel(const QString &path, const QString &objectQuery,
     document.name = formEntry->name;
     document.synonym = formEntry->synonym;
     applyOwnerMetadata(*object, &document);
+    QString objectText;
+    if (reader.readObjectText(*object, &objectText, nullptr))
+        applyOwnerStandardAttributes(objectText, &document);
 
     if (itemsOnly) {
         out() << QStringLiteral("Форма: %1 (%2)\n")

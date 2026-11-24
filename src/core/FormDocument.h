@@ -614,6 +614,13 @@ struct FormOwnerMeta
     // Проверка заполнения реквизитов («ShowError», «DontCheck»): по ней
     // рендерер рисует красное точечное подчёркивание незаполненного поля.
     QHash<QString, QString> fillChecking;
+    // Стандартные реквизиты объекта: длина номера документа, кода и
+    // наименования справочника. В контейнере они лежат числами в списке
+    // свойств объекта, а не строками; рендерер берёт из них ширину полей.
+    int numberLength = 0;
+    int codeLength = 0;
+    int descriptionLength = 0;
+    QString codeType; // «String» | «Number»
 };
 
 struct FormDocument

@@ -1,5 +1,7 @@
 #include "core/FormOwner.h"
 
+#include "core/V8Text.h"
+
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -202,6 +204,33 @@ bool containsListTable(const QVector<FormItem> &items, const QString &objectName
     return false;
 }
 
+// Список свойств объекта метаданных: запись объекта в контейнере устроена как
+// {1, {<свойства>}, …}, поэтому свойства — второй элемент корня. Их число
+// зависит от вида объекта (у документа 40 полей, у справочника 48), а
+// смещения внутри списка постоянны для вида: длина номера документа — 12-е
+// поле, длина кода справочника — 17-е, наименования — 19-е. Проверено по
+// выгрузке в XML: 7 документов (длины 0, 9, 11, 12, 13) и 7 справочников
+// (коды 3…11, наименования 10…150) — расхождений нет.
+const V8TextNode *objectPropertyList(const V8TextNode &root)
+{
+    if (!root.isList() || root.children.size() < 2)
+        return nullptr;
+    const V8TextNode *properties = root.child(1);
+    return properties && properties->isList() ? properties : nullptr;
+}
+
+int propertyInteger(const V8TextNode *properties, int index)
+{
+    if (!properties)
+        return 0;
+    const V8TextNode *node = properties->child(index);
+    if (!node || node->isList())
+        return 0;
+    bool ok = false;
+    const qint64 value = node->toInteger(&ok);
+    return ok ? int(value) : 0;
+}
+
 } // namespace
 
 QString ownerKindTag(const QString &typeTitle)
@@ -305,6 +334,53 @@ void applyOwnerMetadata(const MetadataObject &object, FormDocument *document)
     document->runtimeDocumentCommands = isDocument && !hasTable;
     document->runtimeCatalogCommands = isCatalog && !hasTable;
     document->runtimeCatalogListCommands = isCatalog && hasTable;
+}
+
+void applyOwnerStandardAttributes(const QString &metadataText, FormDocument *document)
+{
+    if (!document || metadataText.trimmed().isEmpty() || !document->ownerMeta.valid)
+        return;
+
+    V8TextNode root;
+    if (!V8Text::parse(metadataText, root, nullptr))
+        return;
+
+    const V8TextNode *properties = objectPropertyList(root);
+    if (!properties)
+        return;
+
+    FormOwnerMeta &meta = document->ownerMeta;
+    const QString kindTag = meta.kindTag;
+    if (kindTag == QLatin1String("Document")) {
+        // Номер документа платформы — строка длины NumberLength. Все документы
+        // БП нумеруются строками; для числовой нумерации ширина отличалась бы
+        // на один символ, но такого вида в корпусе нет.
+        const int numberLength = propertyInteger(properties, 12);
+        if (numberLength > 0) {
+            meta.numberLength = numberLength;
+            meta.types.insert(QStringLiteral("Number"), QStringLiteral("xs:string"));
+            meta.stringLen.insert(QStringLiteral("Number"), QString::number(numberLength));
+        }
+        // Дата документа хранится как дата-время: от вида значения зависит
+        // ширина поля и точечная маска в конфигураторе.
+        meta.types.insert(QStringLiteral("Date"), QStringLiteral("xs:dateTime"));
+        meta.dateFraction.insert(QStringLiteral("Date"), QStringLiteral("DateTime"));
+    } else if (kindTag == QLatin1String("Catalog")) {
+        const int codeLength = propertyInteger(properties, 17);
+        if (codeLength > 0) {
+            meta.codeLength = codeLength;
+            meta.codeType = QStringLiteral("String");
+            meta.types.insert(QStringLiteral("Code"), QStringLiteral("xs:string"));
+            meta.stringLen.insert(QStringLiteral("Code"), QString::number(codeLength));
+        }
+        const int descriptionLength = propertyInteger(properties, 19);
+        if (descriptionLength > 0) {
+            meta.descriptionLength = descriptionLength;
+            meta.types.insert(QStringLiteral("Description"), QStringLiteral("xs:string"));
+            meta.stringLen.insert(QStringLiteral("Description"),
+                                  QString::number(descriptionLength));
+        }
+    }
 }
 
 } // namespace v8reader

@@ -105,6 +105,13 @@
         var model = await loadModel();
         if (!model || !model.tag) throw new Error('JSON не похож на модель формы: нет поля tag');
         restoreModelRuntime(model);
+        /* The XML viewer fills item.runtime (typeFeatures, inputButtons,
+         * defaultChars) while parsing the form. A serialised model carries
+         * only authored properties, so the same derivation must run here or
+         * every field falls back to the 20-character default width and loses
+         * its choice buttons. */
+        if (FormPreview.applyTypeDefaultsToModel)
+            FormPreview.applyTypeDefaultsToModel(model);
 
         var renderStarted = performance.now();
         FormPreview.render(model, host, {

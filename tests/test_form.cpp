@@ -144,6 +144,7 @@ private slots:
     void layoutNodeIsNotItemReference();
     void popupPictureAndRepresentation();
     void formCommandBarLocation();
+    void ownerStandardAttributes();
 };
 
 void TestForm::parseSynthetic()
@@ -3313,6 +3314,53 @@ void TestForm::formCommandBarLocation()
     QVERIFY(parse(QStringLiteral("1"), &automatic));
     QCOMPARE(automatic.commandBarLocation, 1);
     QVERIFY(locationProperty(automatic).isUndefined());
+}
+
+// Стандартные реквизиты объекта в списке свойств записи: у документа длина
+// номера — 12-е поле (индекс 12), у справочника длина кода — 17-е, а
+// наименования — 19-е. Синтетический список повторяет форму реальной записи:
+// {1, {<свойства>}, …}.
+void TestForm::ownerStandardAttributes()
+{
+    const QString documentText = QStringLiteral(
+        "{1,{40,0,0,0,0,0,0,0,0,0,0,0,11,0,0,0,0,0,0,0},0}");
+    FormDocument document;
+    document.ownerMeta.valid = true;
+    document.ownerMeta.kindTag = QStringLiteral("Document");
+    applyOwnerStandardAttributes(documentText, &document);
+
+    QCOMPARE(document.ownerMeta.numberLength, 11);
+    QCOMPARE(document.ownerMeta.stringLen.value(QStringLiteral("Number")),
+             QStringLiteral("11"));
+    QCOMPARE(document.ownerMeta.types.value(QStringLiteral("Number")),
+             QStringLiteral("xs:string"));
+    QCOMPARE(document.ownerMeta.dateFraction.value(QStringLiteral("Date")),
+             QStringLiteral("DateTime"));
+
+    const QString catalogText = QStringLiteral(
+        "{1,{56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,150},0}");
+    FormDocument catalog;
+    catalog.ownerMeta.valid = true;
+    catalog.ownerMeta.kindTag = QStringLiteral("Catalog");
+    applyOwnerStandardAttributes(catalogText, &catalog);
+
+    QCOMPARE(catalog.ownerMeta.codeLength, 9);
+    QCOMPARE(catalog.ownerMeta.descriptionLength, 150);
+    QCOMPARE(catalog.ownerMeta.stringLen.value(QStringLiteral("Code")),
+             QStringLiteral("9"));
+    QCOMPARE(catalog.ownerMeta.stringLen.value(QStringLiteral("Description")),
+             QStringLiteral("150"));
+
+    // Нулевая длина номера (автонумерация выключена) не должна давать ширину
+    // в один символ.
+    const QString noNumber = QStringLiteral(
+        "{1,{40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},0}");
+    FormDocument empty;
+    empty.ownerMeta.valid = true;
+    empty.ownerMeta.kindTag = QStringLiteral("Document");
+    applyOwnerStandardAttributes(noNumber, &empty);
+    QCOMPARE(empty.ownerMeta.numberLength, 0);
+    QVERIFY(!empty.ownerMeta.stringLen.contains(QStringLiteral("Number")));
 }
 
 } // namespace

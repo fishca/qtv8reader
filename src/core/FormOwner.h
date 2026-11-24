@@ -12,6 +12,14 @@ namespace v8reader {
 // для документов, создание для списков и т. п.).
 void applyOwnerMetadata(const MetadataObject &object, FormDocument *document);
 
+// Дополняет objectMeta стандартными реквизитами объекта по тексту его
+// метаданных из контейнера: «Номер» документа, «Код» и «Наименование»
+// справочника, «Дата» документа. Платформа хранит их длину и вид числами в
+// списке свойств объекта, а рендерер по ним считает ширину поля: без этого
+// «Номер» получает ширину по умолчанию в 20 символов вместо 11 и выглядит
+// на 40 px шире, чем в конфигураторе.
+void applyOwnerStandardAttributes(const QString &metadataText, FormDocument *document);
+
 // Код вида объекта для рендерера: «Document», «Catalog», «Report», …
 QString ownerKindTag(const QString &typeTitle);
 

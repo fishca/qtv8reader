@@ -23721,6 +23721,9 @@ root.FormPreview = {
     paintedOverlaps: paintedOverlaps,
     detect: detect,
     parse: parse,
+    /* The XML viewer derives item.runtime while parsing; a serialised model
+     * needs the same derivation before render. */
+    applyTypeDefaultsToModel: applyTypeDefaultsToModel,
     activeEvents: activeEvents,
     resetViewState: resetViewState,
     render: render,
