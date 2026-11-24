@@ -17,6 +17,7 @@
 #include "core/V8Text.h"
 #include "core/FormReader.h"
 #include "gui/FormView.h"
+#include "gui/web/WebView2Host.h"
 #include "gui/MxlPrinter.h"
 #include "gui/MxlView.h"
 
@@ -110,8 +111,15 @@ MainWindow::MainWindow(QWidget *parent)
             settings.value(settingsKey(QStringLiteral("moduleHighlight")), true).toBool();
     }
     m_highlightEnabled = m_highlightSettings.enabled;
-    m_exactFormView =
-        settings.value(settingsKey(QStringLiteral("exactFormView")), false).toBool();
+    /* Форма должна выглядеть как в конфигураторе, поэтому точный вид — вид по
+     * умолчанию. Он работает только там, где есть среда WebView2: без неё
+     * остаётся упрощённый вид, иначе вместо формы открывалось бы пояснение о
+     * недостающем компоненте. Выбор пользователя (меню «Вид» или список «Вид»
+     * над формой) по-прежнему запоминается и перекрывает это значение. */
+    m_exactFormView = settings
+                          .value(settingsKey(QStringLiteral("exactFormView")),
+                                 WebView2Host::isSupported())
+                          .toBool();
 
     setupUi();
     setupMenus();
