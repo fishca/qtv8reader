@@ -170,3 +170,13 @@ html, body {
     font: 11px/1.4 Consolas, 'Courier New', monospace;
     white-space: pre-wrap;
 }
+
+/* Поле формы в платформе начинается с края ячейки, а у оболочки .fp-item
+ * рамка 1 px (прозрачная) и padding по 1 px сверху/снизу, box-sizing
+ * border-box. Из-за боковой рамки содержимое строки вставало на 11 вместо 10:
+ * подпись «Номер:» 11…110 (в эталоне 10…109), рамка поля 115…234 (в эталоне
+ * 114…234) — сдвинут весь ряд и текст в нём. */
+.fp-mockup .fp-item.fp-control {
+    border-left-width: 0 !important;
+    border-right-width: 0 !important;
+}

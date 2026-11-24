@@ -112,6 +112,29 @@
         return new Promise(function (resolve) { setTimeout(resolve, ms || 0); });
     }
 
+    /* viewer.css поднимает подпись левого заголовка на 1 px (top: 1px), и
+     * однострочная подпись встаёт на 1 px ниже эталона: «Номер:» занимает
+     * строки 68…80 при 67…79 в эталоне конфигуратора. У подписи, которая
+     * переносится на вторую строку («Подотчетное лицо:»), строки совпадают
+     * без правки — сдвигать её на 1 px нельзя. Отличить одно от другого в CSS
+     * нечем (оба ряда идут с fp-title-left и fp-title-auto), поэтому высота
+     * подписи меряется здесь и переносится в inline-стиль с !important:
+     * css-правило в qv8-host.css перебивается только так. */
+    function alignFieldTitles(root) {
+        /* У 8.5 свой набор правил (form-preview-85.css) и своё смещение
+         * подписи, поэтому правка не применяется — сравнивается 8.3. */
+        if (root.querySelector('.fp-platform-85')) return;
+        var labels = root.querySelectorAll(
+            '.fp-field-row[class*="fp-title-left"] > .fp-field-label');
+        for (var i = 0; i < labels.length; i++) {
+            var label = labels[i];
+            var lineHeight = parseFloat(getComputedStyle(label).lineHeight);
+            if (!lineHeight || !isFinite(lineHeight)) lineHeight = 16;
+            var lines = label.getBoundingClientRect().height / lineHeight;
+            label.style.setProperty('top', lines > 1.5 ? '1px' : '0px', 'important');
+        }
+    }
+
     /* Optional demonstration: `?tab=Товары` clicks the authored page tab after
      * the first paint.  The renderer keeps the active page in module state, so
      * a click is the supported way to show another page of the same model. */
@@ -189,6 +212,7 @@
          * gate waits for every decoded image before announcing the frame. */
         await waitForImages(host);
         FormPreview.reflow(host);
+        alignFieldTitles(host);
         await nextTask(0);
         var renderMs = performance.now() - renderStarted;
 
