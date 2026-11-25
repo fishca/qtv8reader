@@ -358,6 +358,10 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
                                     .arg(module.name, module.elementName));
     }
 
+    // Разделы состава не раскрываются следом за объектом: у документа 1С их
+    // десятки (реквизиты, табличные части с колонками, формы, макеты), и дерево
+    // разворачивалось целиком на один щелчок. Раскрывает пользователь — по
+    // одному узлу, как в конфигураторе.
     for (const MetadataSection &section : object.sections) {
         auto *sectionItem = new QTreeWidgetItem(item);
         sectionItem->setText(0,
@@ -421,12 +425,9 @@ void MainWindow::populateObjectItem(QTreeWidgetItem *item, MetadataObject &objec
                 childItem->setToolTip(0, childTooltip);
             }
         }
-        sectionItem->setExpanded(true);
     }
 
-    if (item->childCount() > 0) {
-        item->setExpanded(true);
-    } else {
+    if (item->childCount() == 0) {
         auto *emptyItem = new QTreeWidgetItem(item);
         emptyItem->setText(0, QStringLiteral("(состав и модули не найдены)"));
         emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
