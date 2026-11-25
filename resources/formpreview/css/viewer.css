@@ -3558,7 +3558,7 @@ img.fp-btn-icon { object-fit: contain; }
  * the first row: «Группы» carries the ink on rows 63…77 over a row at 82, and
  * «Надписи» on 63…77 over 82 as well. The 1px inset used to be -1 because the
  * root command bar was 2px too tall and pushed every group down by 2. */
-.fp-body.fp-mockup .fp-group-title.fp-group-title-section { font-size: 16px; line-height: 18px; margin-top: 1px; margin-bottom: 3px; white-space: normal; width: 0; min-width: 100%; }
+.fp-body.fp-mockup .fp-group-title.fp-group-title-section { font-size: 15.5px; line-height: 18px; margin-top: 1px; margin-bottom: 3px; white-space: normal; width: 0; min-width: 100%; }
 .fp-body.fp-mockup .fp-group-block > .fp-group-title.fp-group-title-section { margin-top: -1px; margin-bottom: 5px; }
 /* Inside a coloured card the caption keeps an inset instead: the ink starts
  * 8px under the card top, the first row 32px under. */

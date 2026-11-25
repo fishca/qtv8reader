@@ -6133,7 +6133,7 @@ function inputButtonKindsFromButtons(item, ctx, buttons) {
     if (choiceInInput && buttons.choiceButton && kind !== 'date'
         && !(hasDropDownChoicePicture(item) && kinds.indexOf('caret-down') >= 0))
         kinds.push(clean85 && hasDropListChoicePicture(item) || hasDropDownChoicePicture(item)
-            ? 'caret-down' : 'dots');
+            ? 'caret-down' : (kind === 'number' ? 'calculator' : 'dots'));
     if (isTrue(prop(item, ['CreateButton']))
         && (!clean85 || typeInfoFromItem(item, ctx).types.some(referenceTypeSupportsOpen)))
         kinds.push('plus');
@@ -6164,7 +6164,7 @@ function inputButtonKindsForInterface(item, ctx, kinds) {
     if (hasDropListChoicePicture(item))
         kinds = kinds.map(function (kind) { return kind === 'dots' ? 'caret-down' : kind; });
     var reference = typeInfoFromItem(item, ctx).types.some(referenceTypeSupportsOpen);
-    var rank = { x: 0, calendar: 1, dots: 2, 'caret-down': 3, plus: 4, spin: 5, 'open-1c': 6 };
+    var rank = { x: 0, calendar: 1, dots: 2, calculator: 2, 'caret-down': 3, plus: 4, spin: 5, 'open-1c': 6 };
     kinds = kinds.filter(function (kind) { return kind !== 'plus' || reference; });
     return kinds.sort(function (left, right) {
         return (Object.prototype.hasOwnProperty.call(rank, left) ? rank[left] : 99)
@@ -10738,6 +10738,13 @@ function appendInputButtons(field, item, ctx) {
             var calendarBtn = el('span', 'fp-input-btn fp-choice-button');
             appendPictureIcon(calendarBtn, 'StdPicture.Calendar', ctx, 'calendar', 'fp-btn-icon');
             field.appendChild(calendarBtn);
+        } else if (kind === 'calculator') {
+            /* A number field's trailing button is the platform Калькулятор
+             * picture: a fractional number gets a button, but it is not the
+             * «...» of a choice, and its width is the same 21px track. */
+            var calcBtn = el('span', 'fp-input-btn fp-choice-button');
+            appendPictureIcon(calcBtn, 'StdPicture.Calculator', ctx, 'calculator', 'fp-btn-icon');
+            field.appendChild(calcBtn);
         } else if (kind === 'spin') {
             /* SpinButton stacks the up/down pair at the right edge. */
             var spin = el('span', 'fp-spin');
