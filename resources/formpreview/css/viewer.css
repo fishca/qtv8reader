@@ -1976,6 +1976,24 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
 .fp-field-row { display: flex; align-items: center; flex-wrap: nowrap; gap: var(--fp-side-title-gap); width: auto; max-width: 100%; flex-shrink: 1; }
 .fp-item.fp-hstretch > .fp-control-wrap.fp-field-row { width: 100%; }
 .fp-field-row.fp-check-row { width: auto; min-height: var(--fp-check-height); }
+/* Строка флажка и строка переключателя — это сама 17-пиксельная дорожка, без
+ * полосы элемента: платформа шагает такими строками 17 + 9. Эталон
+ * «Переключатели»: строка переключателя 60…76 (чернила кружка 61…75), строка
+ * флажка 86…102 (квадрат 87…101). Эталон «ПоляВвода»: поля 60/94/128, флажок
+ * 162 (квадрат 163…177). Полоса элемента (1+1) сдвигала чернила на 2 px вниз, а
+ * дорожка редактора (22 вместо 17) растягивала строку на 5 px: в «ПоляВвода»
+ * квадрат вставал на 165 вместо 163, в «Переключателях» строка флажка — на
+ * 92,5 вместо 86. */
+.fp-children.fp-children-vertical
+    > .fp-item.fp-control:has(> .fp-control-wrap.fp-check-row),
+.fp-children.fp-children-vertical
+    > .fp-item.fp-control:has(> .fp-control-wrap.fp-field-row .fp-radio-stack) {
+    padding-top: 0; padding-bottom: 0;
+    border-top-width: 0; border-bottom-width: 0;
+}
+.fp-children.fp-children-vertical
+    > .fp-item.fp-control:has(> .fp-control-wrap.fp-field-row .fp-radio-stack)
+    > .fp-control-wrap.fp-field-row { min-height: var(--fp-radio-height); }
 /* In a row of editors a right-titled checkbox is centred on the editor band
  * (beside 25px date fields). A checkbox beside a nested group stays on the
  * first line. */

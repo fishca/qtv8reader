@@ -10239,6 +10239,7 @@ function layoutMeta(item) {
         && visibleKids.every(function (child) {
             if (isContainer(child.tag || '')) return false;
             if (child.tag === 'Button') return true;
+            if (isNativeSingleLineChoiceRow(child)) return true;
             return !isSpecialRowLayoutTag(child.tag);
         });
     if (leafOnlyVerticalStack) defaultVs = true;
@@ -11849,7 +11850,65 @@ function makeColumnTh(col, ctx) {
     return th;
 }
 
-function createControl(item, tag, ctx, parentMeta) {
+/* Переключатель на булев реквизит платформа рисует флажком: квадрат 15x15 без
+ * подписей списка. Вид переключателя (RadioButtonType) у булева значения не
+ * имеет смысла — списка выбора у него нет, и сегментированный контрол на трёх
+ * подставных подписях «<Значение 1..3>» шириной 309 px растягивал полотно.
+ * Признак булева значения в модели — поле CheckBoxType: его пишет сборщик
+ * модели только для реквизита-булева (FormWebModel). Эталон «Переключатели»:
+ * квадрат 59…73 x 87…101, подпись «Флаг:» 10…42. */
+function isBooleanRadioField(item, tag) {
+    if (tag !== 'RadioButtonField') return false;
+    if (!prop(item, ['CheckBoxType', 'ВидФлажка'])) return false;
+    var list = item && item.properties && item.properties.ChoiceListItems;
+    return !(list && list.length);
+}
+
+/* Строка выбора, которую платформа шагает как обычную строку полей: флажок и
+ * список радиокнопок — одна 17-пиксельная дорожка, и шаг между такими строками
+ * — Single (9 px). Эталон «Переключатели»: строка переключателя 60…76, строка
+ * флажка 86…102, то есть 17 + 9. Сегментированный тумблер с подписями — нет:
+ * это 25-пиксельная полоса. */
+function isNativeSingleLineChoiceRow(item) {
+    if (!item) return false;
+    if (item.tag === 'CheckBoxField')
+        return !isTumbler(prop(item, ['CheckBoxType', 'ВидФлажка']));
+    if (item.tag === 'RadioButtonField')
+        return isBooleanRadioField(item, item.tag)
+            || !isTumbler(prop(item, ['RadioButtonType', 'ВидПереключателя']));
+    return false;
+}
+
+/* Флажок в группе полей с заголовками слева входит в общую колонку заголовков:
+ * платформа пишет его подпись с двоеточием в колонке, а квадрат ставит после
+ * неё. Эталоны: «ПоляВвода» («Булево:» 10…56, квадрат 64…78 под полями, у
+ * которых поле начинается на 64) и «Переключатели» («Флаг:» 10…42, квадрат
+ * 59…73 под строкой переключателя). Без соседей-полей с заголовком флажок
+ * остаётся одиночным — квадрат первым, как в 8.5. */
+var CHECK_COLUMN_FIELD_TAGS = {
+    InputField: 1, ValueList: 1, LabelField: 1, RadioButtonField: 1,
+    CheckBoxField: 1, Table: 1, SpreadSheetDocumentField: 1
+};
+
+function groupHasTitledFieldRows(item, parentItem) {
+    if (!item || !parentItem || !parentItem.childItems) return false;
+    if (!isContainer(String(parentItem.tag || ''))) return false;
+    if (layoutMeta(parentItem).orientation !== 'vertical') return false;
+    var kids = parentItem.childItems;
+    for (var i = 0; i < kids.length; i++) {
+        var child = kids[i];
+        if (!child || child === item || !CHECK_COLUMN_FIELD_TAGS[child.tag]) continue;
+        if (isFalse(prop(child, ['Visible', 'visible'])) || isAdditionTag(child.tag)) continue;
+        /* A boolean radio field is painted as a check box too, so it does not
+         * open a caption column of its own. */
+        if (isBooleanRadioField(child, child.tag)) continue;
+        return true;
+    }
+    return false;
+}
+
+function createControl(item, tag, ctx, parentMeta, parentItem) {
+    if (isBooleanRadioField(item, tag)) tag = 'CheckBoxField';
     var label = displayLabel(item, ctx, tag);
     var wrap = el('div', 'fp-control-wrap');
     var loc = controlTitleLocation(item, tag, ctx, parentMeta);
@@ -11918,9 +11977,13 @@ function createControl(item, tag, ctx, parentMeta) {
         /* A left title joins the form's title column like an editor's. */
         /* [CHECK-ROOT-LEFT] A root-level check box without TitleLocation also
          * joins the title column. */
+        /* [CHECK-COLUMN] ... and so does a check box inside a vertical group of
+         * titled field rows: the platform puts its caption into that group's
+         * caption column («Булево:», «Флаг:») and the box after it. */
         var leftCheckTitle = loc === 'left' && (titleLocationAuthored(item)
             || (parentMeta && parentMeta.tag === 'Form'
-                && !prop(item, ['TitleLocation', 'ПоложениеЗаголовка'])));
+                && !prop(item, ['TitleLocation', 'ПоложениеЗаголовка']))
+            || groupHasTitledFieldRows(item, parentItem));
         if (leftCheckTitle) wrap.classList.add('fp-title-left');
         /* A caption of more than one row (an authored line break or
          * TitleHeight > 1) puts the caption and the box at the top of the
@@ -13446,7 +13509,7 @@ function renderPreview(items, parentEl, ctx, parentItem) {
         }
         var shownType = itemTypePresentation(item, ctx);
         if (shownType) div.title = 'Тип: ' + shownType;
-        var control = createControl(item, tag, ctx, parentMeta);
+        var control = createControl(item, tag, ctx, parentMeta, parentItem);
         div.appendChild(control);
         if (control.classList && control.classList.contains('fp-final-track-side-choice'))
             div.classList.add('fp-final-track-side-choice');
