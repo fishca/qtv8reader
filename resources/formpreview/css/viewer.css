@@ -1408,7 +1408,7 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
 .fp-children.fp-children-vertical:not(.fp-children-horizontal *)
     > .fp-item.fp-control[data-tag="InputField"]:not(.fp-ordinary-row-control)
     + .fp-item.fp-container-horizontal.fp-bare {
-    margin-top: 4px;
+    margin-top: 6px;
 }
 /* A side-title multiline editor following a compound horizontal header is
  * bottom-aligned inside the next reference row. Move only its painted control: the
