@@ -1,56 +1,56 @@
 {
  "forms": {
   "ГруппаКнопок": {
-   "structure": 129,
-   "text": 607
+   "structure": 111,
+   "text": 625
   },
   "Группы": {
-   "structure": 1295,
-   "text": 1688
+   "structure": 523,
+   "text": 2460
   },
   "Заголовок": {
-   "structure": 1656,
-   "text": 319
+   "structure": 0,
+   "text": 1975
   },
   "Картинки": {
-   "structure": 0,
-   "text": 531
+   "structure": 38,
+   "text": 493
   },
   "Кнопки": {
-   "structure": 575,
-   "text": 675
+   "structure": 11,
+   "text": 1239
   },
   "Колонки": {
-   "structure": 2645,
-   "text": 1161
+   "structure": 391,
+   "text": 3415
   },
   "КоманднаяПанель": {
-   "structure": 654,
-   "text": 1073
+   "structure": 383,
+   "text": 1344
   },
   "Меню": {
-   "structure": 241,
-   "text": 930
+   "structure": 237,
+   "text": 934
   },
   "Надписи": {
-   "structure": 1660,
-   "text": 132
+   "structure": 7,
+   "text": 1785
   },
   "Переключатели": {
-   "structure": 54,
-   "text": 1762
+   "structure": 198,
+   "text": 1618
   },
   "ПоляВвода": {
-   "structure": 366,
-   "text": 1167
+   "structure": 563,
+   "text": 970
   },
   "Страницы": {
-   "structure": 459,
-   "text": 843
+   "structure": 178,
+   "text": 841
   },
   "Таблица": {
-   "structure": 2603,
-   "text": 806
+   "structure": 389,
+   "text": 3020
   }
  }
 }

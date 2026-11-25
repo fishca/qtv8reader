@@ -6,10 +6,12 @@
 1. модель собирается командой ``v8reader_cli form-model`` из фикстурного .cf;
 2. страница рендерера снимается headless-Chrome ровно в размере эталона;
 3. считается расхождение попиксельно (порог на канал, как в замерах формы
-   «Авансового отчёта»), пиксели делятся на **текстовые** (край глифа) и
-   **структурные** (рамка, линия, заливка, значок) по мелким связным
-   компонентам «чернил» эталона;
-4. складывается пара «эталон / наш снимок» и тепловая карта, пишется
+   «Авансового отчёта»), пиксели делятся на **текстовые** и **структурные**:
+   текстовые — попавшие в прямоугольники текста живого DOM рендерера, взятые с
+   запасом ±1 px (платформа и Chromium расходятся субпиксельными сдвигами и
+   ClearType-бахромой), остальные — рамки, линии, заливки и значки;
+4. складывается пара «эталон / наш снимок», тепловая карта и карта разметки
+   ``split.png`` (синее — текст, красное — структура), пишется
    ``result.json``, общий отчёт — ``out/control-report.md``.
 
 Запуск::
@@ -30,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -42,6 +45,7 @@ from PIL import Image
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 import form_view_measure as measure  # noqa: E402
+import form_view_probe as probe  # noqa: E402
 
 FIXTURE = os.path.join(REPO, "tests", "fixtures", "controlbase")
 REFS = os.path.join(FIXTURE, "refs")
@@ -82,11 +86,14 @@ def ensure_server(url: str, port: int) -> subprocess.Popen | None:
     raise SystemExit("не удалось поднять локальный сервер " + url)
 
 
-def render_form(form: str, width: int, height: int, url: str) -> str:
+def render_form(form: str, width: int, height: int, url: str) -> tuple:
     out_dir = os.path.join(OUT, form)
     os.makedirs(out_dir, exist_ok=True)
     model_path = os.path.join(PAGE_ROOT, "model.json")
     os.makedirs(PAGE_ROOT, exist_ok=True)
+    # Раздачу держим в актуальном виде при каждом снятии: иначе замер идёт по
+    # копии ресурсов от прошлого прогона, и правка в CSS «не видна».
+    measure.sync_resources(PAGE_ROOT)
     command = [measure.CLI, "form-model", CF, OBJECT, "--form", form,
                "-o", model_path]
     result = subprocess.run(command, capture_output=True, text=True,
@@ -102,61 +109,79 @@ def render_form(form: str, width: int, height: int, url: str) -> str:
     args.height = height
     ours = os.path.join(out_dir, "ours.png")
     measure.shoot(args, ours)
-    return ours
+    return ours, model_path
 
 
-def ink_components(image) -> np.ndarray:
-    """Маска мелких связных компонент «чернил» — кандидатов в глифы."""
-    array = np.asarray(image.convert("RGB"), dtype=np.int16)
-    spread = array.max(axis=2) - array.min(axis=2)
-    dark = array.max(axis=2) < 235
-    ink = dark | (spread > 24)
-    height, width = ink.shape
-    seen = np.zeros_like(ink, dtype=bool)
-    text = np.zeros_like(ink, dtype=bool)
-    for y in range(height):
-        for x in range(width):
-            if not ink[y, x] or seen[y, x]:
-                continue
-            stack = [(y, x)]
-            seen[y, x] = True
-            pixels = []
-            while stack:
-                cy, cx = stack.pop()
-                pixels.append((cy, cx))
-                for dy in (-1, 0, 1):
-                    for dx in (-1, 0, 1):
-                        ny, nx = cy + dy, cx + dx
-                        if 0 <= ny < height and 0 <= nx < width and ink[ny, nx] \
-                                and not seen[ny, nx]:
-                            seen[ny, nx] = True
-                            stack.append((ny, nx))
-            ys = [p[0] for p in pixels]
-            xs = [p[1] for p in pixels]
-            box_h = max(ys) - min(ys) + 1
-            box_w = max(xs) - min(xs) + 1
-            if len(pixels) <= 420 and box_h <= 24 and box_w <= 60:
-                for py, px in pixels:
-                    text[py, px] = True
-    return text
+TEXT_SNIPPET = r"""
+(function () {
+    var rects = [];
+    function push(rect) {
+        if (rect && rect.width > 0.5 && rect.height > 0.5) {
+            rects.push([rect.left, rect.top, rect.width, rect.height]);
+        }
+    }
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+        if (!node.nodeValue || !node.nodeValue.replace(/\s+/g, '')) continue;
+        var range = document.createRange();
+        range.selectNodeContents(node);
+        var list = range.getClientRects();
+        for (var i = 0; i < list.length; i++) push(list[i]);
+    }
+    /* Значение поля и подсказка-плейсхолдер — не текстовые узлы: их рисует сам
+     * контрол, поэтому зону текста берём по внутренней рамке без рамки и
+     * горизонтальных отступов. */
+    var fields = document.querySelectorAll('input, textarea');
+    for (var j = 0; j < fields.length; j++) {
+        var el = fields[j];
+        var type = (el.getAttribute('type') || 'text').toLowerCase();
+        if (el.tagName.toLowerCase() === 'input'
+                && (type === 'checkbox' || type === 'radio'
+                    || type === 'button' || type === 'submit')) continue;
+        if (!el.value && !el.placeholder) continue;
+        var style = document.defaultView.getComputedStyle(el);
+        var left = parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+        var right = parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth);
+        var box = el.getBoundingClientRect();
+        push({left: box.left + left, top: box.top,
+              width: box.width - left - right, height: box.height});
+    }
+    return rects;
+})()
+"""
 
 
-def dilate(mask: np.ndarray, radius: int = 1) -> np.ndarray:
-    result = mask.copy()
-    for dy in range(-radius, radius + 1):
-        for dx in range(-radius, radius + 1):
-            shifted = np.zeros_like(mask)
-            height, width = mask.shape
-            ys = slice(max(0, dy), height + min(0, dy))
-            xs = slice(max(0, dx), width + min(0, dx))
-            yd = slice(max(0, -dy), height + min(0, -dy))
-            xd = slice(max(0, -dx), width + min(0, -dx))
-            shifted[yd, xd] = mask[ys, xs]
-            result |= shifted
-    return result
+def collect_text_rects(model_path: str, width: int, height: int, url: str) -> list:
+    """Прямоугольники текста в координатах кадра — из живого DOM рендерера.
+
+    Связные компоненты «чернил» эталона для этого не годятся: ClearType-бахрома
+    склеивает соседние глифы в одно слово (компонент шириной 118 px при пределе
+    60 не проходил фильтр), и расхождение растеризации целиком попадало в
+    «структуру». Прямоугольник текстового узла — то, что мы и хотим исключить:
+    платформа и Chromium всегда расходятся субпиксельными сдвигами и цветными
+    краями глифов.
+    """
+    probe.prepare(model_path)
+    probe.write_frame(width, height, ".fp-item", TEXT_SNIPPET)
+    page = "%s/_probe_geo.html?t=%d" % (url.rstrip("/"), int(time.time()))
+    return probe.extract(probe.dump_dom(page))
 
 
-def diff_images(ref_path: str, ours_path: str) -> dict:
+def text_zone(shape, rects: list, pad: int = 1) -> np.ndarray:
+    """Маска зон текста; ``pad`` — запас на субпиксельный сдвиг глифов."""
+    zone = np.zeros(shape, dtype=bool)
+    height, width = shape
+    for left, top, rect_w, rect_h in rects:
+        x0 = max(0, int(math.floor(left)) - pad)
+        y0 = max(0, int(math.floor(top)) - pad)
+        x1 = min(width, int(math.ceil(left + rect_w)) + pad)
+        y1 = min(height, int(math.ceil(top + rect_h)) + pad)
+        zone[y0:y1, x0:x1] = True
+    return zone
+
+
+def diff_images(ref_path: str, ours_path: str, rects: list) -> dict:
     ref_image = Image.open(ref_path).convert("RGB")
     ours_image = Image.open(ours_path).convert("RGB")
     if ref_image.size != ours_image.size:
@@ -167,8 +192,8 @@ def diff_images(ref_path: str, ours_path: str) -> dict:
     mask = delta > THRESHOLD
     total = int(mask.sum())
     pixels = int(mask.size)
-    text_candidates = dilate(ink_components(ref_image))
-    text = int((mask & text_candidates).sum())
+    zone = text_zone(mask.shape, rects)
+    text = int((mask & zone).sum())
     structure = total - text
     bands = []
     rows = np.nonzero(mask.any(axis=1))[0]
@@ -183,11 +208,11 @@ def diff_images(ref_path: str, ours_path: str) -> dict:
         "percent": round(100.0 * total / pixels, 2),
         "bands": [{"from": a, "to": b, "pixels": int(mask[a:b + 1].sum())}
                   for a, b in bands],
-        "mask": mask,
+        "mask": mask, "zone": zone,
     }
 
 
-def write_images(form: str, ref_path: str, ours_path: str, mask) -> None:
+def write_images(form: str, ref_path: str, ours_path: str, mask, zone) -> None:
     out_dir = os.path.join(OUT, form)
     ref = Image.open(ref_path).convert("RGB")
     ours = Image.open(ours_path).convert("RGB")
@@ -200,6 +225,11 @@ def write_images(form: str, ref_path: str, ours_path: str, mask) -> None:
     heat[:, :] = (255, 255, 255)
     heat[mask] = (220, 30, 30)
     Image.fromarray(heat).save(os.path.join(out_dir, "diff.png"))
+    split = np.zeros((height, width, 3), dtype=np.uint8)
+    split[:, :] = (255, 255, 255)
+    split[mask & zone] = (150, 180, 235)
+    split[mask & ~zone] = (220, 30, 30)
+    Image.fromarray(split).save(os.path.join(out_dir, "split.png"))
 
 
 def process(form: str, url: str) -> dict:
@@ -208,13 +238,16 @@ def process(form: str, url: str) -> dict:
     ref_path = os.path.join(REFS, form + ".png")
     if not entry or not os.path.isfile(ref_path):
         return {"form": form, "error": "нет эталона"}
-    result = render_form(form, entry["width"], entry["height"], url)
-    data = diff_images(ref_path, result)
+    result, model_path = render_form(form, entry["width"], entry["height"], url)
+    rects = collect_text_rects(model_path, entry["width"], entry["height"], url)
+    data = diff_images(ref_path, result, rects)
     mask = data.pop("mask")
-    write_images(form, ref_path, result, mask)
+    zone = data.pop("zone")
+    write_images(form, ref_path, result, mask, zone)
     data["form"] = form
     data["ours"] = os.path.relpath(result, REPO)
     data["ref"] = os.path.relpath(ref_path, REPO)
+    data["text_rects"] = [[round(v) for v in rect] for rect in rects]
     with open(os.path.join(OUT, form, "result.json"), "w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=1)
         handle.write("\n")
@@ -262,8 +295,9 @@ def write_report(results: list, baseline: dict, update: bool) -> list:
     """Пишет отчёт; возвращает список превышений бюджета (пусто — всё в норме)."""
     lines = ["# Сверка контролов с конфигуратором", "",
              "Пиксельное расхождение эталона и нашего рендера. «Структура» — "
-             "рамки, линии, заливки и значки, «текст» — края глифов "
-             "(растеризаторы платформы и Chromium расходятся принципиально). "
+             "рамки, линии, заливки и значки, «текст» — пиксели в зонах текста "
+             "живого DOM (±1 px: платформа и Chromium расходятся субпиксельными "
+             "сдвигами и ClearType-бахромой). "
              "Бюджет формы — `tests/fixtures/controlbase/baseline.json`: "
              "`structure`/`text`, выше бюджета — регрессия.",
              "",
