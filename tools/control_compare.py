@@ -38,6 +38,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import uuid
 
 import numpy as np
 from PIL import Image
@@ -89,11 +90,21 @@ def ensure_server(url: str, port: int) -> subprocess.Popen | None:
 def render_form(form: str, width: int, height: int, url: str) -> tuple:
     out_dir = os.path.join(OUT, form)
     os.makedirs(out_dir, exist_ok=True)
-    model_path = os.path.join(PAGE_ROOT, "model.json")
     os.makedirs(PAGE_ROOT, exist_ok=True)
     # Раздачу держим в актуальном виде при каждом снятии: иначе замер идёт по
     # копии ресурсов от прошлого прогона, и правка в CSS «не видна».
     measure.sync_resources(PAGE_ROOT)
+    class Args:
+        pass
+    args = Args()
+    args.url = url
+    args.width = width
+    args.height = height
+    # Своё имя модели на каждую форму: страница читает ``?model=``, поэтому два
+    # снятия подряд не делят один файл (он успевал прочитаться недописанным, и
+    # снимок выходил с расхождением по всему полотну).
+    args.model = "model-%s.json" % uuid.uuid4().hex[:12]
+    model_path = os.path.join(PAGE_ROOT, args.model)
     command = [measure.CLI, "form-model", CF, OBJECT, "--form", form,
                "-o", model_path]
     result = subprocess.run(command, capture_output=True, text=True,
@@ -101,12 +112,6 @@ def render_form(form: str, width: int, height: int, url: str) -> tuple:
                             env=measure.qt_env())
     if result.returncode != 0:
         raise SystemExit("form-model: " + (result.stdout + result.stderr).strip())
-    class Args:
-        pass
-    args = Args()
-    args.url = url
-    args.width = width
-    args.height = height
     ours = os.path.join(out_dir, "ours.png")
     measure.shoot(args, ours)
     return ours, model_path
@@ -239,7 +244,11 @@ def process(form: str, url: str) -> dict:
     if not entry or not os.path.isfile(ref_path):
         return {"form": form, "error": "нет эталона"}
     result, model_path = render_form(form, entry["width"], entry["height"], url)
-    rects = collect_text_rects(model_path, entry["width"], entry["height"], url)
+    try:
+        rects = collect_text_rects(model_path, entry["width"], entry["height"], url)
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
     data = diff_images(ref_path, result, rects)
     mask = data.pop("mask")
     zone = data.pop("zone")

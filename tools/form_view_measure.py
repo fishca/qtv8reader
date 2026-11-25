@@ -37,7 +37,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
+import uuid
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = os.path.join(REPO, "out", "mingw", "v8reader_cli.exe")
@@ -68,25 +70,66 @@ def qt_env() -> dict:
 
 
 def model_command(args) -> list:
+    """Команда сборки модели. Имя файла — ``args.model``, если оно задано.
+
+    Имя по умолчанию (``model.json``) годится для одиночного снятия. Замер по
+    всем формам и любая параллельная съёмка пишут модель под своим именем:
+    иначе два снимка делят один файл, и страница успевает прочитать его
+    недописанным.
+    """
+    name = getattr(args, "model", "") or "model.json"
     return [CLI, "form-model", args.cf, args.object, "--form", args.form,
-            "-o", os.path.join(args.root, "model.json")]
+            "-o", os.path.join(args.root, name)]
 
 
-def sync_resources(root: str) -> int:
+def _copy_if_changed(source: str, target: str) -> bool:
+    """Копирует файл, только если содержимое отличается. True — копировали.
+
+    Перезапись поверх уже лежащего файла — не бесплатная операция: Chrome
+    читает ``std-pictures/`` и ``model.json`` параллельно с копированием, а
+    ``shutil.copy2`` сначала обрезает файл и лишь потом пишет в него. Читатель,
+    попавший в этот промежуток, получает недописанный файл, и снимок показывает
+    подставной значок вместо платформенной картинки (кнопка «Переместить вниз»
+    в «АвансовомОтчёте» уходила в серый контур). Поэтому копия делается только
+    при реальном расхождении, а не «на всякий случай».
+    """
+    try:
+        if os.path.getsize(source) == os.path.getsize(target):
+            with open(source, "rb") as left, open(target, "rb") as right:
+                if left.read() == right.read():
+                    return False
+    except OSError:
+        pass
+    shutil.copy2(source, target)
+    return True
+
+
+def sync_resources(root: str) -> tuple:
     """Копирует ресурсы рендерера в каталог раздачи.
 
     Снимок идёт по файлам из ``--root``, а правки делаются в
     ``resources/formpreview``. Без этой копии можно смотреть на старый CSS или
     старый скрипт и «не видеть» только что сделанное исправление.
+
+    Возвращает пару ``(скопировано, уже совпадало)``: второе число —
+    насколько каталог раздачи уже соответствовал исходникам.
     """
     if not os.path.isdir(FORM_RESOURCES):
-        return 0
+        return (0, 0)
     copied = 0
+    unchanged = 0
+
+    def place(source: str, target: str) -> None:
+        nonlocal copied, unchanged
+        if _copy_if_changed(source, target):
+            copied += 1
+        else:
+            unchanged += 1
+
     for name in ("model.html", "icons.svg", "LICENSE-BslEdit-MIT.txt"):
         source = os.path.join(FORM_RESOURCES, name)
         if os.path.isfile(source):
-            shutil.copy2(source, os.path.join(root, name))
-            copied += 1
+            place(source, os.path.join(root, name))
     for folder, suffixes in (("css", (".css",)), ("js", (".js",)), ("std-pictures", (".png", ".svg"))):
         source_dir = os.path.join(FORM_RESOURCES, folder)
         if not os.path.isdir(source_dir):
@@ -96,13 +139,11 @@ def sync_resources(root: str) -> int:
         for name in sorted(os.listdir(source_dir)):
             source = os.path.join(source_dir, name)
             if os.path.isfile(source) and name.lower().endswith(suffixes):
-                shutil.copy2(source, os.path.join(target_dir, name))
-                copied += 1
+                place(source, os.path.join(target_dir, name))
     for name in sorted(os.listdir(FORM_RESOURCES)):
         if name.startswith("platform-") and name.lower().endswith(".png"):
-            shutil.copy2(os.path.join(FORM_RESOURCES, name), os.path.join(root, name))
-            copied += 1
-    return copied
+            place(os.path.join(FORM_RESOURCES, name), os.path.join(root, name))
+    return (copied, unchanged)
 
 
 def shoot(args, out_path: str) -> None:
@@ -126,15 +167,19 @@ def shoot(args, out_path: str) -> None:
     root = os.path.abspath(getattr(args, "root", None)
                            or os.path.join(REPO, "out", "preview"))
     os.makedirs(root, exist_ok=True)
-    frame = os.path.join(root, "_shot.html")
+    frame = os.path.join(root, "_shot-%s.html" % uuid.uuid4().hex[:12])
     width, height = int(args.width), int(args.height)
+    query = "model.html?t=%s" % stamp
+    model_name = getattr(args, "model", "") or ""
+    if model_name:
+        query += "&model=" + urllib.parse.quote(model_name)
     with open(frame, "w", encoding="utf-8") as handle:
         handle.write(
             "<!doctype html>\n<html lang=\"ru\"><head><meta charset=\"utf-8\">\n"
             "<style>html,body{margin:0;padding:0;overflow:hidden;background:#fff}\n"
             "iframe{border:0;display:block;width:%dpx;height:%dpx}</style></head>\n"
-            "<body><iframe src=\"model.html?t=%s\"></iframe></body></html>\n"
-            % (width, height, stamp))
+            "<body><iframe src=\"%s\"></iframe></body></html>\n"
+            % (width, height, query))
     raw = out_path + ".raw.png"
     if os.path.exists(raw):
         os.remove(raw)
@@ -160,7 +205,7 @@ def shoot(args, out_path: str) -> None:
              "--user-data-dir=" + profile,
              "--window-size=%d,%d" % (max(width, 900), max(height, 700)),
              "--screenshot=" + raw,
-             "%s/_shot.html?t=%s" % (args.url, stamp)],
+             "%s/%s?t=%s" % (args.url, os.path.basename(frame), stamp)],
             capture_output=True, env=qt_env(), timeout=180, check=False,
         )
         if not os.path.exists(raw):
@@ -173,6 +218,8 @@ def shoot(args, out_path: str) -> None:
     finally:
         if os.path.exists(raw):
             os.remove(raw)
+        if os.path.exists(frame):
+            os.remove(frame)
         shutil.rmtree(profile, ignore_errors=True)
     if not os.path.exists(out_path):
         raise SystemExit("снимок не создан: " + out_path)
@@ -185,15 +232,22 @@ def command_render(args) -> None:
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     os.makedirs(args.root, exist_ok=True)
     sync_resources(args.root)
-    result = subprocess.run(model_command(args), capture_output=True, text=True,
-                            encoding="utf-8", errors="replace", env=qt_env())
-    if result.returncode != 0:
-        raise SystemExit("form-model: " + (result.stdout + result.stderr).strip())
+    # Своя модель на каждый снимок: параллельные снятия не должны делить файл.
+    args.model = "model-%s.json" % uuid.uuid4().hex[:12]
+    model_path = os.path.join(args.root, args.model)
     try:
-        urllib.request.urlopen(args.url + "/model.json", timeout=5).read()
-    except Exception as error:  # noqa: BLE001
-        raise SystemExit("сервер не отвечает (%s): %s" % (args.url, error))
-    shoot(args, out_path)
+        result = subprocess.run(model_command(args), capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", env=qt_env())
+        if result.returncode != 0:
+            raise SystemExit("form-model: " + (result.stdout + result.stderr).strip())
+        try:
+            urllib.request.urlopen(args.url + "/" + args.model, timeout=5).read()
+        except Exception as error:  # noqa: BLE001
+            raise SystemExit("сервер не отвечает (%s): %s" % (args.url, error))
+        shoot(args, out_path)
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
     size = image_size(out_path)
     print("%s %dx%d" % (os.path.basename(out_path), size[0], size[1]))
 
@@ -252,8 +306,8 @@ def command_pair(args) -> None:
 
 
 def command_sync(args) -> None:
-    count = sync_resources(os.path.abspath(args.root))
-    print("разложено файлов: %d" % count)
+    copied, unchanged = sync_resources(os.path.abspath(args.root))
+    print("разложено файлов: %d, уже совпадало: %d" % (copied, unchanged))
 
 
 def command_serve(args) -> None:
@@ -272,7 +326,16 @@ def command_serve(args) -> None:
             pass
 
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("127.0.0.1", args.port), Handler) as server:
+    # Раздача многопоточная: каждый снимок — отдельный Chrome с шестью
+    # соединениями на узел, а замер по всем формам может идти несколькими
+    # процессами сразу. На однопоточном TCPServer запросы встают в очередь, и
+    # отдельная картинка успевает не дождаться ответа: страница показывает
+    # подставной значок вместо платформенной картинки, и расхождение с
+    # эталоном гуляет на несколько десятков пикселей.
+    class Server(http.server.ThreadingHTTPServer):
+        daemon_threads = True
+
+    with Server(("127.0.0.1", args.port), Handler) as server:
         print("раздаю %s на http://127.0.0.1:%d" % (root, args.port))
         server.serve_forever()
 
