@@ -2638,6 +2638,16 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
 .fp-children-horizontal > .fp-item[data-tag="CommandBar"]:not(.fp-bar-item) {
     border-left-width: 0; border-right-width: 0;
 }
+/* A root-level Table starts on the canvas top: its own command bar is the
+ * first 27 px band («Таблица»: the bar frame is on rows 60…86 from x=10). The
+ * transparent item shell put the toolbar 2 px down and 1 px in on both
+ * sides, and the grid frame followed it. */
+.fp-body > .fp-item[data-tag="Table"] {
+    padding-top: 0; padding-bottom: 0;
+    padding-left: 0; padding-right: 0;
+    border-top-width: 0; border-bottom-width: 0;
+    border-left-width: 0; border-right-width: 0;
+}
 /* A root-level authored CommandBar is one native 27 px band, just like the
  * automatic one: «КоманднаяПанель» paints its button on rows 60…86 starting
  * at x=10. The item shell (1 px border + 1 px padding on every side) and the

@@ -1397,6 +1397,23 @@ QString mainAttributeName(const FormDocument &document)
     return QString();
 }
 
+// Команды основной таблицы уходят в панель формы, только когда основная
+// таблица — динамический список (форма списка документа, как «АвансовыйОтчёт»).
+// У таблицы значений этого не происходит: обработка «Контролы» держит
+// «Добавить», стрелки перемещения, строку поиска и «Ещё» на панели самой
+// таблицы, а панель формы остаётся с одним «Ещё» — эталон «Таблица» 443×529.
+bool mainAttributeIsDynamicList(const FormDocument &document)
+{
+    const QString mainName = mainAttributeName(document);
+    if (mainName.isEmpty())
+        return false;
+    for (const FormAttribute &attribute : document.attributes) {
+        if (attribute.name.compare(mainName, Qt::CaseInsensitive) == 0)
+            return attribute.dynamicList;
+    }
+    return false;
+}
+
 QJsonObject makeTable(const FormItem &item, const FormDocument &document)
 {
     QJsonObject properties;
@@ -1593,7 +1610,8 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
             tableName = segments.last();
     }
     const bool mainList = !tableName.isEmpty()
-        && tableName.compare(mainAttributeName(document), Qt::CaseInsensitive) == 0;
+        && tableName.compare(mainAttributeName(document), Qt::CaseInsensitive) == 0
+        && mainAttributeIsDynamicList(document);
     for (const FormItem &child : item.children) {
         if (!isRenderable(child))
             continue;

@@ -11988,12 +11988,27 @@ function createControl(item, tag, ctx, parentMeta) {
             }
             renderPreview(barKids, toolbar, ctx, barSrc);
             /* A non-autofilled own bar never gets the automatic search; an authored
-             * SearchStringAddition already rendered in it is the only one. */
+             * SearchStringAddition already rendered in it is the only one. The
+             * model carries that addition only when the form moves it into the
+             * bar, so a table with an ordinary visible bar gets the platform's
+             * own search field here: «Таблица» paints «Поиск (Ctrl+F)» with its
+             * clear cross between the move arrows and «Еще». */
             var ownBarAutofill = !(item.autoCommandBar && isFalse(prop(item.autoCommandBar, ['Autofill'])));
-            if (item.searchStringAddition && !additionHidden(item, 'SearchStringLocation')
+            var barSearch = item.searchStringAddition;
+            if (!barSearch && ownBarAutofill && !additionHidden(item, 'SearchStringLocation')
+                && !tableSearchHoistedToForm(item, ctx && ctx.model)
+                && !tableSearchWithoutBarHoistedToForm(item, ctx && ctx.model)) {
+                barSearch = {
+                    tag: 'SearchStringAddition',
+                    name: String(item.name || '') + 'СтрокаПоиска',
+                    id: '',
+                    properties: {}
+                };
+            }
+            if (barSearch && !additionHidden(item, 'SearchStringLocation')
                 && ownBarAutofill && !toolbar.querySelector('.fp-search-item')
                 && !tableSearchHoistedToForm(item, ctx && ctx.model)) {
-                var sItem = item.searchStringAddition;
+                var sItem = barSearch;
                 var sdiv = el('div', 'fp-item fp-control fp-bar-item fp-search-item');
                 sdiv.dataset.id = itemKey(sItem);
                 sdiv._fpItem = sItem;
