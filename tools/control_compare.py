@@ -17,6 +17,12 @@
     python tools/form_view_measure.py serve --root out/preview --port 8765  # один раз
     python tools/control_compare.py --all
     python tools/control_compare.py --form ПоляВвода --update-baseline
+    python tools/control_compare.py --all --check        # 1 при выходе за бюджет
+
+Бюджет формы лежит в ``tests/fixtures/controlbase/baseline.json``: пара
+``structure``/``text``. Структура — то, что мы чиним (рамки, линии, заливки);
+текст — бюджет растеризации, его платформа и Chromium не сойдутся никогда.
+``--check`` нужен, чтобы круг правок не мог незаметно откатить уже сделанное.
 """
 
 from __future__ import annotations
@@ -222,32 +228,72 @@ def load_baseline() -> dict:
     return {"forms": {}}
 
 
-def write_report(results: list, baseline: dict, update: bool) -> None:
+def baseline_of(baseline: dict, form: str) -> dict:
+    """Базовый уровень формы.
+
+    Старый формат хранил одно число — бюджет текстовых расхождений; текущий
+    пишет пару ``text``/``structure``. Читаем оба, чтобы база, записанная
+    прошлой версией скрипта, не превращалась в «нет базы».
+    """
+    entry = (baseline.get("forms") or {}).get(form)
+    if entry is None:
+        return {}
+    if isinstance(entry, (int, float)):
+        return {"text": int(entry)}
+    if isinstance(entry, dict):
+        return entry
+    return {}
+
+
+def format_baseline(entry: dict) -> str:
+    text = entry.get("text")
+    structure = entry.get("structure")
+    if text is None and structure is None:
+        return "—"
+    parts = []
+    if structure is not None:
+        parts.append("с %d" % structure)
+    if text is not None:
+        parts.append("т %d" % text)
+    return "/".join(parts)
+
+
+def write_report(results: list, baseline: dict, update: bool) -> list:
+    """Пишет отчёт; возвращает список превышений бюджета (пусто — всё в норме)."""
     lines = ["# Сверка контролов с конфигуратором", "",
              "Пиксельное расхождение эталона и нашего рендера. «Структура» — "
              "рамки, линии, заливки и значки, «текст» — края глифов "
-             "(растеризаторы платформы и Chromium расходятся принципиально).",
+             "(растеризаторы платформы и Chromium расходятся принципиально). "
+             "Бюджет формы — `tests/fixtures/controlbase/baseline.json`: "
+             "`structure`/`text`, выше бюджета — регрессия.",
              "",
-             "| Форма | Полотно | Всего px | % | Структура | Текст | Базовый текст | Статус |",
+             "| Форма | Полотно | Всего px | % | Структура | Текст | Бюджет | Статус |",
              "|---|---|---|---|---|---|---|---|"]
     total_structure = 0
+    over_budget = []
     for result in results:
         if "error" in result:
             lines.append("| %s | — | — | — | — | — | — | %s |"
                          % (result["form"], result["error"]))
             continue
         form = result["form"]
-        base_text = baseline.get("forms", {}).get(form)
+        entry = baseline_of(baseline, form)
         if update:
-            baseline.setdefault("forms", {})[form] = result["text"]
-            base_text = result["text"]
+            entry = {"text": result["text"], "structure": result["structure"]}
+            baseline.setdefault("forms", {})[form] = dict(entry)
         total_structure += result["structure"]
-        allowed = base_text is None or result["text"] <= base_text
-        status = "ок" if result["structure"] == 0 and allowed else "расхождение"
+        problems = []
+        if entry.get("structure") is not None and result["structure"] > entry["structure"]:
+            problems.append("структура +%d" % (result["structure"] - entry["structure"]))
+        if entry.get("text") is not None and result["text"] > entry["text"]:
+            problems.append("текст +%d" % (result["text"] - entry["text"]))
+        if problems:
+            over_budget.append((form, problems))
+        status = ", ".join(problems) if problems else "ок"
         lines.append("| %s | %dx%d | %d | %.2f | %d | %d | %s | %s |"
                      % (form, result["width"], result["height"], result["total"],
                         result["percent"], result["structure"], result["text"],
-                        "—" if base_text is None else str(base_text), status))
+                        format_baseline(entry), status))
     lines += ["", "Структурных расхождений: %d. Эталоны — "
                   "`tests/fixtures/controlbase/refs`, снимки — `out/control`."
                   % total_structure, ""]
@@ -259,6 +305,7 @@ def write_report(results: list, baseline: dict, update: bool) -> None:
             json.dump(baseline, handle, ensure_ascii=False, indent=1, sort_keys=True)
             handle.write("\n")
     print("отчёт: out/control/control-report.md")
+    return over_budget
 
 
 def all_forms() -> list:
@@ -272,6 +319,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--url", default="http://127.0.0.1:8765")
     parser.add_argument("--update-baseline", action="store_true")
+    parser.add_argument("--check", action="store_true",
+                        help="выйти с кодом 1, если форма вышла за бюджет")
     return parser
 
 
@@ -289,7 +338,7 @@ def main() -> int:
         if server:
             server.kill()
     baseline = load_baseline()
-    write_report(results, baseline, args.update_baseline)
+    over_budget = write_report(results, baseline, args.update_baseline)
     for result in results:
         if "error" in result:
             print("  %-24s %s" % (result["form"], result["error"]))
@@ -297,6 +346,13 @@ def main() -> int:
             print("  %-24s %d px (%.2f%%): структура %d, текст %d"
                   % (result["form"], result["total"], result["percent"],
                      result["structure"], result["text"]))
+    if args.check and over_budget:
+        print("")
+        for form, problems in over_budget:
+            print("  ЗА БЮДЖЕТОМ %-20s %s" % (form, ", ".join(problems)))
+        print("бюджет: tests/fixtures/controlbase/baseline.json"
+              " (--update-baseline — принять новый уровень)")
+        return 1
     return 0
 
 
