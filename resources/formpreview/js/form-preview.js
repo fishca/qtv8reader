@@ -6374,6 +6374,17 @@ function wantsHStretch(item, tag, parentMeta, ctx) {
          * In multi-field totals Width remains the compact column width. */
         if (hasWidth && !hasMaxWidth && parentMeta.singleInputChild
             && !isFalse(prop(item, ['AutoMaxWidth']))) return true;
+        /* [W-VERT-FILL] A textual value keeps consuming its vertical group's
+         * lane even with an authored Width, so a wider sibling group widens
+         * the editor instead of leaving a gap: «Группы» shows Строка(20) at
+         * 306px inside a 355px group because the horizontal Число/Дата group
+         * below is that wide. Numbers and dates keep their authored Width
+         * (ПоляВвода: Число(15) and Дата(15) stay 182 next to a 259px
+         * Строка), and a Page lays its children out at their own sizes
+         * (Страницы: Строка(20) stays 208 inside a 283px page). */
+        if (hasWidth && !hasMaxWidth && !isFalse(prop(item, ['AutoMaxWidth']))
+            && parentMeta.tag !== 'Page'
+            && /^(?:text|ref|list)$/.test(fieldKind(item, ctx))) return true;
     }
     /* Format 2.21: a fixed-width vertical column (authored Width with
      * HorizontalStretch=false) is the value lane of its fields. A field with
@@ -8071,8 +8082,33 @@ function applyItemMetrics(div, item, tag, parentMeta, ctx, parentItem) {
                         div.style.minWidth = '0';
                     }
                     inputWrap.style.width = w + 'px';
-                    inputWrap.style.flex = isInterface85Context(ctx) && widthChars > 0
-                        ? '0 1 ' + w + 'px' : '1 1 ' + w + 'px';
+                    /* [W-VERT-FILL] In a horizontal header a stretchable Width
+                     * may only shrink, so the row keeps every caption on one
+                     * line. A vertical group hands the whole value lane to its
+                     * textual field instead: Width is the preferred size and
+                     * the editor grows into the leftover (306px for Width 20).
+                     * The basis is the painted Width band, not the narrower
+                     * presentation slot: a lane that just fits keeps the
+                     * authored 260px editor instead of shaving a pixel off it. */
+                    var verticalLaneGrow = parentMeta && parentMeta.orientation === 'vertical'
+                        && parentMeta.tag !== 'Page' && widthChars > 0;
+                    if (verticalLaneGrow) {
+                        var laneBasis = authoredEditorPaintWidth(widthChars, tag,
+                            inputWrap.querySelectorAll('.fp-input-btn').length);
+                        if (laneBasis > 0) {
+                            inputWrap.style.width = laneBasis + 'px';
+                            /* The floor keeps the rasterized right border on
+                             * the platform's pixel when the caption track
+                             * rounds half a pixel wider than 1C's GDI one. */
+                            inputWrap.style.minWidth = laneBasis + 'px';
+                            inputWrap.style.flex = '1 1 ' + laneBasis + 'px';
+                        } else {
+                            inputWrap.style.flex = '1 1 ' + w + 'px';
+                        }
+                    } else {
+                        inputWrap.style.flex = isInterface85Context(ctx) && widthChars > 0
+                            ? '0 1 ' + w + 'px' : '1 1 ' + w + 'px';
+                    }
                     if (!mw && !isFalse(prop(item, ['AutoMaxWidth'])))
                         inputWrap.style.maxWidth = Math.max(50 * CHAR_PX + 10,
                             widthChars > 0 && tag === 'InputField'
