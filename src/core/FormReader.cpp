@@ -2893,6 +2893,19 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
         }
     }
 
+    // Заголовок окна: девятое поле заголовка — «Автозаголовок» (0 — false,
+    // 1 — значение по умолчанию), десятое — собственный заголовок формы.
+    // Сверено на тестовой базе контролов: «Заголовок» (Title + AutoTitle
+    // false) даёт 0 и текст, «ПоляВвода» без свойств — 1 и пустую запись
+    // ["1","0"]. Конфигуратор показывает в полоске окна только Title, поэтому
+    // синонимы объекта и формы в заголовок не подставляются.
+    if (const V8TextNode *autoTitle = header->child(9)) {
+        if (autoTitle->isInteger())
+            document->autoTitleFlag = autoTitle->toInteger() != 0 ? 1 : 0;
+    }
+    if (const V8TextNode *title = header->child(10))
+        document->formTitle = localizedText(*title);
+
     const V8TextNode *module = root.child(2);
     if (module && module->isScalar())
         document->moduleText = module->scalar();

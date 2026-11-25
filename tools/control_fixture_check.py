@@ -46,6 +46,11 @@ def xml_properties(element) -> dict:
             text = (child.text or "").strip()
             if text:
                 result[tag] = text
+    # Платформа пишет кнопке <CommandName>0</CommandName>, когда команды нет:
+    # ноль — её внутренний «пустой» указатель, в модели такой кнопке нечего
+    # отдавать (ресурс команды равен нулю, а не имя команды «0»).
+    if result.get("CommandName") == "0":
+        del result["CommandName"]
     return result
 
 

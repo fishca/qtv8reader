@@ -1880,7 +1880,11 @@ QJsonObject buildCommandBarNode(const FormItem *bar, const FormDocument &documen
     json.insert(QStringLiteral("tag"), QStringLiteral("AutoCommandBar"));
     json.insert(QStringLiteral("name"),
                 bar && !bar->name.isEmpty() ? bar->name : defaultName);
-    json.insert(QStringLiteral("id"), QString());
+    // Идентификатор берётся у самой панели: у корневой он -1 (так его пишет
+    // платформа), и по этому признаку рендерер отличает панель формы от
+    // панели таблицы.
+    json.insert(QStringLiteral("id"),
+                bar ? QJsonValue(QString::number(bar->id)) : QJsonValue(QString()));
     json.insert(QStringLiteral("properties"), properties);
     json.insert(QStringLiteral("authoredProperties"), properties);
     json.insert(QStringLiteral("childItems"), buttons);
@@ -2238,15 +2242,16 @@ QByteArray formWebModelJson(const FormDocument &document)
     model.insert(QStringLiteral("tag"), QStringLiteral("Form"));
     model.insert(QStringLiteral("name"), document.name);
 
-    QString caption = document.ownerSynonym;
-    if (caption.isEmpty())
-        caption = document.synonym;
-    if (caption.isEmpty())
-        caption = document.name;
-
     QJsonObject properties;
-    properties.insert(QStringLiteral("Title"), caption);
-    properties.insert(QStringLiteral("AutoTitle"), QStringLiteral("false"));
+    // Заголовок окна — только собственный Title формы. У формы без него
+    // конфигуратор рисует пустую полоску, поэтому синоним объекта здесь не
+    // подставляется: иначе полоска расходится с эталоном на каждом кадре.
+    if (!document.formTitle.isEmpty())
+        properties.insert(QStringLiteral("Title"), document.formTitle);
+    // AutoTitle=false разрешает рендереру показать Title даже при скрытом
+    // заголовке формы; значение по умолчанию не пишется, как и в Form.xml.
+    if (document.autoTitleFlag == 0)
+        properties.insert(QStringLiteral("AutoTitle"), QStringLiteral("false"));
     // Положение командной панели формы. Рендерер ставит панель сверху, когда
     // свойство не задано, поэтому Auto не пишется — так же поступает и
     // платформа в Form.xml.

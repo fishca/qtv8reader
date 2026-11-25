@@ -1,14 +1,24 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <ConfigDumpInfo xmlns="http://v8.1c.ru/8.3/xcf/dumpinfo" xmlns:xen="http://v8.1c.ru/8.3/xcf/enums" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" format="Hierarchical" version="2.20">
 	<ConfigVersions>
-		<Metadata name="Configuration.КонтролыФорм" id="d93b54fa-0da7-5ead-a4e9-687e1461f88e" configVersion="02a7d1cc2855554bbf49707e7a72d9f400000000"/>
-		<Metadata name="DataProcessor.Контролы" id="e3489bca-d691-53a8-8feb-890730540f20" configVersion="2ee97ebe345e734b966690a2ecd602a300000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Группы" id="068cc523-9fd9-55fc-b97c-356b2d3813ff" configVersion="7723cc8055e9e949a8acb576d301186f00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Группы.Form" id="068cc523-9fd9-55fc-b97c-356b2d3813ff.0" configVersion="cbcd95655a804549a9ed16ed1acda64d00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Надписи" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d" configVersion="64d540f1c60df34e912257e1f73124f000000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Надписи.Form" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d.0" configVersion="dc26d5f83fa13e43bdda0936cfefca3600000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода" id="11d78109-2cd7-5aaf-b05d-f9c452583988" configVersion="68c7e124120a5e40859238438d9249ce00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода.Form" id="11d78109-2cd7-5aaf-b05d-f9c452583988.0" configVersion="0d59e75a13c6c14182e9ac5fccd40ad900000000"/>
-		<Metadata name="Language.Русский" id="f5e1844c-7bb5-4fd9-a707-574b0ceb600f" configVersion="1329f97c3102ec4bbe7889d550756f6100000000"/>
+		<Metadata name="Configuration.КонтролыФорм" id="d93b54fa-0da7-5ead-a4e9-687e1461f88e" configVersion="00d6fe2b7cee2347ba95e220f1e1e32c00000000"/>
+		<Metadata name="DataProcessor.Контролы" id="e3489bca-d691-53a8-8feb-890730540f20" configVersion="01c83fff11c91c428da9e1b54b9e7ecb00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Группы" id="068cc523-9fd9-55fc-b97c-356b2d3813ff" configVersion="e4e49b3e2a7ad44b951247a398c2c40700000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Группы.Form" id="068cc523-9fd9-55fc-b97c-356b2d3813ff.0" configVersion="77257687f3dbb04d9455aea13592ecbe00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Заголовок" id="8bf2ef56-0cbd-566a-b974-3ac26ee2c978" configVersion="dd0fb05f915a8d42a9c70a598007850d00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Заголовок.Form" id="8bf2ef56-0cbd-566a-b974-3ac26ee2c978.0" configVersion="65efbf923222f24793ba6af50a40ae4400000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Кнопки" id="de48f9f5-8f35-5e54-b2f5-235ea1906752" configVersion="581461275cafc940835bc039f73c75fd00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Кнопки.Form" id="de48f9f5-8f35-5e54-b2f5-235ea1906752.0" configVersion="3ea7a97dd932d74e9640c54f21d6b59b00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.КоманднаяПанель" id="bc4bdeae-919c-5927-9474-f2986d3b723f" configVersion="8d150f78a8e3e24c8d422fc1002e7e7b00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.КоманднаяПанель.Form" id="bc4bdeae-919c-5927-9474-f2986d3b723f.0" configVersion="6f90a94774246e40bd0c25efcb25171500000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Надписи" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d" configVersion="5b719e3d2006fb47a1eb957781f52e0a00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Надписи.Form" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d.0" configVersion="34c249307496554b84f961059116add700000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода" id="11d78109-2cd7-5aaf-b05d-f9c452583988" configVersion="4562c125e6e3e546b68670547be9124300000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода.Form" id="11d78109-2cd7-5aaf-b05d-f9c452583988.0" configVersion="fd02c54bfe33de48815faa7fd7e2b10900000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Страницы" id="1215d14b-6b57-5810-b19a-0eda991373dc" configVersion="f939ac016b134f47bf9b2b1cfa749c1300000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Страницы.Form" id="1215d14b-6b57-5810-b19a-0eda991373dc.0" configVersion="3caef56ddf841b468619c050317bb8ff00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Таблица" id="9ed4ce68-516f-5024-b66e-13480e6299a9" configVersion="fd522879c4f3a247a344a20aa3fad7fc00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Таблица.Form" id="9ed4ce68-516f-5024-b66e-13480e6299a9.0" configVersion="6802e39e75142d48b8db3e36346fb10c00000000"/>
+		<Metadata name="Language.Русский" id="f5e1844c-7bb5-4fd9-a707-574b0ceb600f" configVersion="39113be14bbf4942b4f74c3d2ed2ecd200000000"/>
 	</ConfigVersions>
 </ConfigDumpInfo>

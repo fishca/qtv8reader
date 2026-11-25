@@ -237,10 +237,25 @@ void TestForm::webModel()
              QStringLiteral("ФормаДокумента"));
 
     const QJsonObject properties = model.value(QStringLiteral("properties")).toObject();
-    QCOMPARE(properties.value(QStringLiteral("Title")).toString(),
-             QStringLiteral("Авансовый отчет"));
+    // Собственного заголовка у формы нет: полоска окна в конфигураторе пустая,
+    // поэтому синоним объекта в модель не попадает и Title не пишется вовсе.
+    QVERIFY(!properties.contains(QStringLiteral("Title")));
+    QVERIFY(!properties.contains(QStringLiteral("AutoTitle")));
     QCOMPARE(properties.value(QStringLiteral("UsePostingMode")).toString(),
              QStringLiteral("Auto"));
+
+    // Заголовок, заданный самой формой, доходит до модели вместе с признаком
+    // «Автозаголовок = false» — по нему рендерер и показывает текст.
+    FormDocument titled = document;
+    titled.formTitle = QStringLiteral("Авансовый отчет");
+    titled.autoTitleFlag = 0;
+    const QJsonObject titledProperties =
+        QJsonDocument::fromJson(formWebModelJson(titled)).object()
+            .value(QStringLiteral("properties")).toObject();
+    QCOMPARE(titledProperties.value(QStringLiteral("Title")).toString(),
+             QStringLiteral("Авансовый отчет"));
+    QCOMPARE(titledProperties.value(QStringLiteral("AutoTitle")).toString(),
+             QStringLiteral("false"));
 
     const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
     QVERIFY(!roots.isEmpty());

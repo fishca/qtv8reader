@@ -13,21 +13,82 @@
    "name": "ПоляВвода",
    "synonym": "Поля ввода",
    "attributes": [
-    {"name": "Строка", "type": "string", "length": 40, "title": "Строка"},
-    {"name": "Число", "type": "number", "digits": 10, "fraction": 2, "title": "Число"},
-    {"name": "Дата", "type": "date", "title": "Дата"},
-    {"name": "Булево", "type": "boolean", "title": "Булево"}
+    {
+     "name": "Строка",
+     "type": "string",
+     "length": 40,
+     "title": "Строка"
+    },
+    {
+     "name": "Число",
+     "type": "number",
+     "digits": 10,
+     "fraction": 2,
+     "title": "Число"
+    },
+    {
+     "name": "Дата",
+     "type": "date",
+     "title": "Дата"
+    },
+    {
+     "name": "Булево",
+     "type": "boolean",
+     "title": "Булево"
+    }
    ],
    "elements": [
     {
      "tag": "UsualGroup",
      "name": "ГруппаПоля",
-     "props": {"ShowTitle": false, "Group": "Vertical"},
+     "props": {
+      "ShowTitle": false,
+      "Group": "Vertical"
+     },
      "children": [
-      {"tag": "InputField", "name": "ПолеСтрока", "props": {"DataPath": "Строка", "Title": {"title": "Строка"}, "Width": 25}},
-      {"tag": "InputField", "name": "ПолеЧисло", "props": {"DataPath": "Число", "Title": {"title": "Число"}, "Width": 15}},
-      {"tag": "InputField", "name": "ПолеДата", "props": {"DataPath": "Дата", "Title": {"title": "Дата"}, "Width": 15}},
-      {"tag": "CheckBoxField", "name": "ПолеБулево", "props": {"DataPath": "Булево", "Title": {"title": "Булево"}}}
+      {
+       "tag": "InputField",
+       "name": "ПолеСтрока",
+       "props": {
+        "DataPath": "Строка",
+        "Title": {
+         "title": "Строка"
+        },
+        "Width": 25
+       }
+      },
+      {
+       "tag": "InputField",
+       "name": "ПолеЧисло",
+       "props": {
+        "DataPath": "Число",
+        "Title": {
+         "title": "Число"
+        },
+        "Width": 15
+       }
+      },
+      {
+       "tag": "InputField",
+       "name": "ПолеДата",
+       "props": {
+        "DataPath": "Дата",
+        "Title": {
+         "title": "Дата"
+        },
+        "Width": 15
+       }
+      },
+      {
+       "tag": "CheckBoxField",
+       "name": "ПолеБулево",
+       "props": {
+        "DataPath": "Булево",
+        "Title": {
+         "title": "Булево"
+        }
+       }
+      }
      ]
     }
    ]
@@ -36,16 +97,45 @@
    "name": "Надписи",
    "synonym": "Надписи и декорации",
    "attributes": [
-    {"name": "Строка", "type": "string", "length": 20, "title": "Строка"}
+    {
+     "name": "Строка",
+     "type": "string",
+     "length": 20,
+     "title": "Строка"
+    }
    ],
    "elements": [
     {
      "tag": "UsualGroup",
      "name": "ГруппаНадписи",
-     "props": {"ShowTitle": true, "Group": "Vertical", "Title": {"title": "Надписи"}},
+     "props": {
+      "ShowTitle": true,
+      "Group": "Vertical",
+      "Title": {
+       "title": "Надписи"
+      }
+     },
      "children": [
-      {"tag": "LabelDecoration", "name": "Декорация", "props": {"Title": {"title": "Декорация-надпись"}}},
-      {"tag": "LabelField", "name": "ПолеНадпись", "props": {"DataPath": "Строка", "Title": {"title": "Поле-надпись"}, "Width": 25}}
+      {
+       "tag": "LabelDecoration",
+       "name": "Декорация",
+       "props": {
+        "Title": {
+         "title": "Декорация-надпись"
+        }
+       }
+      },
+      {
+       "tag": "LabelField",
+       "name": "ПолеНадпись",
+       "props": {
+        "DataPath": "Строка",
+        "Title": {
+         "title": "Поле-надпись"
+        },
+        "Width": 25
+       }
+      }
      ]
     }
    ]
@@ -54,27 +144,322 @@
    "name": "Группы",
    "synonym": "Группы",
    "attributes": [
-    {"name": "Строка", "type": "string", "length": 20, "title": "Строка"},
-    {"name": "Число", "type": "number", "digits": 8, "fraction": 0, "title": "Число"},
-    {"name": "Дата", "type": "date", "title": "Дата"}
+    {
+     "name": "Строка",
+     "type": "string",
+     "length": 20,
+     "title": "Строка"
+    },
+    {
+     "name": "Число",
+     "type": "number",
+     "digits": 8,
+     "fraction": 0,
+     "title": "Число"
+    },
+    {
+     "name": "Дата",
+     "type": "date",
+     "title": "Дата"
+    }
    ],
    "elements": [
     {
      "tag": "UsualGroup",
      "name": "ГруппаВертикальная",
-     "props": {"ShowTitle": true, "Group": "Vertical", "Title": {"title": "Вертикальная группа"}},
+     "props": {
+      "ShowTitle": true,
+      "Group": "Vertical",
+      "Title": {
+       "title": "Вертикальная группа"
+      }
+     },
      "children": [
-      {"tag": "InputField", "name": "ПолеСтрока", "props": {"DataPath": "Строка", "Title": {"title": "Строка"}, "Width": 20}},
+      {
+       "tag": "InputField",
+       "name": "ПолеСтрока",
+       "props": {
+        "DataPath": "Строка",
+        "Title": {
+         "title": "Строка"
+        },
+        "Width": 20
+       }
+      },
       {
        "tag": "UsualGroup",
        "name": "ГруппаКолонки",
-       "props": {"ShowTitle": true, "Group": "Horizontal", "Title": {"title": "Группа-колонки"}},
+       "props": {
+        "ShowTitle": true,
+        "Group": "Horizontal",
+        "Title": {
+         "title": "Группа-колонки"
+        }
+       },
        "children": [
-        {"tag": "InputField", "name": "ПолеЧисло", "props": {"DataPath": "Число", "Title": {"title": "Число"}, "Width": 10}},
-        {"tag": "InputField", "name": "ПолеДата", "props": {"DataPath": "Дата", "Title": {"title": "Дата"}, "Width": 12}}
+        {
+         "tag": "InputField",
+         "name": "ПолеЧисло",
+         "props": {
+          "DataPath": "Число",
+          "Title": {
+           "title": "Число"
+          },
+          "Width": 10
+         }
+        },
+        {
+         "tag": "InputField",
+         "name": "ПолеДата",
+         "props": {
+          "DataPath": "Дата",
+          "Title": {
+           "title": "Дата"
+          },
+          "Width": 12
+         }
+        }
        ]
       }
      ]
+    }
+   ]
+  },
+  {
+   "name": "Кнопки",
+   "synonym": "Кнопки",
+   "attributes": [],
+   "elements": [
+    {
+     "tag": "UsualGroup",
+     "name": "ГруппаКнопки",
+     "props": {
+      "ShowTitle": false,
+      "Group": "Vertical"
+     },
+     "children": [
+      {
+       "tag": "Button",
+       "name": "КнопкаОбычная",
+       "props": {
+        "Title": {
+         "title": "Обычная кнопка"
+        }
+       }
+      },
+      {
+       "tag": "Button",
+       "name": "КнопкаПоУмолчанию",
+       "props": {
+        "Title": {
+         "title": "По умолчанию"
+        },
+        "DefaultButton": true
+       }
+      },
+      {
+       "tag": "ButtonGroup",
+       "name": "ГруппаКнопок",
+       "props": {},
+       "children": [
+        {
+         "tag": "Button",
+         "name": "КнопкаПервая",
+         "props": {
+          "Title": {
+           "title": "Первая"
+          }
+         }
+        },
+        {
+         "tag": "Button",
+         "name": "КнопкаВторая",
+         "props": {
+          "Title": {
+           "title": "Вторая"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Страницы",
+   "synonym": "Страницы",
+   "attributes": [
+    {
+     "name": "Строка",
+     "type": "string",
+     "length": 20,
+     "title": "Строка"
+    }
+   ],
+   "elements": [
+    {
+     "tag": "Pages",
+     "name": "Страницы",
+     "props": {},
+     "children": [
+      {
+       "tag": "Page",
+       "name": "СтраницаПервая",
+       "props": {
+        "Title": {
+         "title": "Первая"
+        }
+       },
+       "children": [
+        {
+         "tag": "InputField",
+         "name": "ПолеСтрока",
+         "props": {
+          "DataPath": "Строка",
+          "Title": {
+           "title": "Строка"
+          },
+          "Width": 20
+         }
+        }
+       ]
+      },
+      {
+       "tag": "Page",
+       "name": "СтраницаВторая",
+       "props": {
+        "Title": {
+         "title": "Вторая"
+        }
+       },
+       "children": [
+        {
+         "tag": "LabelDecoration",
+         "name": "НадписьВторой",
+         "props": {
+          "Title": {
+           "title": "Вторая страница"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Таблица",
+   "synonym": "Таблица",
+   "attributes": [
+    {
+     "name": "Список",
+     "type": "valuetable",
+     "columns": [
+      {
+       "name": "Наименование",
+       "type": "string",
+       "length": 30,
+       "title": "Наименование"
+      },
+      {
+       "name": "Количество",
+       "type": "number",
+       "digits": 10,
+       "fraction": 2,
+       "title": "Количество"
+      }
+     ]
+    }
+   ],
+   "elements": [
+    {
+     "tag": "Table",
+     "name": "ТаблицаСписка",
+     "props": {
+      "DataPath": "Список",
+      "Height": 4
+     },
+     "children": [
+      {
+       "tag": "InputField",
+       "name": "КолонкаНаименование",
+       "props": {
+        "DataPath": "Список.Наименование",
+        "Title": {
+         "title": "Наименование"
+        }
+       }
+      },
+      {
+       "tag": "InputField",
+       "name": "КолонкаКоличество",
+       "props": {
+        "DataPath": "Список.Количество",
+        "Title": {
+         "title": "Количество"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Заголовок",
+   "synonym": "Собственный заголовок",
+   "props": {
+    "Title": {
+     "title": "Заголовок из формы"
+    },
+    "AutoTitle": false
+   },
+   "autoCommandBar": {
+    "Autofill": false
+   },
+   "attributes": [],
+   "elements": [
+    {
+     "tag": "LabelDecoration",
+     "name": "Надпись",
+     "props": {
+      "Title": {
+       "title": "Форма с собственным заголовком"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "КоманднаяПанель",
+   "synonym": "Своя командная панель",
+   "attributes": [],
+   "elements": [
+    {
+     "tag": "CommandBar",
+     "name": "КоманднаяПанельФормы",
+     "props": {},
+     "children": [
+      {
+       "tag": "Button",
+       "name": "КнопкаПанели",
+       "props": {
+        "Title": {
+         "title": "Кнопка панели"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "tag": "LabelDecoration",
+     "name": "Надпись",
+     "props": {
+      "Title": {
+       "title": "Своя командная панель"
+      }
+     }
     }
    ]
   }

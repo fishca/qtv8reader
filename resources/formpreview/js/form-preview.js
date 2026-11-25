@@ -1656,6 +1656,13 @@ function displayItems(model) {
     }
     if (bar && !isEmptyCommandBar(bar))
         return loc === 'bottom' ? items.concat([bar]) : [bar].concat(items);
+    /* An autofilled bar with no authored commands still exists on screen: the
+     * platform draws the strip with «Ещё» alone. The renderer used to drop such
+     * a bar entirely, which lost the strip and moved every row up. */
+    var emptyAutofilledBar = bar && isEmptyCommandBar(bar)
+        && !isFalse(prop(bar, ['Autofill'])) && rootBarImplicitMore(model);
+    if (emptyAutofilledBar)
+        return loc === 'bottom' ? items.concat([bar]) : [bar].concat(items);
     return items;
 }
 
@@ -1664,6 +1671,18 @@ function interface85BarAuthorsHelp(bar) {
         return item && item.tag === 'Button' && !isFalse(prop(item, ['Visible', 'visible']))
             && /^Form\.StandardCommand\.Help$/i.test(String(prop(item, ['CommandName']) || ''));
     });
+}
+
+/* Пустая панель формы всё равно занимает место: платформа рисует полосу с
+ * одной кнопкой «Ещё» (её содержимое — стандартные команды), а рендерер без
+ * этого признака выбрасывал полосу и поднимал все строки на её высоту. */
+function emptyRootBarKeepsStrip(item, model) {
+    if (!item || item.tag !== 'AutoCommandBar' || String(item.id) !== '-1') return false;
+    var bar = (model && model.autoCommandBar) || item;
+    if (isFalse(prop(bar, ['Autofill'])) && !interface85BarAuthorsHelp(bar)) return false;
+    if (item._fp85EmptyTop && !interface85EmptyTopKeepsMore(model)) return false;
+    if (item._fp85CommandBand === 'top') return true;
+    return !item._fp85CommandBand && rootBarImplicitMore(model);
 }
 
 function isEmptyCommandBar(bar) {
@@ -12988,12 +13007,7 @@ function pictureTintMatchesParent(item, parentItem, ctx) {
 function renderPreview(items, parentEl, ctx, parentItem) {
     parentEl.innerHTML = '';
     var emptyAutofilledRootBar = (!items || !items.length)
-        && parentItem && parentItem.tag === 'AutoCommandBar' && String(parentItem.id) === '-1'
-        && parentItem._fp85CommandBand === 'top'
-        && (!parentItem._fp85EmptyTop || interface85EmptyTopKeepsMore(ctx && ctx.model))
-        && ctx && ctx.model && ctx.model.autoCommandBar
-        && (!isFalse(prop(ctx.model.autoCommandBar, ['Autofill']))
-            || interface85BarAuthorsHelp(ctx.model.autoCommandBar));
+        && emptyRootBarKeepsStrip(parentItem, ctx && ctx.model);
     if ((!items || !items.length) && !emptyAutofilledRootBar) {
         parentEl.classList.remove('fp-mockup');
         parentEl.textContent = 'Нет элементов';
@@ -13366,12 +13380,7 @@ function renderPreview(items, parentEl, ctx, parentItem) {
                 })(ths[ti]);
             }
         } else if (container && control._childBox && ((item.childItems && item.childItems.length) || tag === 'Pages'
-            || (tag === 'AutoCommandBar' && String(item.id) === '-1'
-                && item._fp85CommandBand === 'top'
-                && (!item._fp85EmptyTop || interface85EmptyTopKeepsMore(ctx && ctx.model))
-                && ctx && ctx.model && ctx.model.autoCommandBar
-                && (!isFalse(prop(ctx.model.autoCommandBar, ['Autofill']))
-                    || interface85BarAuthorsHelp(ctx.model.autoCommandBar))))) {
+            || (tag === 'AutoCommandBar' && emptyRootBarKeepsStrip(item, ctx && ctx.model)))) {
             var box = control._childBox;
             if (tag === 'Pages') {
                 renderPages(item, box, meta, ctx);

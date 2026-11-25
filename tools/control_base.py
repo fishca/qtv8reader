@@ -322,6 +322,9 @@ def type_xml(kind: str, spec: dict, depth: int) -> str:
                    pad, pad))
     if kind == "boolean":
         return "%s<Type>\n%s\t<v8:Type>xs:boolean</v8:Type>\n%s</Type>" % (pad, pad, pad)
+    if kind == "valuetable":
+        return ("%s<Type>\n%s\t<v8:Type>v8:ValueTable</v8:Type>\n%s</Type>"
+                % (pad, pad, pad))
     raise SystemExit("неизвестный тип реквизита: " + kind)
 
 
@@ -356,7 +359,18 @@ def emit_form_xml(form: dict, vocab: dict, warnings: list) -> str:
               if element.get("tag") not in ("AutoCommandBar",)]
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              '<Form %s version="2.20">' % namespace_attrs(LOGFORM_PREFIXES)]
-    lines.append('\t<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>')
+    # Свойства самой формы (заголовок, автозаголовок, положение панели) идут
+    # до AutoCommandBar — так их пишет и сама платформа.
+    for prop in form.get("props") or {}:
+        lines.append(emit_prop(prop, form["props"][prop], 1))
+    bar_props = form.get("autoCommandBar") or {}
+    if bar_props:
+        lines.append('\t<AutoCommandBar name="ФормаКоманднаяПанель" id="-1">')
+        for prop in bar_props:
+            lines.append(emit_prop(prop, bar_props[prop], 2))
+        lines.append("\t</AutoCommandBar>")
+    else:
+        lines.append('\t<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>')
     lines.append("\t<ChildItems>")
     for element in nested:
         lines.append(emit_element(element, 2, vocab, ids, warnings))

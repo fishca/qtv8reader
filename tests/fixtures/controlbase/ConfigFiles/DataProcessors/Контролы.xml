@@ -31,6 +31,11 @@
 			<Form>ПоляВвода</Form>
 			<Form>Надписи</Form>
 			<Form>Группы</Form>
+			<Form>Кнопки</Form>
+			<Form>Страницы</Form>
+			<Form>Таблица</Form>
+			<Form>Заголовок</Form>
+			<Form>КоманднаяПанель</Form>
 		</ChildObjects>
 	</DataProcessor>
 </MetaDataObject>
