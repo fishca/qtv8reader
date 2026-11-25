@@ -7026,9 +7026,14 @@ function tableHeightMetrics(item) {
         && isFalse(prop(item, ['AutoMaxHeight', 'АвтоМаксимальнаяВысота']));
     if (!rowMode && explicitMaximum) formRows = Math.min(formRows, maximumRows);
     var logicalBodyRows = rowMode ? bodyRows : Math.max(0, formRows - headerRows - footerRows);
-    var preferred = logicalBodyRows * (30 + bodyExtra)
-        + headerRows * (30 + headerExtra) + footerRows * (30 + footerExtra)
-        + (headerRows ? 3 + headerRows - 1 : 1) + (footerRows ? footerRows + 1 : 0);
+    /* Строка шапки сетки — 31 px, строка тела — 30,67: эталон «Таблицы»
+     * (шапка 1 + тело 3) держит сетку 123 px, эталон «Колонок» (шапка 3 +
+     * тело 1) — 124. Прежняя формула «30·строки + 3 + шапка» давала 123 и
+     * 125, и у «Колонок» сетка выходила на пиксель ниже эталона. */
+    var preferred = Math.round(
+        headerRows * (31 + headerExtra)
+        + logicalBodyRows * (30 + 2 / 3 + bodyExtra)
+        + footerRows * (30 + 2 / 3 + footerExtra));
     var minimum;
     if (!headerRows && !footerRows) minimum = Math.min(Math.max(formRows - 1, 0), 3) * 31;
     else {
@@ -12102,8 +12107,23 @@ function createControl(item, tag, ctx, parentMeta) {
             }
             if (tblBarLoc !== 'bottom') wrap.appendChild(toolbar);
         }
-        if (item.viewStatusAddition && !additionHidden(item, 'ViewStatusLocation')) {
-            wrap.appendChild(createControl(item.viewStatusAddition, 'ViewStatusAddition', ctx));
+        /* Полоса «состояния просмотра» рисуется над сеткой (плашки фильтра),
+         * если место добавления не None. В контейнере запись есть только
+         * тогда, когда место отличается от умолчания: у таблиц «Таблицы» и
+         * «Колонок» его нет (Auto), а полоса в эталоне есть — 23 px плашек и
+         * 8 px до сетки, из-за которых сетка начинается на 126, а не на 95.
+         * Поэтому запись синтезируется так же, как строка поиска ниже. */
+        var viewStatus = item.viewStatusAddition;
+        if (!viewStatus && !additionHidden(item, 'ViewStatusLocation')) {
+            viewStatus = {
+                tag: 'ViewStatusAddition',
+                name: String(item.name || '') + 'СостояниеПросмотра',
+                id: '',
+                properties: {}
+            };
+        }
+        if (viewStatus && !additionHidden(item, 'ViewStatusLocation')) {
+            wrap.appendChild(createControl(viewStatus, 'ViewStatusAddition', ctx));
         }
         var tableWrap = el('div', 'fp-table-mock');
         if (tableRuntime.period && tableRuntime.period.active) {
@@ -12396,7 +12416,7 @@ function createControl(item, tag, ctx, parentMeta) {
             : leafs;
         wrap._minimumHeight = minimumGridHeight
             + (toolbar ? 30 : 0)
-            + (item.viewStatusAddition && !additionHidden(item, 'ViewStatusLocation') ? 32 : 0);
+            + (viewStatus && !additionHidden(item, 'ViewStatusLocation') ? 32 : 0);
     } else if (tag === 'Page' || tag === 'Pages') {
         var pageBlock = el('div', tag === 'Pages' ? 'fp-group-block' : 'fp-page-block');
         var pageKids = el('div', '');
@@ -13491,8 +13511,14 @@ function renderPreview(items, parentEl, ctx, parentItem) {
                 div.classList.add('fp-table-authored-height');
             }
             /* Высота не задана в форме: в конфигураторе такая таблица забирает
-             * остаток страницы, а элементы под ней уходят за кадр формы. */
+             * остаток страницы, а элементы под ней уходят за кадр формы. У
+             * таблицы с авторской высотой наоборот: сетка держится в Height
+             * строк (123 px у «Таблицы», 124 у «Колонок»), а остаток полотна
+             * остаётся под ней. Явное VerticalStretch=Да растягивает и такую
+             * таблицу. */
             if (!fieldHeight(item)) div.classList.add('fp-table-auto-height');
+            else if (isTrue(prop(item, ['VerticalStretch', 'РастягиватьПоВертикали'])))
+                div.dataset.fpTableVerticalStretch = '1';
         }
         applyTooltip(div, item, inBar, ctx);
         bindSelect(div, item, ctx);
@@ -20866,16 +20892,25 @@ function fitAuthoredTableHeights(body) {
                 item.dataset.fpTableBaseFlexShrink = item.style.flexShrink;
                 item.dataset.fpTableBaseFlexBasis = item.style.flexBasis;
             }
+            /* Таблица с авторской высотой остатка не забирает: платформа
+             * держит сетку в Height строк, а лишние пиксели полотна оставляет
+             * под ней (эталоны «Таблица» и «Колонки»: сетка 126…249 при
+             * полотне до 250). Растяжение остаётся только у таблицы без
+             * высоты в форме и при явном VerticalStretch=Да. */
+            var tableKeepsHeight = !item.classList.contains('fp-table-auto-height')
+                && item.dataset.fpTableVerticalStretch !== '1';
             /* A lone table in an already overflowing form keeps its preferred
              * height: there is no viewport surplus left for it to claim. A
              * real mixed stretch cohort still runs its local allocator even
              * when some outer scrollport happens to overflow. */
-            item.style.flexGrow = hasNestedTableStretchSibling || hasDocumentStretchSibling ? '0'
-                : (scrollportOverflow && !hasGenericStretchSibling ? '0'
-                    : String(hasGenericStretchSibling ? normal + chrome - itemInsets : normal));
+            item.style.flexGrow = tableKeepsHeight ? '0'
+                : (hasNestedTableStretchSibling || hasDocumentStretchSibling ? '0'
+                    : (scrollportOverflow && !hasGenericStretchSibling ? '0'
+                        : String(hasGenericStretchSibling ? normal + chrome - itemInsets : normal)));
             item.style.flexShrink = String(normal / (Math.max(normal, minimum) + chrome - itemInsets));
             if (hasGenericStretchSibling) {
-                item.style.flexBasis = hasNestedTableStretchSibling || hasDocumentStretchSibling
+                item.style.flexBasis = tableKeepsHeight
+                    || hasNestedTableStretchSibling || hasDocumentStretchSibling
                     ? (Math.max(normal, minimum) + chrome) + 'px' : '0px';
                 for (var gs = 0; gs < item.parentNode.children.length; gs++) {
                     var generic = item.parentNode.children[gs];
@@ -20883,7 +20918,8 @@ function fitAuthoredTableHeights(body) {
                         || generic.classList.contains('fp-table-authored-height')) continue;
                     if (!Object.prototype.hasOwnProperty.call(generic.dataset, 'fpMixedBaseFlex'))
                         generic.dataset.fpMixedBaseFlex = generic.style.flex || '__empty__';
-                    generic.style.flex = hasDocumentStretchSibling
+                    generic.style.flex = tableKeepsHeight ? '1 1 0px'
+                        : hasDocumentStretchSibling
                         ? (generic.dataset.tag === 'FormattedDocumentField' ? '1 1 0px' : '0 1 auto')
                         : hasNestedTableStretchSibling
                         ? '1 1 0px'
