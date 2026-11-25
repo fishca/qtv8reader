@@ -14622,6 +14622,26 @@ function fitRootHeaderColumnRemainder(root) {
     return changed;
 }
 
+/* Ширина колонки подписей для обычной строки поля.
+ *
+ * Платформа меряет подпись целыми единицами, поэтому коробка колонки — это
+ * округлённое продвижение строки, а не ширина, которую браузер получил после
+ * прошлого прохода: min-width, прочитанный обратно через labelMetric, заводит
+ * обратную связь. Подписи в семь знаков резервная оценка «7 px на знак» даёт
+ * 49, и это значение остаётся навсегда, хотя строка просит 47 — все редакторы
+ * колонки уезжают на 1 px вправо.
+ *
+ * Строка флажка просит на единицу больше. Это замер, а не механизм платформы:
+ * в «ПоляхВвода» колонку задаёт «Булево:» из строки флажка (48), в
+ * «Переключателях» — «Выбор:» из строки радиокнопок (44), и отличаются они
+ * ровно этой единицей. */
+function captionLaneMetric(label) {
+    var width = Math.round(throughAlignGlyphMetric(label));
+    var row = label && label.parentNode;
+    if (row && row.classList && row.classList.contains('fp-check-row')) width += 1;
+    return width;
+}
+
 function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
     if (!labels || !labels.length) return;
     /* A lone wrapped caption still owns the longest-line track. Without
@@ -14677,7 +14697,9 @@ function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
             ? wrappedSideCaptionTrackWidth(labels[j])
             : pairedTitledColumn
             ? Math.ceil(throughAlignGlyphMetric(labels[j]) + 4)
-            : (intrinsicPageScope ? intrinsicLabelTextMetric(labels[j]) : labelMetric(labels[j])));
+            : (intrinsicPageScope
+                ? intrinsicLabelTextMetric(labels[j])
+                : captionLaneMetric(labels[j])));
         if (w > max) max = w;
         var fieldItem = labels[j].closest && labels[j].closest('.fp-item.fp-control');
         var fieldBox = fieldItem && fieldItem.parentElement;
