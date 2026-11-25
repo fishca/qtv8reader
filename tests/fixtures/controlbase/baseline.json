@@ -1,8 +1,8 @@
 {
  "forms": {
   "ГруппаКнопок": {
-   "structure": 383,
-   "text": 157
+   "structure": 129,
+   "text": 607
   },
   "Группы": {
    "structure": 1295,
@@ -12,17 +12,33 @@
    "structure": 1656,
    "text": 319
   },
+  "Картинки": {
+   "structure": 0,
+   "text": 531
+  },
   "Кнопки": {
    "structure": 575,
    "text": 675
+  },
+  "Колонки": {
+   "structure": 14555,
+   "text": 1320
   },
   "КоманднаяПанель": {
    "structure": 654,
    "text": 1073
   },
+  "Меню": {
+   "structure": 241,
+   "text": 930
+  },
   "Надписи": {
    "structure": 1660,
    "text": 132
+  },
+  "Переключатели": {
+   "structure": 2357,
+   "text": 1971
   },
   "ПоляВвода": {
    "structure": 450,

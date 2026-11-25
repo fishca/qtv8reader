@@ -37,6 +37,10 @@
 			<Form>Таблица</Form>
 			<Form>Заголовок</Form>
 			<Form>КоманднаяПанель</Form>
+			<Form>Меню</Form>
+			<Form>Картинки</Form>
+			<Form>Колонки</Form>
+			<Form>Переключатели</Form>
 		</ChildObjects>
 	</DataProcessor>
 </MetaDataObject>

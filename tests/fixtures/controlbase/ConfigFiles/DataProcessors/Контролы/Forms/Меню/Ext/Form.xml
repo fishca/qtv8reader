@@ -1,0 +1,131 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Form xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.20">
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+	<ChildItems>
+		<CommandBar name="КоманднаяПанельФормы" id="1">
+			<ExtendedTooltip name="КоманднаяПанельФормыРасширеннаяПодсказка" id="9"/>
+			<ChildItems>
+				<Popup name="ПодменюПанели" id="2">
+					<Title>
+						<v8:item>
+							<v8:lang>ru</v8:lang>
+							<v8:content>Действия</v8:content>
+						</v8:item>
+					</Title>
+					<ExtendedTooltip name="ПодменюПанелиРасширеннаяПодсказка" id="10"/>
+					<ChildItems>
+						<Button name="ПунктПервый" id="3">
+							<Type>CommandBarButton</Type>
+							<CommandName>Form.Command.КомандаПервая</CommandName>
+							<Title>
+								<v8:item>
+									<v8:lang>ru</v8:lang>
+									<v8:content>Первое действие</v8:content>
+								</v8:item>
+							</Title>
+							<ExtendedTooltip name="ПунктПервыйРасширеннаяПодсказка" id="11"/>
+						</Button>
+						<Button name="ПунктВторой" id="4">
+							<Type>CommandBarButton</Type>
+							<CommandName>Form.Command.КомандаВторая</CommandName>
+							<Title>
+								<v8:item>
+									<v8:lang>ru</v8:lang>
+									<v8:content>Второе действие</v8:content>
+								</v8:item>
+							</Title>
+							<ExtendedTooltip name="ПунктВторойРасширеннаяПодсказка" id="12"/>
+						</Button>
+						<Button name="ПунктТретий" id="5">
+							<Type>CommandBarButton</Type>
+							<CommandName>Form.Command.КомандаТретья</CommandName>
+							<Title>
+								<v8:item>
+									<v8:lang>ru</v8:lang>
+									<v8:content>Третье действие</v8:content>
+								</v8:item>
+							</Title>
+							<ExtendedTooltip name="ПунктТретийРасширеннаяПодсказка" id="13"/>
+						</Button>
+					</ChildItems>
+				</Popup>
+				<Popup name="ПодменюВторое" id="6">
+					<Title>
+						<v8:item>
+							<v8:lang>ru</v8:lang>
+							<v8:content>Ещё действия</v8:content>
+						</v8:item>
+					</Title>
+					<ExtendedTooltip name="ПодменюВтороеРасширеннаяПодсказка" id="14"/>
+					<ChildItems>
+						<Button name="ПунктЧетвертый" id="7">
+							<Type>CommandBarButton</Type>
+							<CommandName>Form.Command.КомандаЧетвертая</CommandName>
+							<Title>
+								<v8:item>
+									<v8:lang>ru</v8:lang>
+									<v8:content>Четвёртое действие</v8:content>
+								</v8:item>
+							</Title>
+							<ExtendedTooltip name="ПунктЧетвертыйРасширеннаяПодсказка" id="15"/>
+						</Button>
+						<Button name="ПунктПятый" id="8">
+							<Type>CommandBarButton</Type>
+							<CommandName>Form.Command.КомандаПервая</CommandName>
+							<Title>
+								<v8:item>
+									<v8:lang>ru</v8:lang>
+									<v8:content>Первое действие</v8:content>
+								</v8:item>
+							</Title>
+							<ExtendedTooltip name="ПунктПятыйРасширеннаяПодсказка" id="16"/>
+						</Button>
+					</ChildItems>
+				</Popup>
+			</ChildItems>
+		</CommandBar>
+	</ChildItems>
+	<Attributes/>
+	<Commands>
+		<Command name="КомандаПервая" id="1">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Первое действие</v8:content>
+				</v8:item>
+			</Title>
+			<Action>КомандаПервая</Action>
+			<CurrentRowUse>DontUse</CurrentRowUse>
+		</Command>
+		<Command name="КомандаВторая" id="2">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Второе действие</v8:content>
+				</v8:item>
+			</Title>
+			<Action>КомандаВторая</Action>
+			<CurrentRowUse>DontUse</CurrentRowUse>
+		</Command>
+		<Command name="КомандаТретья" id="3">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Третье действие</v8:content>
+				</v8:item>
+			</Title>
+			<Action>КомандаТретья</Action>
+			<CurrentRowUse>DontUse</CurrentRowUse>
+		</Command>
+		<Command name="КомандаЧетвертая" id="4">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Четвёртое действие</v8:content>
+				</v8:item>
+			</Title>
+			<Action>КомандаЧетвертая</Action>
+			<CurrentRowUse>DontUse</CurrentRowUse>
+		</Command>
+	</Commands>
+</Form>

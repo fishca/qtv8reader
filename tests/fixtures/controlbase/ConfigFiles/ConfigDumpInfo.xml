@@ -1,26 +1,34 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <ConfigDumpInfo xmlns="http://v8.1c.ru/8.3/xcf/dumpinfo" xmlns:xen="http://v8.1c.ru/8.3/xcf/enums" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" format="Hierarchical" version="2.20">
 	<ConfigVersions>
-		<Metadata name="Configuration.КонтролыФорм" id="d93b54fa-0da7-5ead-a4e9-687e1461f88e" configVersion="0ad5ab70e2d6f24bb6797b8e215fd9f500000000"/>
-		<Metadata name="DataProcessor.Контролы" id="e3489bca-d691-53a8-8feb-890730540f20" configVersion="308e57c2f5b66041a83eea6bed7f9b3200000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.ГруппаКнопок" id="efeab31f-b4ca-5031-bf2b-69612a59c376" configVersion="8f1f066a3913c04eb9c8e70bda92ea6600000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.ГруппаКнопок.Form" id="efeab31f-b4ca-5031-bf2b-69612a59c376.0" configVersion="29e6340bc83d124199677d6d681e1bf400000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Группы" id="068cc523-9fd9-55fc-b97c-356b2d3813ff" configVersion="8d0e0627685cd840817177f2ecdec4ea00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Группы.Form" id="068cc523-9fd9-55fc-b97c-356b2d3813ff.0" configVersion="b1b613406205474e9bf94d14517dda5400000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Заголовок" id="8bf2ef56-0cbd-566a-b974-3ac26ee2c978" configVersion="621cd090ed8da14a9896ccf5d2b46fdd00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Заголовок.Form" id="8bf2ef56-0cbd-566a-b974-3ac26ee2c978.0" configVersion="8d4fe7ace7608e408058ca7e180b852300000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Кнопки" id="de48f9f5-8f35-5e54-b2f5-235ea1906752" configVersion="0b9cb939a913874ab91a2928f3fd964500000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Кнопки.Form" id="de48f9f5-8f35-5e54-b2f5-235ea1906752.0" configVersion="165a0a1f8275c34b842c6209edf9c0ab00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.КоманднаяПанель" id="bc4bdeae-919c-5927-9474-f2986d3b723f" configVersion="353b2f519ff3b54c854e5fff772ef05100000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.КоманднаяПанель.Form" id="bc4bdeae-919c-5927-9474-f2986d3b723f.0" configVersion="5248083d6b963e4493947486c5995ace00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Надписи" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d" configVersion="27a72b6a712afe46a5eb46cbe6e161c000000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Надписи.Form" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d.0" configVersion="2e0f902f572cc04aa870bd12a285cffe00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода" id="11d78109-2cd7-5aaf-b05d-f9c452583988" configVersion="cee847ca0a5fe847b62c57fa36461f5f00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода.Form" id="11d78109-2cd7-5aaf-b05d-f9c452583988.0" configVersion="bbadff5a7b6205428c8f6c0aaf4b684f00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Страницы" id="1215d14b-6b57-5810-b19a-0eda991373dc" configVersion="4ed44f5445389b40a2f10363caf035e400000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Страницы.Form" id="1215d14b-6b57-5810-b19a-0eda991373dc.0" configVersion="0d88d15b11174b47b983a36b661d58aa00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Таблица" id="9ed4ce68-516f-5024-b66e-13480e6299a9" configVersion="f00ab64745e99c4a8761134b0a64117b00000000"/>
-		<Metadata name="DataProcessor.Контролы.Form.Таблица.Form" id="9ed4ce68-516f-5024-b66e-13480e6299a9.0" configVersion="e73c2ff6f22b9546aa5886320eb0d01700000000"/>
-		<Metadata name="Language.Русский" id="f5e1844c-7bb5-4fd9-a707-574b0ceb600f" configVersion="c7a7ae4f343cee42bb760f85e3cd223100000000"/>
+		<Metadata name="Configuration.КонтролыФорм" id="d93b54fa-0da7-5ead-a4e9-687e1461f88e" configVersion="674d100cc524694180b17fd8affc64eb00000000"/>
+		<Metadata name="DataProcessor.Контролы" id="e3489bca-d691-53a8-8feb-890730540f20" configVersion="b66c27f5faa6f94aa6d18d05460af79600000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ГруппаКнопок" id="efeab31f-b4ca-5031-bf2b-69612a59c376" configVersion="d9488f676baded4fa7d86c200dbdf56300000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ГруппаКнопок.Form" id="efeab31f-b4ca-5031-bf2b-69612a59c376.0" configVersion="fa89d03c0966bb4da02af4898f9d495800000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Группы" id="068cc523-9fd9-55fc-b97c-356b2d3813ff" configVersion="a61d72164a926343bbd0070061249dd800000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Группы.Form" id="068cc523-9fd9-55fc-b97c-356b2d3813ff.0" configVersion="b95320a79a76e2469972765c7712dab800000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Заголовок" id="8bf2ef56-0cbd-566a-b974-3ac26ee2c978" configVersion="928fb99719a6494abdd1b8df6000b07a00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Заголовок.Form" id="8bf2ef56-0cbd-566a-b974-3ac26ee2c978.0" configVersion="a5921c91611f3943b4c4606f9417c80f00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Картинки" id="b342bd9c-0a93-55f4-a30c-123ac7fda2b7" configVersion="23d9768d06fc2f42a9a0349a093f691a00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Картинки.Form" id="b342bd9c-0a93-55f4-a30c-123ac7fda2b7.0" configVersion="c0c3400547327b49bc5adb42eb3835c800000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Кнопки" id="de48f9f5-8f35-5e54-b2f5-235ea1906752" configVersion="0ec9181db1a7da48875e15f19810e68300000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Кнопки.Form" id="de48f9f5-8f35-5e54-b2f5-235ea1906752.0" configVersion="ecc3daf3fecff94bae6f266863057cae00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Колонки" id="7dc18b73-e7ba-5c16-8714-8a602f1501be" configVersion="17bf37226f334e4bbe31863ccb05cfcb00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Колонки.Form" id="7dc18b73-e7ba-5c16-8714-8a602f1501be.0" configVersion="e68dd6ce8bf81e479e0a53edd52582e400000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.КоманднаяПанель" id="bc4bdeae-919c-5927-9474-f2986d3b723f" configVersion="85dd1022cbe68b4bb7effb9a644c06aa00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.КоманднаяПанель.Form" id="bc4bdeae-919c-5927-9474-f2986d3b723f.0" configVersion="30aa1cb176bf2b4dbda15c34c127a2ab00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Меню" id="be108199-d17a-5cb6-a901-0edd7c14df4f" configVersion="14c4e4ab6dde9d4080ad2c1e366cbef300000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Меню.Form" id="be108199-d17a-5cb6-a901-0edd7c14df4f.0" configVersion="ed4969e45bae4149ab51d414d8f0f84f00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Надписи" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d" configVersion="1edb72ac43e29346b33a5cb68c32e7b900000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Надписи.Form" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d.0" configVersion="9d15db7d2319504c8fc79be0f028650200000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Переключатели" id="fd4ff172-f863-5a1e-ad31-36a968a55159" configVersion="0098d3d861cf5b4ea0e87a49fd94bf4800000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Переключатели.Form" id="fd4ff172-f863-5a1e-ad31-36a968a55159.0" configVersion="b3d519f81895aa42b1a64ef8c0dbe1a800000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода" id="11d78109-2cd7-5aaf-b05d-f9c452583988" configVersion="66433d4caa1aed44ae3028c64a78d7c100000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода.Form" id="11d78109-2cd7-5aaf-b05d-f9c452583988.0" configVersion="58a16a2edc76684bb5a53aace0b4aa5d00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Страницы" id="1215d14b-6b57-5810-b19a-0eda991373dc" configVersion="2af483f2c5adf24fb92dbd73a6b0cd3400000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Страницы.Form" id="1215d14b-6b57-5810-b19a-0eda991373dc.0" configVersion="e167f3feb348d14d971ce11fa0ce351c00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Таблица" id="9ed4ce68-516f-5024-b66e-13480e6299a9" configVersion="925d4583b0625e4ca435f7d593c3e08d00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Таблица.Form" id="9ed4ce68-516f-5024-b66e-13480e6299a9.0" configVersion="55e9a3f7e824d8448fea481681a1e29200000000"/>
+		<Metadata name="Language.Русский" id="f5e1844c-7bb5-4fd9-a707-574b0ceb600f" configVersion="157aab8b8faaee42854fa2350f126a4900000000"/>
 	</ConfigVersions>
 </ConfigDumpInfo>

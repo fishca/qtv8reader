@@ -297,29 +297,38 @@
    ],
    "elements": [
     {
-     "tag": "ButtonGroup",
-     "name": "ГруппаКнопок",
+     "tag": "CommandBar",
+     "name": "КоманднаяПанельФормы",
      "props": {},
      "children": [
       {
-       "tag": "Button",
-       "name": "КнопкаПервая",
-       "props": {
-        "Title": {
-         "title": "Первая"
+       "tag": "ButtonGroup",
+       "name": "ГруппаКнопок",
+       "props": {},
+       "children": [
+        {
+         "tag": "Button",
+         "name": "КнопкаПервая",
+         "props": {
+          "Type": "CommandBarButton",
+          "Title": {
+           "title": "Первая"
+          },
+          "CommandName": "Form.Command.КомандаПервая"
+         }
         },
-        "CommandName": "Form.Command.КомандаПервая"
-       }
-      },
-      {
-       "tag": "Button",
-       "name": "КнопкаВторая",
-       "props": {
-        "Title": {
-         "title": "Вторая"
-        },
-        "CommandName": "Form.Command.КомандаВторая"
-       }
+        {
+         "tag": "Button",
+         "name": "КнопкаВторая",
+         "props": {
+          "Type": "CommandBarButton",
+          "Title": {
+           "title": "Вторая"
+          },
+          "CommandName": "Form.Command.КомандаВторая"
+         }
+        }
+       ]
       }
      ]
     }
@@ -507,6 +516,303 @@
        "title": "Своя командная панель"
       }
      }
+    }
+   ]
+  },
+  {
+   "name": "Меню",
+   "synonym": "Подменю",
+   "attributes": [],
+   "commands": [
+    {
+     "name": "КомандаПервая",
+     "title": "Первое действие"
+    },
+    {
+     "name": "КомандаВторая",
+     "title": "Второе действие"
+    },
+    {
+     "name": "КомандаТретья",
+     "title": "Третье действие"
+    },
+    {
+     "name": "КомандаЧетвертая",
+     "title": "Четвёртое действие"
+    }
+   ],
+   "elements": [
+    {
+     "tag": "CommandBar",
+     "name": "КоманднаяПанельФормы",
+     "props": {},
+     "children": [
+      {
+       "tag": "Popup",
+       "name": "ПодменюПанели",
+       "props": {
+        "Title": {
+         "title": "Действия"
+        }
+       },
+       "children": [
+        {
+         "tag": "Button",
+         "name": "ПунктПервый",
+         "props": {
+          "Type": "CommandBarButton",
+          "CommandName": "Form.Command.КомандаПервая",
+          "Title": {
+           "title": "Первое действие"
+          }
+         }
+        },
+        {
+         "tag": "Button",
+         "name": "ПунктВторой",
+         "props": {
+          "Type": "CommandBarButton",
+          "CommandName": "Form.Command.КомандаВторая",
+          "Title": {
+           "title": "Второе действие"
+          }
+         }
+        },
+        {
+         "tag": "Button",
+         "name": "ПунктТретий",
+         "props": {
+          "Type": "CommandBarButton",
+          "CommandName": "Form.Command.КомандаТретья",
+          "Title": {
+           "title": "Третье действие"
+          }
+         }
+        }
+       ]
+      },
+      {
+       "tag": "Popup",
+       "name": "ПодменюВторое",
+       "props": {
+        "Title": {
+         "title": "Ещё действия"
+        }
+       },
+       "children": [
+        {
+         "tag": "Button",
+         "name": "ПунктЧетвертый",
+         "props": {
+          "Type": "CommandBarButton",
+          "CommandName": "Form.Command.КомандаЧетвертая",
+          "Title": {
+           "title": "Четвёртое действие"
+          }
+         }
+        },
+        {
+         "tag": "Button",
+         "name": "ПунктПятый",
+         "props": {
+          "Type": "CommandBarButton",
+          "CommandName": "Form.Command.КомандаПервая",
+          "Title": {
+           "title": "Первое действие"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Картинки",
+   "synonym": "Картинки",
+   "attributes": [],
+   "elements": [
+    {
+     "tag": "UsualGroup",
+     "name": "ГруппаКартинки",
+     "props": {
+      "ShowTitle": true,
+      "Group": "Vertical",
+      "Title": {
+       "title": "Картинки"
+      }
+     },
+     "children": [
+      {
+       "tag": "PictureDecoration",
+       "name": "КартинкаИнформация",
+       "props": {
+        "Picture": {
+         "xml": "<Picture>\n\t<xr:Ref>StdPicture.Information</xr:Ref>\n\t<xr:LoadTransparent>true</xr:LoadTransparent>\n</Picture>"
+        }
+       }
+      },
+      {
+       "tag": "PictureDecoration",
+       "name": "КартинкаПечать",
+       "props": {
+        "ToolTip": {
+         "xml": "<ToolTip>\n\t<v8:item>\n\t\t<v8:lang>ru</v8:lang>\n\t\t<v8:content>Печать</v8:content>\n\t</v8:item>\n</ToolTip>"
+        },
+        "Picture": {
+         "xml": "<Picture>\n\t<xr:Ref>StdPicture.Print</xr:Ref>\n\t<xr:LoadTransparent>true</xr:LoadTransparent>\n</Picture>"
+        }
+       }
+      },
+      {
+       "tag": "PictureDecoration",
+       "name": "КартинкаУдаление",
+       "props": {
+        "Picture": {
+         "xml": "<Picture>\n\t<xr:Ref>StdPicture.Delete</xr:Ref>\n\t<xr:LoadTransparent>true</xr:LoadTransparent>\n</Picture>"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Колонки",
+   "synonym": "Группы колонок",
+   "attributes": [
+    {
+     "name": "Список",
+     "type": "valuetable",
+     "columns": [
+      {
+       "name": "Код",
+       "type": "string",
+       "length": 10,
+       "title": "Код"
+      },
+      {
+       "name": "Наименование",
+       "type": "string",
+       "length": 30,
+       "title": "Наименование"
+      },
+      {
+       "name": "Количество",
+       "type": "number",
+       "digits": 10,
+       "fraction": 2,
+       "title": "Количество"
+      }
+     ]
+    }
+   ],
+   "elements": [
+    {
+     "tag": "Table",
+     "name": "ТаблицаКолонок",
+     "props": {
+      "DataPath": "Список",
+      "Height": 4
+     },
+     "children": [
+      {
+       "tag": "ColumnGroup",
+       "name": "КолонкаТовар",
+       "props": {
+        "Title": {
+         "title": "Товар"
+        },
+        "ShowInHeader": true
+       },
+       "children": [
+        {
+         "tag": "InputField",
+         "name": "КолонкаКод",
+         "props": {
+          "DataPath": "Список.Код",
+          "Title": {
+           "title": "Код"
+          }
+         }
+        },
+        {
+         "tag": "InputField",
+         "name": "КолонкаНаименование",
+         "props": {
+          "DataPath": "Список.Наименование",
+          "Title": {
+           "title": "Наименование"
+          }
+         }
+        }
+       ]
+      },
+      {
+       "tag": "InputField",
+       "name": "КолонкаКоличество",
+       "props": {
+        "DataPath": "Список.Количество",
+        "Title": {
+         "title": "Количество"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Переключатели",
+   "synonym": "Переключатели",
+   "attributes": [
+    {
+     "name": "Выбор",
+     "type": "string",
+     "length": 20,
+     "title": "Выбор"
+    },
+    {
+     "name": "Флаг",
+     "type": "boolean",
+     "title": "Флаг"
+    }
+   ],
+   "elements": [
+    {
+     "tag": "UsualGroup",
+     "name": "ГруппаПереключатели",
+     "props": {
+      "ShowTitle": false,
+      "Group": "Vertical"
+     },
+     "children": [
+      {
+       "tag": "RadioButtonField",
+       "name": "ПереключательВыбор",
+       "props": {
+        "DataPath": "Выбор",
+        "Title": {
+         "title": "Выбор"
+        },
+        "ChoiceList": {
+         "xml": "<ChoiceList>\n\t<xr:Item>\n\t\t<xr:Presentation/>\n\t\t<xr:CheckState>0</xr:CheckState>\n\t\t<xr:Value xsi:type=\"FormChoiceListDesTimeValue\">\n\t\t\t<Presentation/>\n\t\t\t<Value xsi:type=\"xs:string\">Первый</Value>\n\t\t</xr:Value>\n\t</xr:Item>\n\t<xr:Item>\n\t\t<xr:Presentation/>\n\t\t<xr:CheckState>0</xr:CheckState>\n\t\t<xr:Value xsi:type=\"FormChoiceListDesTimeValue\">\n\t\t\t<Presentation/>\n\t\t\t<Value xsi:type=\"xs:string\">Второй</Value>\n\t\t</xr:Value>\n\t</xr:Item>\n\t<xr:Item>\n\t\t<xr:Presentation/>\n\t\t<xr:CheckState>0</xr:CheckState>\n\t\t<xr:Value xsi:type=\"FormChoiceListDesTimeValue\">\n\t\t\t<Presentation/>\n\t\t\t<Value xsi:type=\"xs:string\">Третий</Value>\n\t\t</xr:Value>\n\t</xr:Item>\n</ChoiceList>"
+        }
+       }
+      },
+      {
+       "tag": "RadioButtonField",
+       "name": "ПереключательФлаг",
+       "props": {
+        "DataPath": "Флаг",
+        "Title": {
+         "title": "Флаг"
+        },
+        "RadioButtonType": "Tumbler"
+       }
+      }
+     ]
     }
    ]
   }

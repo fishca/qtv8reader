@@ -2,11 +2,11 @@
  "base": "E:\\work\\1cv83.db\\qtv8db",
  "forms": {
   "ГруппаКнопок": {
-   "captured": "2026-11-25 12:09:40",
+   "captured": "2026-11-25 14:57:18",
    "file": "ГруппаКнопок.png",
-   "height": 70,
-   "sha256": "d6c009384e7afecc06a8ab6fb5467aba91522e30bbf2b8d7d756924d54daf9e4",
-   "width": 89
+   "height": 97,
+   "sha256": "ee49092fab1ffa16c6811e1b6ae3e65d8426d21671acfc35f5c04b841ce9aea9",
+   "width": 179
   },
   "Группы": {
    "captured": "2026-11-25 12:09:45",
@@ -22,12 +22,26 @@
    "sha256": "a4e5e926c12fe724ae12171d6cf764223398432fa3e0c03d0b4e52918a6ef0b9",
    "width": 235
   },
+  "Картинки": {
+   "captured": "2026-11-25 14:47:49",
+   "file": "Картинки.png",
+   "height": 158,
+   "sha256": "3cbfdbe95bcafbb5fadf420646f19d95299101a79a418a8230a86a5706009443",
+   "width": 93
+  },
   "Кнопки": {
    "captured": "2026-11-25 12:09:55",
    "file": "Кнопки.png",
    "height": 133,
    "sha256": "6dec0b28c5e0f018407dbda325959912e0e8f899c4fdd1462528aa1a3507cbec",
    "width": 154
+  },
+  "Колонки": {
+   "captured": "2026-11-25 14:48:20",
+   "file": "Колонки.png",
+   "height": 260,
+   "sha256": "5576243edc8e9d9965ad33120b7994666fe899c47f3c3cb7dfed02f28c475282",
+   "width": 443
   },
   "КоманднаяПанель": {
    "captured": "2026-11-25 12:10:00",
@@ -36,12 +50,26 @@
    "sha256": "e8aaa21c23d229b44a7c0dc0a5bcd457272674fdaa2926c0f6d7577dd738221f",
    "width": 173
   },
+  "Меню": {
+   "captured": "2026-11-25 14:57:31",
+   "file": "Меню.png",
+   "height": 97,
+   "sha256": "6fa65623227a1dbc3ad8987eade37edda7294615736e274f212af0b4cd739703",
+   "width": 246
+  },
   "Надписи": {
    "captured": "2026-11-25 12:10:06",
    "file": "Надписи.png",
    "height": 135,
    "sha256": "07a8282401c6eef9090ab32bd0f4d3e1fc1e0e83f8da156b1f2ecb30083114c0",
    "width": 371
+  },
+  "Переключатели": {
+   "captured": "2026-11-25 14:48:33",
+   "file": "Переключатели.png",
+   "height": 113,
+   "sha256": "41340ae2c8d7d714ece80e7d46d28cbab03e0a63270df56e5387c37e17d13f90",
+   "width": 289
   },
   "ПоляВвода": {
    "captured": "2026-11-25 12:10:11",
