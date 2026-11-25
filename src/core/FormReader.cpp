@@ -161,6 +161,33 @@ void collectLocalizedDeep(const V8TextNode &node, QString *out, int depth = 0)
 // Представления заданы в самой форме, поэтому подписи переключателей можно
 // взять отсюда: у остальных элементов представления приходят из метаданных
 // и в форме не записаны (их в контейнере нет вовсе).
+// Подпись элемента списка выбора — типизированное значение {«S», «Первый»}:
+// у строкового реквизита оно лежит ссылкой на значение внутри записи формы
+// ("#", GUID, {0, 1, {S, текст}, …}). collectLocalizedDeep ищет заголовок в
+// виде {1, 1, {ru, текст}} и такое значение не находит, поэтому переключатель
+// оставался без подписей и рендерер рисовал «<Значение 1>».
+void collectTypedValueText(const V8TextNode &node, QString *out, int depth = 0)
+{
+    if (depth > 8 || !out->isEmpty() || !node.isList())
+        return;
+    if (node.children.size() >= 2) {
+        const V8TextNode *kind = node.child(0);
+        const V8TextNode *value = node.child(1);
+        if (kind && kind->isScalar() && value && value->isScalar()
+            && (kind->scalar() == QLatin1String("S") || kind->scalar() == QLatin1String("N")
+                || kind->scalar() == QLatin1String("B"))
+            && !value->scalar().isEmpty()) {
+            *out = value->scalar();
+            return;
+        }
+    }
+    for (const V8TextNode &child : node.children) {
+        collectTypedValueText(child, out, depth + 1);
+        if (!out->isEmpty())
+            return;
+    }
+}
+
 bool readChoiceBlock(const V8TextNode &node, QStringList *target, int depth = 0)
 {
     if (!node.isList() || depth > 6)
@@ -176,8 +203,11 @@ bool readChoiceBlock(const V8TextNode &node, QStringList *target, int depth = 0)
                 for (int i = 1; i <= items; ++i) {
                     QString text;
                     const V8TextNode *value = node.child(2 * i + 1);
-                    if (value)
+                    if (value) {
                         collectLocalizedDeep(*value, &text);
+                        if (text.isEmpty())
+                            collectTypedValueText(*value, &text);
+                    }
                     names.append(text);
                 }
                 *target = names;
@@ -1565,29 +1595,41 @@ QString numberNodeText(const V8TextNode &node)
 }
 
 // Вид переключателя (RadioButtonType): у переключателя в записи есть блок
-// {8, {3, вид, "", …}}, которого нет ни у одного другого вида поля; вид —
-// второе поле внутренней записи (1 — Auto, 2 — Tumbler, 0 — RadioButton,
-// значение по умолчанию, в корпусе не встречается). Сверено с Form.xml по
-// 9 переключателям корпуса.
+// {8, {3, число, …}, …, вид, …}, которого нет ни у одного другого вида поля.
+// Число во внутренней записи — это количество элементов списка выбора, а сам
+// вид лежит седьмым полем блока: 0 — Auto (в XML пишется явно, но ничего не
+// меняет), 1 — RadioButtons, 2 — Tumbler. Сверено по трём формам: «Ввод
+// начальных остатков/ФормаАрендаЛизинг» (Tumbler и Auto рядом), «Переключатели»
+// нашей базы (Auto и Tumbler) и 9 переключателям корпуса. Раньше вид читался
+// из внутренней записи и для списка выбора давал количество элементов — модель
+// отдавала мусор, а тумблер рисовался тремя радиокнопками.
+static int radioButtonTypeFromSlot(int code)
+{
+    if (code == 0)
+        return 0;   // Auto
+    if (code == 1)
+        return 1;   // RadioButtons
+    if (code == 2)
+        return 2;   // Tumbler
+    return -1;
+}
+
 void readRadioButtonType(const V8TextNode &node, FormItem *item)
 {
     if (item->fieldKind != FormFieldKind::RadioButton)
         return;
     for (const V8TextNode &child : node.children) {
-        if (!child.isList() || child.children.size() < 2)
+        if (!child.isList() || child.children.size() < 8)
             continue;
         const V8TextNode *tag = child.child(0);
-        const V8TextNode *payload = child.child(1);
         if (!tag || !tag->isScalar() || tag->scalar().trimmed() != QLatin1String("8"))
             continue;
-        if (!payload || !payload->isList() || payload->children.size() < 4)
+        const V8TextNode *type = child.child(7);
+        if (!type || !type->isInteger())
             continue;
-        const V8TextNode *kind = payload->child(0);
-        const V8TextNode *type = payload->child(1);
-        if (!kind || !kind->isScalar() || kind->scalar().trimmed() != QLatin1String("3"))
-            continue;
-        if (type && type->isInteger())
-            item->radioButtonType = static_cast<int>(type->toInteger());
+        const int kind = radioButtonTypeFromSlot(static_cast<int>(type->toInteger()));
+        if (kind >= 0)
+            item->radioButtonType = kind;
         break;
     }
 }

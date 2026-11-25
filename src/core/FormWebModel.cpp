@@ -1059,6 +1059,13 @@ QJsonObject makeField(const FormItem &item, const FormDocument &document, bool i
     if (item.fieldKind == FormFieldKind::Picture && item.hyperlink)
         properties.insert(QStringLiteral("Hyperlink"), boolText(true));
 
+    // Вид переключателя: 0 — Auto, 1 — RadioButtons, 2 — Tumbler.
+    if (item.radioButtonType >= 0 && item.radioButtonType <= 2) {
+        static const char *const radioTypes[] = {"Auto", "RadioButtons", "Tumbler"};
+        properties.insert(QStringLiteral("RadioButtonType"),
+                          QString::fromLatin1(radioTypes[item.radioButtonType]));
+    }
+
     // Подписи списка выбора: у переключателя по ним рисуется одна радиокнопка
     // на элемент (список без представлений приходит из метаданных — его не
     // отдаём, иначе рендерер нарисует пустые подписи).
