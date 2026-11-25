@@ -192,8 +192,17 @@ html, body {
  * занимает 244…265 и рамка поля даты 266…447, а с зазором 8 px ряд начинался
  * на пиксель раньше (242…263 и 264…444), из-за чего были смещены обе рамки,
  * метки маски даты и кнопка календаря. Ряд опознаётся по полю даты прямо в
- * нём; других таких рядов в форме нет. */
-.fp-mockup .fp-children-horizontal:has(> .fp-item[data-field-kind="date"]) {
+ * нём; других таких рядов в форме нет.
+ *
+ * Пиксель полагается только тому ряду, чей зазор остался подставным: у него в
+ * строке стилей ничего нет, и действует браузерный зазор 8 px из
+ * ``.fp-children-horizontal``. Ряд с посчитанным зазором уже несёт
+ * платформенный шаг в самой строке стилей (``column-gap: 10px`` у «Число +
+ * Дата» в форме «Группы»), и добавка ломала его: поле «Дата» и его календарь
+ * уезжали на 1 px влево. Поэтому правило берёт только ряд без своего
+ * зазора. */
+.fp-mockup .fp-children-horizontal:not([style*="column-gap"]):has(
+    > .fp-item[data-field-kind="date"]) {
     column-gap: 9px !important;
 }
 
@@ -221,6 +230,33 @@ html, body {
     height: 10px;
     pointer-events: none;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='10' viewBox='0 0 9 10' shape-rendering='crispEdges'%3E%3Cg fill='%234d4d4d'%3E%3Crect x='2' y='0' width='1' height='1'/%3E%3Crect x='6' y='0' width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='3' height='1'/%3E%3Crect x='7' y='1' width='1' height='1'/%3E%3Crect x='0' y='2' width='9' height='2'/%3E%3Crect x='0' y='4' width='1' height='5'/%3E%3Crect x='8' y='4' width='1' height='5'/%3E%3Crect x='1' y='9' width='7' height='1'/%3E%3Crect x='2' y='5' width='1' height='1'/%3E%3Crect x='4' y='5' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='2' y='7' width='1' height='1'/%3E%3Crect x='4' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23747474'%3E%3Crect x='0' y='1' width='1' height='1'/%3E%3Crect x='8' y='1' width='1' height='1'/%3E%3Crect x='0' y='9' width='1' height='1'/%3E%3Crect x='8' y='9' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E") no-repeat;
+}
+
+/* Кнопка калькулятора в поле числа. Как и календарь, стандартная картинка
+ * (std-pictures/Kalkulyator.svg, 12x12) приходит размытой и не тем рисунком: в
+ * эталоне «ПолейВвода» пиктограмма занимает ровно 9x11 пикселей (x=229…237,
+ * y=100…110) с жёсткими краями, цветом #4d4d4d и светлыми углами (верхние
+ * #565656, нижние #747474), а у нас она выходила 12 px шириной в серых
+ * полутонах — расходилась вся площадка кнопки (сто пикселей разницы). Рисунок
+ * снят с эталона попиксельно: рамка 9x11, строка дисплея (y=0…2), строки
+ * клавиш через одну (y=4, 6, 8), добавочная клавиша на (6, 7). Кнопка —
+ * 21x23, пиктограмма стоит 5 px от её верха и 5 px от левого края. */
+.fp-mockup .fp-input-btn.fp-choice-button:has(> img[src$="Kalkulyator.svg"]) {
+    position: relative;
+}
+.fp-mockup .fp-input-btn.fp-choice-button:has(> img[src$="Kalkulyator.svg"])
+    > img[src$="Kalkulyator.svg"] {
+    visibility: hidden;
+}
+.fp-mockup .fp-input-btn.fp-choice-button:has(> img[src$="Kalkulyator.svg"])::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 5px;
+    width: 9px;
+    height: 11px;
+    pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='11' viewBox='0 0 9 11' shape-rendering='crispEdges'%3E%3Cg fill='%234d4d4d'%3E%3Crect x='1' y='0' width='7' height='1'/%3E%3Crect x='0' y='1' width='1' height='9'/%3E%3Crect x='8' y='1' width='1' height='9'/%3E%3Crect x='0' y='2' width='9' height='1'/%3E%3Crect x='1' y='10' width='7' height='1'/%3E%3Crect x='2' y='4' width='1' height='1'/%3E%3Crect x='4' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='2' y='6' width='1' height='1'/%3E%3Crect x='4' y='6' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='2' y='8' width='1' height='1'/%3E%3Crect x='4' y='8' width='1' height='1'/%3E%3Crect x='6' y='8' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23565656'%3E%3Crect x='0' y='0' width='1' height='1'/%3E%3Crect x='8' y='0' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23747474'%3E%3Crect x='0' y='10' width='1' height='1'/%3E%3Crect x='8' y='10' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E") no-repeat;
 }
 
 /* Подписи вкладок набираются теснее: шаг глифов у платформы целочисленный

@@ -2176,6 +2176,10 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
 .fp-field-row.fp-title-bottom .fp-labelfield-value { order: 1; }
 .fp-input { flex: 1; min-width: 40px; min-height: 23px; box-sizing: border-box; padding: 2px 5px; font-size: inherit; font-family: inherit; background-color: transparent; color: var(--fp-input-fg); border: 1px solid var(--fp-input-border); border-radius: 0; text-overflow: ellipsis; }
 
+/* Значение числового поля конструктор прижимает к правому краю редактора
+ * («Группы»: «0» занимает 157…161 при правой границе 166). */
+.fp-input.fp-input-number-default { text-align: right; }
+
 .fp-button {
     padding: 2px 12px 2px 13px; min-height: var(--fp-button-height); height: var(--fp-button-height); box-sizing: border-box;
     font-size: inherit; font-family: inherit;

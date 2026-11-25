@@ -10983,6 +10983,15 @@ function makeFieldInput(item, loc, label, ctx) {
         ph = isInterface85Context(ctx) ? '' : '••••••••';
     }
     if (ph) inp.value = ph;
+    /* Конструктор рисует поле числа значением 0, а не пустым: у реквизита типа
+     * «Число» значение по умолчанию — ноль, и мастер формы показывает именно
+     * его («Группы»: поле «Число» 157 px, «0» занимает x=157…161 у правого края
+     * редактора; «ПоляВвода» — то же у «Число(10,2)»). Строка остаётся пустой,
+     * дата показывает маску, поэтому ноль ставится только числовому виду. */
+    if (!multiline && !inp.value && fieldKind(item, ctx) === 'number') {
+        inp.value = '0';
+        inp.classList.add('fp-input-number-default');
+    }
     var tabularTotal85 = isInterface85Context(ctx)
         && /\.(?:Total|Итог)[^.]+$/.test(String(prop(item, ['DataPath']) || ''));
     if (isTrue(prop(item, ['ReadOnly'])) || isDefaultInactiveStandardField(item, ctx) || tabularTotal85) {
