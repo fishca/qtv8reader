@@ -31,3 +31,7 @@ qtv8reader_autogen/
 *.log
 *.tmp
 Testing/
+
+# Python
+__pycache__/
+*.pyc

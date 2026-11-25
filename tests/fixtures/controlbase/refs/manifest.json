@@ -1,0 +1,27 @@
+{
+ "base": "E:\\work\\1cv83.db\\qtv8db",
+ "forms": {
+  "Группы": {
+   "captured": "2026-11-25 11:25:29",
+   "file": "Группы.png",
+   "height": 173,
+   "sha256": "12bba9a1d6631f623296643ab6c3c439b610474af4cf3b9d227216ff93bbe673",
+   "width": 384
+  },
+  "Надписи": {
+   "captured": "2026-11-25 11:25:34",
+   "file": "Надписи.png",
+   "height": 135,
+   "sha256": "4175b185bf05534a4ad67e3d04d200c837df565cdcede68bb8fbb8a92ace7208",
+   "width": 371
+  },
+  "ПоляВвода": {
+   "captured": "2026-11-25 11:25:46",
+   "file": "ПоляВвода.png",
+   "height": 189,
+   "sha256": "e5c6a584568a601dd147acc29902e610c34004ef7d059024d0da6ad8ba6d0736",
+   "width": 342
+  }
+ },
+ "platform": "8.3.27.2342"
+}

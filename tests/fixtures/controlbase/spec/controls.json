@@ -1,0 +1,82 @@
+{
+ "platform": "8.3.27.2342",
+ "configuration": {
+  "name": "КонтролыФорм",
+  "synonym": "Контролы управляемых форм"
+ },
+ "dataProcessor": {
+  "name": "Контролы",
+  "synonym": "Контролы управляемых форм"
+ },
+ "forms": [
+  {
+   "name": "ПоляВвода",
+   "synonym": "Поля ввода",
+   "attributes": [
+    {"name": "Строка", "type": "string", "length": 40, "title": "Строка"},
+    {"name": "Число", "type": "number", "digits": 10, "fraction": 2, "title": "Число"},
+    {"name": "Дата", "type": "date", "title": "Дата"},
+    {"name": "Булево", "type": "boolean", "title": "Булево"}
+   ],
+   "elements": [
+    {
+     "tag": "UsualGroup",
+     "name": "ГруппаПоля",
+     "props": {"ShowTitle": false, "Group": "Vertical"},
+     "children": [
+      {"tag": "InputField", "name": "ПолеСтрока", "props": {"DataPath": "Строка", "Title": {"title": "Строка"}, "Width": 25}},
+      {"tag": "InputField", "name": "ПолеЧисло", "props": {"DataPath": "Число", "Title": {"title": "Число"}, "Width": 15}},
+      {"tag": "InputField", "name": "ПолеДата", "props": {"DataPath": "Дата", "Title": {"title": "Дата"}, "Width": 15}},
+      {"tag": "CheckBoxField", "name": "ПолеБулево", "props": {"DataPath": "Булево", "Title": {"title": "Булево"}}}
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Надписи",
+   "synonym": "Надписи и декорации",
+   "attributes": [
+    {"name": "Строка", "type": "string", "length": 20, "title": "Строка"}
+   ],
+   "elements": [
+    {
+     "tag": "UsualGroup",
+     "name": "ГруппаНадписи",
+     "props": {"ShowTitle": true, "Group": "Vertical", "Title": {"title": "Надписи"}},
+     "children": [
+      {"tag": "LabelDecoration", "name": "Декорация", "props": {"Title": {"title": "Декорация-надпись"}}},
+      {"tag": "LabelField", "name": "ПолеНадпись", "props": {"DataPath": "Строка", "Title": {"title": "Поле-надпись"}, "Width": 25}}
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Группы",
+   "synonym": "Группы",
+   "attributes": [
+    {"name": "Строка", "type": "string", "length": 20, "title": "Строка"},
+    {"name": "Число", "type": "number", "digits": 8, "fraction": 0, "title": "Число"},
+    {"name": "Дата", "type": "date", "title": "Дата"}
+   ],
+   "elements": [
+    {
+     "tag": "UsualGroup",
+     "name": "ГруппаВертикальная",
+     "props": {"ShowTitle": true, "Group": "Vertical", "Title": {"title": "Вертикальная группа"}},
+     "children": [
+      {"tag": "InputField", "name": "ПолеСтрока", "props": {"DataPath": "Строка", "Title": {"title": "Строка"}, "Width": 20}},
+      {
+       "tag": "UsualGroup",
+       "name": "ГруппаКолонки",
+       "props": {"ShowTitle": true, "Group": "Horizontal", "Title": {"title": "Группа-колонки"}},
+       "children": [
+        {"tag": "InputField", "name": "ПолеЧисло", "props": {"DataPath": "Число", "Title": {"title": "Число"}, "Width": 10}},
+        {"tag": "InputField", "name": "ПолеДата", "props": {"DataPath": "Дата", "Title": {"title": "Дата"}, "Width": 12}}
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

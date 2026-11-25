@@ -229,6 +229,18 @@ add_test(NAME qtv8reader_gui_tests COMMAND qtv8reader_gui_tests)
 set_tests_properties(qtv8reader_gui_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# Гейт тестовой базы контролов: JSON-модель каждой формы фикстуры должна
+# совпадать с Form.xml (теги, имена, порядок и свойства). Нужен Python 3 и
+# собранный v8reader_cli, конфигуратору 1С не нужен.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if (Python3_Interpreter_FOUND)
+    add_test(NAME control_fixtures
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/control_fixture_check.py
+            --cli $<TARGET_FILE:v8reader_cli>
+            --dir ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/controlbase)
+endif ()
+
 if (MSVC)
     target_compile_options(qtv8reader_core PRIVATE /W4 /utf-8)
     target_compile_options(qtv8reader PRIVATE /W4 /utf-8)

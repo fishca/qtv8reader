@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<ConfigDumpInfo xmlns="http://v8.1c.ru/8.3/xcf/dumpinfo" xmlns:xen="http://v8.1c.ru/8.3/xcf/enums" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" format="Hierarchical" version="2.20">
+	<ConfigVersions>
+		<Metadata name="Configuration.КонтролыФорм" id="d93b54fa-0da7-5ead-a4e9-687e1461f88e" configVersion="02a7d1cc2855554bbf49707e7a72d9f400000000"/>
+		<Metadata name="DataProcessor.Контролы" id="e3489bca-d691-53a8-8feb-890730540f20" configVersion="2ee97ebe345e734b966690a2ecd602a300000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Группы" id="068cc523-9fd9-55fc-b97c-356b2d3813ff" configVersion="7723cc8055e9e949a8acb576d301186f00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Группы.Form" id="068cc523-9fd9-55fc-b97c-356b2d3813ff.0" configVersion="cbcd95655a804549a9ed16ed1acda64d00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Надписи" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d" configVersion="64d540f1c60df34e912257e1f73124f000000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.Надписи.Form" id="eee83877-635f-5ee2-a6c8-bb8bf807c55d.0" configVersion="dc26d5f83fa13e43bdda0936cfefca3600000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода" id="11d78109-2cd7-5aaf-b05d-f9c452583988" configVersion="68c7e124120a5e40859238438d9249ce00000000"/>
+		<Metadata name="DataProcessor.Контролы.Form.ПоляВвода.Form" id="11d78109-2cd7-5aaf-b05d-f9c452583988.0" configVersion="0d59e75a13c6c14182e9ac5fccd40ad900000000"/>
+		<Metadata name="Language.Русский" id="f5e1844c-7bb5-4fd9-a707-574b0ceb600f" configVersion="1329f97c3102ec4bbe7889d550756f6100000000"/>
+	</ConfigVersions>
+</ConfigDumpInfo>
