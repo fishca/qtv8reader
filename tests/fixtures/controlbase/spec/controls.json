@@ -229,6 +229,24 @@
    "name": "Кнопки",
    "synonym": "Кнопки",
    "attributes": [],
+   "commands": [
+    {
+     "name": "КомандаОбычная",
+     "title": "Обычная кнопка"
+    },
+    {
+     "name": "КомандаПоУмолчанию",
+     "title": "По умолчанию"
+    },
+    {
+     "name": "КомандаПервая",
+     "title": "Первая"
+    },
+    {
+     "name": "КомандаВторая",
+     "title": "Вторая"
+    }
+   ],
    "elements": [
     {
      "tag": "UsualGroup",
@@ -244,7 +262,8 @@
        "props": {
         "Title": {
          "title": "Обычная кнопка"
-        }
+        },
+        "CommandName": "Form.Command.КомандаОбычная"
        }
       },
       {
@@ -254,33 +273,53 @@
         "Title": {
          "title": "По умолчанию"
         },
-        "DefaultButton": true
+        "DefaultButton": true,
+        "CommandName": "Form.Command.КомандаПоУмолчанию"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ГруппаКнопок",
+   "synonym": "Группа кнопок",
+   "attributes": [],
+   "commands": [
+    {
+     "name": "КомандаПервая",
+     "title": "Первая"
+    },
+    {
+     "name": "КомандаВторая",
+     "title": "Вторая"
+    }
+   ],
+   "elements": [
+    {
+     "tag": "ButtonGroup",
+     "name": "ГруппаКнопок",
+     "props": {},
+     "children": [
+      {
+       "tag": "Button",
+       "name": "КнопкаПервая",
+       "props": {
+        "Title": {
+         "title": "Первая"
+        },
+        "CommandName": "Form.Command.КомандаПервая"
        }
       },
       {
-       "tag": "ButtonGroup",
-       "name": "ГруппаКнопок",
-       "props": {},
-       "children": [
-        {
-         "tag": "Button",
-         "name": "КнопкаПервая",
-         "props": {
-          "Title": {
-           "title": "Первая"
-          }
-         }
+       "tag": "Button",
+       "name": "КнопкаВторая",
+       "props": {
+        "Title": {
+         "title": "Вторая"
         },
-        {
-         "tag": "Button",
-         "name": "КнопкаВторая",
-         "props": {
-          "Title": {
-           "title": "Вторая"
-          }
-         }
-        }
-       ]
+        "CommandName": "Form.Command.КомандаВторая"
+       }
       }
      ]
     }
@@ -435,6 +474,12 @@
    "name": "КоманднаяПанель",
    "synonym": "Своя командная панель",
    "attributes": [],
+   "commands": [
+    {
+     "name": "КомандаПанели",
+     "title": "Кнопка панели"
+    }
+   ],
    "elements": [
     {
      "tag": "CommandBar",
@@ -445,9 +490,11 @@
        "tag": "Button",
        "name": "КнопкаПанели",
        "props": {
+        "Type": "CommandBarButton",
         "Title": {
          "title": "Кнопка панели"
-        }
+        },
+        "CommandName": "Form.Command.КомандаПанели"
        }
       }
      ]

@@ -404,6 +404,28 @@ def close_editor(handle) -> None:
     time.sleep(0.8)
 
 
+def close_designer(handle) -> None:
+    """Закрыть конфигуратор, открытый для съёмки.
+
+    Пока окно живо, оно держит блокировку информационной базы, и следующая
+    сборка базы падает с «Ошибка блокировки информационной базы для
+    конфигурирования»: съёмка и правка спецификации идут вперемешку.
+    """
+    if not handle:
+        return
+    pid = window_pid(handle)
+    user32.PostMessageW(handle, 0x0010, 0, 0)  # WM_CLOSE
+    for _ in range(40):
+        time.sleep(0.25)
+        if not user32.IsWindow(handle):
+            break
+    else:
+        if pid:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                           capture_output=True, check=False)
+            time.sleep(1.0)
+
+
 def load_manifest() -> dict:
     if os.path.isfile(MANIFEST):
         with open(MANIFEST, encoding="utf-8") as handle:
@@ -456,18 +478,21 @@ def command_capture(args) -> None:
         json.dump(ui, handle_file, ensure_ascii=False, indent=1)
         handle_file.write("\n")
     failures = 0
-    for form in forms:
-        canvas, error = capture_form(handle, form, ui, args.timeout)
-        close_editor(handle)
-        if error:
-            print("  %-24s ошибка: %s" % (form, error))
-            failures += 1
-            continue
-        entry = save_canvas(canvas, form)
-        manifest["forms"][form] = entry
-        save_manifest(manifest)
-        print("  %-24s %3dx%-3d сохранён" % (form, entry["width"], entry["height"]))
-    print("эталоны: %d, ошибок: %d → %s" % (len(manifest["forms"]), failures, REFS))
+    try:
+        for form in forms:
+            canvas, error = capture_form(handle, form, ui, args.timeout)
+            close_editor(handle)
+            if error:
+                print("  %-24s ошибка: %s" % (form, error))
+                failures += 1
+                continue
+            entry = save_canvas(canvas, form)
+            manifest["forms"][form] = entry
+            save_manifest(manifest)
+            print("  %-24s %3dx%-3d сохранён" % (form, entry["width"], entry["height"]))
+    finally:
+        close_designer(handle)
+    print("эталоны: %d, ошибок: %d -> %s" % (len(manifest["forms"]), failures, REFS))
     if failures:
         raise SystemExit(1)
 

@@ -137,11 +137,45 @@ def write_text(path: str, text: str) -> None:
         handle.write(data.encode("utf-8"))
 
 
-def title_xml(text: str, depth: int) -> str:
+def title_xml(text: str, depth: int, element: str = "Title") -> str:
     pad = "\t" * depth
-    return ("%s<Title>\n%s\t<v8:item>\n%s\t\t<v8:lang>ru</v8:lang>\n"
-            "%s\t\t<v8:content>%s</v8:content>\n%s\t</v8:item>\n%s</Title>"
-            % (pad, pad, pad, pad, escape(text), pad, pad))
+    return ("%s<%s>\n%s\t<v8:item>\n%s\t\t<v8:lang>ru</v8:lang>\n"
+            "%s\t\t<v8:content>%s</v8:content>\n%s\t</v8:item>\n%s</%s>"
+            % (pad, element, pad, pad, pad, escape(text), pad, pad, element))
+
+
+def emit_command(command: dict, index: int) -> str:
+    """Команда формы так, как её пишет платформа: Title, ToolTip, Action, CurrentRowUse.
+
+    Кнопка без команды в конфигураторе не рисуется вовсе, поэтому кнопки в
+    фикстуре получают настоящие команды формы, а к модулю формы — их
+    обработчики (``Action`` — имя процедуры).
+    """
+    name = command["name"]
+    lines = ['\t\t<Command name=%s id="%d">' % (quoteattr(name), index)]
+    if command.get("title"):
+        lines.append(title_xml(str(command["title"]), 3))
+    if command.get("tooltip"):
+        lines.append(title_xml(str(command["tooltip"]), 3, "ToolTip"))
+    lines.append("\t\t\t<Action>%s</Action>" % escape(
+        str(command.get("action") or name)))
+    lines.append("\t\t\t<CurrentRowUse>%s</CurrentRowUse>"
+                 % (command.get("currentRowUse") or "DontUse"))
+    lines.append("\t\t</Command>")
+    return "\n".join(lines)
+
+
+def emit_form_module(form: dict) -> str:
+    """Модуль формы с обработчиками команд: без них ``Action`` никуда не ведёт."""
+    commands = form.get("commands") or []
+    if not commands:
+        return ""
+    blocks = []
+    for command in commands:
+        handler = str(command.get("action") or command["name"])
+        blocks.append("&НаКлиенте\nПроцедура %s(Команда)\n\t\nКонецПроцедуры"
+                      % handler)
+    return "\n\n".join(blocks) + "\n"
 
 
 def value_text(value) -> str:
@@ -381,6 +415,12 @@ def emit_form_xml(form: dict, vocab: dict, warnings: list) -> str:
         for attribute in attributes:
             lines.append(emit_attribute(attribute, 2, ids))
         lines.append("\t</Attributes>")
+    commands = form.get("commands") or []
+    if commands:
+        lines.append("\t<Commands>")
+        for index, command in enumerate(commands, start=1):
+            lines.append(emit_command(command, index))
+        lines.append("\t</Commands>")
     lines.append("</Form>")
     return "\n".join(lines)
 
@@ -554,6 +594,10 @@ def command_generate(args) -> None:
                        emit_form_metadata(form, name))
             write_text(os.path.join(base, form["name"], "Ext", "Form.xml"),
                        emit_form_xml(form, vocab, warnings))
+            module = emit_form_module(form)
+            if module:
+                write_text(os.path.join(base, form["name"], "Ext", "Form",
+                                        "Module.bsl"), module)
 
     for warning in sorted(set(warnings)):
         print("  предупреждение: " + warning)

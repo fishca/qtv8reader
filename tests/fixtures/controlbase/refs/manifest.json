@@ -1,57 +1,64 @@
 {
  "base": "E:\\work\\1cv83.db\\qtv8db",
  "forms": {
+  "ГруппаКнопок": {
+   "captured": "2026-11-25 12:09:40",
+   "file": "ГруппаКнопок.png",
+   "height": 70,
+   "sha256": "d6c009384e7afecc06a8ab6fb5467aba91522e30bbf2b8d7d756924d54daf9e4",
+   "width": 89
+  },
   "Группы": {
-   "captured": "2026-11-25 11:39:22",
+   "captured": "2026-11-25 12:09:45",
    "file": "Группы.png",
    "height": 173,
    "sha256": "f039f9f631d418f8e6de4bc6b2d64a9583515c0ca577c0eb3b88de73fd2dfa4e",
    "width": 384
   },
   "Заголовок": {
-   "captured": "2026-11-25 11:39:27",
+   "captured": "2026-11-25 12:09:50",
    "file": "Заголовок.png",
    "height": 59,
    "sha256": "a4e5e926c12fe724ae12171d6cf764223398432fa3e0c03d0b4e52918a6ef0b9",
    "width": 235
   },
   "Кнопки": {
-   "captured": "2026-11-25 11:39:32",
+   "captured": "2026-11-25 12:09:55",
    "file": "Кнопки.png",
-   "height": 70,
-   "sha256": "d6c009384e7afecc06a8ab6fb5467aba91522e30bbf2b8d7d756924d54daf9e4",
-   "width": 89
+   "height": 133,
+   "sha256": "6dec0b28c5e0f018407dbda325959912e0e8f899c4fdd1462528aa1a3507cbec",
+   "width": 154
   },
   "КоманднаяПанель": {
-   "captured": "2026-11-25 11:39:37",
+   "captured": "2026-11-25 12:10:00",
    "file": "КоманднаяПанель.png",
-   "height": 86,
-   "sha256": "0e913dfde75592e46e43aa4e2e15abf0c2c489e871267ca75c9f27a1625a7b04",
+   "height": 122,
+   "sha256": "e8aaa21c23d229b44a7c0dc0a5bcd457272674fdaa2926c0f6d7577dd738221f",
    "width": 173
   },
   "Надписи": {
-   "captured": "2026-11-25 11:39:42",
+   "captured": "2026-11-25 12:10:06",
    "file": "Надписи.png",
    "height": 135,
    "sha256": "07a8282401c6eef9090ab32bd0f4d3e1fc1e0e83f8da156b1f2ecb30083114c0",
    "width": 371
   },
   "ПоляВвода": {
-   "captured": "2026-11-25 11:39:48",
+   "captured": "2026-11-25 12:10:11",
    "file": "ПоляВвода.png",
    "height": 189,
    "sha256": "8dbb809016ac0f4add91703f84c4a6dbb31bb908c69bb9638fc3d0ae25764dfc",
    "width": 342
   },
   "Страницы": {
-   "captured": "2026-11-25 11:39:53",
+   "captured": "2026-11-25 12:10:16",
    "file": "Страницы.png",
    "height": 141,
    "sha256": "977170b31eb9043dff53eb896950c7ad460d7a1fdf8f74c1824a2b4943660120",
    "width": 311
   },
   "Таблица": {
-   "captured": "2026-11-25 11:39:58",
+   "captured": "2026-11-25 12:10:21",
    "file": "Таблица.png",
    "height": 259,
    "sha256": "79965f35733df5ab8d6dc188362a3eff553f2c8541991b9d1c63f2e07fc07586",

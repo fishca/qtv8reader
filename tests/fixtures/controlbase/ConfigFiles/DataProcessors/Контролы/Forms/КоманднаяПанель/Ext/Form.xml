@@ -6,8 +6,8 @@
 			<ExtendedTooltip name="КоманднаяПанельФормыРасширеннаяПодсказка" id="4"/>
 			<ChildItems>
 				<Button name="КнопкаПанели" id="2">
-					<Type>UsualButton</Type>
-					<CommandName>0</CommandName>
+					<Type>CommandBarButton</Type>
+					<CommandName>Form.Command.КомандаПанели</CommandName>
 					<Title>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
@@ -30,4 +30,16 @@
 		</LabelDecoration>
 	</ChildItems>
 	<Attributes/>
+	<Commands>
+		<Command name="КомандаПанели" id="1">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Кнопка панели</v8:content>
+				</v8:item>
+			</Title>
+			<Action>КомандаПанели</Action>
+			<CurrentRowUse>DontUse</CurrentRowUse>
+		</Command>
+	</Commands>
 </Form>
