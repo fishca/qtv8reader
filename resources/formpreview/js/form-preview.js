@@ -22620,6 +22620,54 @@ function observeFormViewport(body) {
 }
 
 var RESIDUAL_OVERFLOW_PX = 4;
+
+/* Подпись, которой до правого края не хватает доли пикселя.
+ *
+ * Платформа меряет строку целыми единицами GDI: 145,7 px по canvas — это 145
+ * единиц, и строка ровно ложится в коробку 145 px. Chromium меряет дробно,
+ * видит 145,7 > 145 и переносит слово. Перенос добавляет строку: содержимое
+ * перерастает окно, появляется полоса прокрутки, которой у формы нет, и
+ * причина (округление метрик строки) выдаёт себя за следствие (тесная форма).
+ * Допуск в пиксель возвращает платформенное решение: подпись, у которой на
+ * вторую строку ушёл хвост меньше пикселя, остаётся одной строкой. */
+function unwrapHairlineCaptions(body) {
+    if (!body || !body.querySelectorAll) return 0;
+    var labels = body.querySelectorAll('.fp-label-decoration');
+    var unwrapped = 0;
+    for (var i = 0; i < labels.length; i++) {
+        var label = labels[i];
+        if (!label.parentNode || label.dataset.fpHairlineUnwrapped === '1') continue;
+        var range = document.createRange();
+        range.selectNodeContents(label);
+        if (range.getClientRects().length <= 1) continue;
+        var box = label.getBoundingClientRect().width;
+        if (!box) continue;
+        var probe = label.cloneNode(true);
+        probe.removeAttribute('data-fp-wrap-normal-width');
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText += ';position:absolute;left:-10000px;top:0;visibility:hidden;'
+            + 'white-space:nowrap;display:inline-block;width:auto;max-width:none;min-width:0;';
+        label.parentNode.appendChild(probe);
+        var needed = probe.getBoundingClientRect().width;
+        label.parentNode.removeChild(probe);
+        if (!needed || needed - box > 1) continue;
+        /* Коробка подписи — целое число единиц в платформе, поэтому дробный
+         * излишек округляется вверх, а не переносится. Подпись — сжимаемый
+         * флекс-элемент строки, и без min-width она ужалась бы обратно. */
+        var rounded = Math.ceil(needed);
+        label.style.width = rounded + 'px';
+        label.style.minWidth = rounded + 'px';
+        label.style.maxWidth = rounded + 'px';
+        label.style.flex = '0 0 auto';
+        label.dataset.fpHairlineUnwrapped = '1';
+        unwrapped++;
+    }
+    return unwrapped;
+}
+
+/* Горизонтальный остаток в пиксель — не прокрутка, а округление дробной
+ * метрики строки: полосы у платформы на таком остатке не бывает. */
+var RESIDUAL_SIDE_OVERFLOW_PX = 1;
 function tolerateResidualOverflow(body) {
     if (!body || !body.querySelectorAll || typeof getComputedStyle !== 'function') return;
     var ports = [body].concat(Array.prototype.slice.call(body.querySelectorAll(
@@ -22630,6 +22678,20 @@ function tolerateResidualOverflow(body) {
             port.style.removeProperty('overflow-y');
             delete port.dataset.fpResidualOverflow;
         }
+        if (port.dataset && port.dataset.fpResidualSideOverflow) {
+            port.style.removeProperty('overflow-x');
+            delete port.dataset.fpResidualSideOverflow;
+        }
+    }
+    /* Сначала поперёк: горизонтальная полоса отнимает у порта высоту, и
+     * вертикальный остаток, снятый после неё, был бы завышен на её ярлык. */
+    for (var s = 0; s < ports.length; s++) {
+        var side = ports[s];
+        if (getComputedStyle(side).overflowX !== 'auto') continue;
+        var stride = side.scrollWidth - side.clientWidth;
+        if (stride <= 0 || stride > RESIDUAL_SIDE_OVERFLOW_PX) continue;
+        side.style.setProperty('overflow-x', 'hidden', 'important');
+        side.dataset.fpResidualSideOverflow = String(stride);
     }
     for (var j = 0; j < ports.length; j++) {
         var el = ports[j];
@@ -24104,6 +24166,7 @@ function render(model, container, options) {
         /* Шапка: ширины колонок считаются на устоявшейся раскладке — после
          * fitFormViewport, иначе полотно ещё прижато к временной ширине. */
         fitRootHeaderColumnRemainder(body);
+        unwrapHairlineCaptions(body);
         publishWindowScrollStart(body);
         tolerateResidualOverflow(body);
         observeFormViewport(body);
