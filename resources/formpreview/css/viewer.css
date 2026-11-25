@@ -3706,6 +3706,11 @@ img.fp-btn-icon { object-fit: contain; }
 .fp-buttons-container { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; }
 
 .fp-item.fp-pages-tabbed .fp-item.fp-pages-tabbed { padding-top: 0; border-top-width: 0; }
+/* Низ рамки страниц закрыт в конфигураторе и тогда, когда панель ниже полотна:
+ * у владельца страниц на полотне 141 px остаются 11 px белого под линией
+ * (рамка 60…130, «Страницы» 311x141). У нас низ уезжал на 1 px за панель:
+ * нижний отступ коробки прижимал рамку к краю полотна, а не к краю панели. */
+.fp-body > .fp-item.fp-pages-tabbed { padding-bottom: 0; margin-bottom: 1px; }
 /* A root tabbed Pages below another root row starts one native Spacing row
  * below it with no band above its strip. */
 .fp-body > .fp-item:not([data-tag="AutoCommandBar"]) ~ .fp-item.fp-pages-tabbed { padding-top: 0; border-top-width: 0; }
@@ -3741,14 +3746,17 @@ img.fp-btn-icon { object-fit: contain; }
     overflow: hidden;
 }
 .fp-pages-outer.TabsOnBottom .fp-pages-tablist { margin: 0; padding: 0; border-bottom: none; border-top: 1px solid var(--fp-border-strong); }
-/* Страница-вкладка в конфигураторе обведена по бокам: линии стоят на x=10 и
- * x=969 от верха полосы вкладок до низа полотна (сверху линия принадлежит
- * самим вкладкам). Рамку рисует элемент-владелец страниц — она видна только
- * по бокам, верх и низ закрывают полоса вкладок и край полотна. */
+/* Страница-вкладка в конфигураторе обведена по бокам и снизу: линии стоят на
+ * x=10 и x=292 от верха полосы вкладок до низа панели, снизу — по её краю;
+ * сверху линия принадлежит самим вкладкам. Рамку рисует элемент-владелец
+ * страниц. Низ панели в конфигураторе закрыт и тогда, когда панель ниже
+ * полотна: «Страницы» 311x141 — стороны 61…130, низ на 130, а под рамкой
+ * ещё 10 px белого. */
 .fp-item:has(> .fp-control-wrap > .fp-group-block > .fp-pages-outer),
 .fp-item:has(> .fp-control-wrap > .fp-group-bare > .fp-pages-outer) {
     border-left-color: var(--fp-tab-border);
     border-right-color: var(--fp-tab-border);
+    border-bottom-color: var(--fp-tab-border);
 }
 /* Правая рамка владельца страниц видна и в строках полосы вкладок (169…195),
  * тогда как в эталоне там линии нет — полоса доходит до края полотна. Через
