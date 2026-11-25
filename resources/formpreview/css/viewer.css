@@ -1288,6 +1288,15 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
     > .fp-item.fp-control[data-tag="LabelField"] > .fp-control-wrap.fp-title-none {
     min-height: 18px;
 }
+/* The same holds for a titled LabelField: «Поле-надпись:» is a text line, not
+ * a 22px editor row (its value is a caption, not a frame). The 6px the editor
+ * floor added pushed «Надписи» past its 114px canvas, so the vertical
+ * scrollbar narrowed the panel to 353px and the horizontal one appeared over
+ * an empty third row. Beside an editor the row height is the editor's. */
+.fp-children.fp-children-vertical > .fp-item.fp-control[data-tag="LabelField"]
+    > .fp-control-wrap.fp-field-row {
+    min-height: 16px;
+}
 .fp-children-horizontal .fp-children.fp-children-vertical[data-fp-vertical-spacing-mode=""]:not(.fp-pages-active-panel)
     > .fp-item.fp-container.fp-bare:has(.fp-native-label-decoration):not(:has(
         .fp-input-wrap, [data-tag="LabelField"], .fp-button, a.fp-link:not(.fp-icon-btn),
@@ -2628,6 +2637,23 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
     > .fp-control-wrap > .fp-commandbar { margin-bottom: 0; }
 .fp-children-horizontal > .fp-item[data-tag="CommandBar"]:not(.fp-bar-item) {
     border-left-width: 0; border-right-width: 0;
+}
+/* A root-level authored CommandBar is one native 27 px band, just like the
+ * automatic one: «КоманднаяПанель» paints its button on rows 60…86 starting
+ * at x=10. The item shell (1 px border + 1 px padding on every side) and the
+ * toolbar's own 4 px bottom margin made the row 35 px, so the bar sat on
+ * 62…88, and its 2 px side padding started the command at x=14. */
+.fp-body > .fp-item[data-tag="CommandBar"] {
+    padding: 0;
+    border-width: 0;
+    height: var(--fp-commandbar-height);
+}
+.fp-body > .fp-item[data-tag="CommandBar"] > .fp-control-wrap {
+    height: var(--fp-commandbar-height);
+}
+.fp-body > .fp-item[data-tag="CommandBar"] > .fp-control-wrap > .fp-commandbar {
+    margin-bottom: 0;
+    padding-left: 0; padding-right: 0;
 }
 /* A vertical authored hyperlink CommandBar (a page switcher) is the
  * same 27px Taxi row. Item chrome plus the toolbar's 4px bottom margin made
