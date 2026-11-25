@@ -3155,12 +3155,29 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
 .fp-page-table-chrome-cadence .fp-table-widget:has(> .fp-chips) > .fp-table-toolbar { margin-bottom: 0; }
 .fp-table-widget > .fp-table-toolbar { padding-left: 0; gap: 9px; }
 .fp-table-widget > .fp-table-toolbar .fp-button { margin: 0; }
+/* The move pair shares one 54px lane: the up half is inset 11px inside its
+ * item, the down half hugs its own item to the lane's right edge, so the lane
+ * ends where the search starts and the divider lands on the middle. */
 .fp-table-widget > .fp-table-toolbar .fp-button.fp-std-move-up {
     margin-left: 11px; border-top-right-radius: 0; border-bottom-right-radius: 0;
 }
 .fp-table-widget > .fp-table-toolbar .fp-item:has(> .fp-control-wrap > .fp-std-move-down) { margin-left: -10px; }
 .fp-table-widget > .fp-table-toolbar .fp-button.fp-std-move-down {
-    margin-right: 11px; border-top-left-radius: 0; border-bottom-left-radius: 0;
+    border-top-left-radius: 0; border-bottom-left-radius: 0;
+}
+/* The search fill is the bar's slack: the spacer after the commands carries no
+ * minimum and cancels its own leading gap, so the field is left with exactly
+ * the room the platform gives it (172px on a 415px bar). */
+.fp-table-widget > .fp-table-toolbar > .fp-bar-spacer { min-width: 0; margin-left: -9px; }
+.fp-table-widget > .fp-table-toolbar .fp-search-item { align-self: center; }
+/* The list's search frame is drawn in the platform's warm frame colour, not
+ * in the grey of an ordinary editor frame. Its hint is the platform's small
+ * hint font, three pixels off the frame and much lighter than a value. */
+.fp-table-widget > .fp-table-toolbar .fp-search-field { border-color: #b3ac86; }
+.fp-table-widget > .fp-table-toolbar .fp-search-field > .fp-input-btn { border-left-color: #b3ac86; }
+.fp-table-widget > .fp-table-toolbar .fp-search-field > .fp-input { padding-left: 2px; }
+.fp-table-widget > .fp-table-toolbar .fp-search-field > .fp-input::placeholder {
+    font-size: 10.5px; color: #c8c8c8;
 }
 .fp-compact-list-group .fp-table-widget .fp-table-toolbar { min-width: 0; max-width: 100%; }
 .fp-compact-list-group .fp-table-widget .fp-table-toolbar > .fp-bar-spacer { min-width: 0; }
