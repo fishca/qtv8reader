@@ -3380,6 +3380,14 @@ img.fp-btn-icon { object-fit: contain; }
 .fp-table-mock th.fp-th-align-right { text-align: right; padding-right: 9px; }
 .fp-table-mock th.fp-th-align-center { text-align: center; }
 .fp-table-mock th.fp-th-group { text-align: left; font-weight: 400; border-bottom: 1px solid var(--fp-border); }
+/* Ячейка шапки на несколько строк держит подпись у верхнего края: платформа
+ * отводит ей те же 10 px от линии рамки, что и строке в одну линию
+ * («Количество» в форме «Колонки» — чернила 136…145 в блоке 128…218), а не
+ * центрирует по всей высоте. Отступ сверху на пиксель больше общего: у
+ * одиночной строки подпись встаёт на y=9 от края ячейки, у растянутой — на 9
+ * от собственной верхней линии, то есть 6+1. */
+.fp-table-mock th.fp-th-span-top { vertical-align: top; }
+.fp-mockup:not(.fp-clean85) .fp-table-mock th.fp-th-span-top { padding-top: 7px !important; }
 .fp-table-mock th.selected { background: #d7ebff; outline: 2px solid var(--fp-focus); outline-offset: -2px; }
 .fp-table-mock tbody td { color: var(--fp-muted); height: 30px; }
 .fp-table-empty { height: 30px; }

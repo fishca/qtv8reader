@@ -6973,7 +6973,9 @@ function tableHeaderRowCount(item) {
         return Math.max(rows, tableHeaderGridLayout(item.childItems).rows);
     var columns = tableColumns(item);
     for (var i = 0; i < columns.length; i++) {
-        if (isHeaderGroup(columns[i]) && headerKids(columns[i]).length) rows = Math.max(rows, 2);
+        if (isVerticalHeaderGroup(columns[i]))
+            rows = Math.max(rows, (headerKids(columns[i]).length || 0) + 1);
+        else if (isHeaderGroup(columns[i]) && headerKids(columns[i]).length) rows = Math.max(rows, 2);
         else if (isVerticalColumnGroup(columns[i])) rows = Math.max(rows, headerKids(columns[i]).length || 1);
         else rows = Math.max(rows, parseInt(prop(columns[i], ['HeaderHeight']), 10) || 1);
     }
@@ -9184,6 +9186,17 @@ function isInCellGroup(it) {
 
 function isHeaderGroup(it) {
     return it && it.tag === 'ColumnGroup' && !isInCellGroup(it) && isTrue(prop(it, ['ShowInHeader']));
+}
+
+/* Группа колонок с заголовком в шапке раскладывает детей по Group: у
+ * горизонтальной они стоят рядом под общей шапкой, у вертикальной (по
+ * умолчанию) — друг под другом, и группа занимает одну физическую колонку.
+ * Эталон «Колонки»: «Товар» во всю ширину 11…275, под ним строками «Код» и
+ * «Наименование»; «Количество» — отдельной колонкой 275…410. */
+function isVerticalHeaderGroup(it) {
+    if (!isHeaderGroup(it)) return false;
+    var group = String(prop(it, ['Group']) || 'Vertical').toLowerCase().replace(/[\s_-]+/g, '');
+    return group === 'vertical' || group.indexOf('вертик') >= 0;
 }
 
 /* ColumnGroup.Group defaults to Vertical in a managed form. Such a group is
@@ -12114,7 +12127,13 @@ function createControl(item, tag, ctx, parentMeta) {
             headerRowCount = Math.max(headerRowCount, spanningLayout.rows);
         }
         for (var gi = 0; !spanningLayout && gi < cols.length; gi++) {
-            if (isHeaderGroup(cols[gi])) {
+            if (isVerticalHeaderGroup(cols[gi])) {
+                /* Вертикальная группа с шапкой — одна физическая колонка:
+                 * заголовок группы и подписи детей идут строками шапки. */
+                var vhKids = headerKids(cols[gi]);
+                if (vhKids.length) headerRowCount = Math.max(headerRowCount, vhKids.length + 1);
+                leafs.push(cols[gi]);
+            } else if (isHeaderGroup(cols[gi])) {
                 var gk = headerKids(cols[gi]);
                 var gp = tablePhysicalColumns(cols[gi]);
                 if (gk.length) headerRowCount = Math.max(headerRowCount, 2);
@@ -12159,7 +12178,25 @@ function createControl(item, tag, ctx, parentMeta) {
             }
         }
         for (var i = 0; !spanningLayout && i < cols.length; i++) {
-            if (isHeaderGroup(cols[i])) {
+            if (isVerticalHeaderGroup(cols[i])) {
+                var vhHeadKids = headerKids(cols[i]);
+                var vhCaption = rawTitle(cols[i]) || titleOf(cols[i], ctx) || '';
+                if (!vhHeadKids.length) {
+                    var vhPlain = el('th', 'fp-th-group', vhCaption);
+                    vhPlain.rowSpan = Math.max(1, headerRowCount);
+                    vhPlain.setAttribute('data-id', itemKey(cols[i]));
+                    topTr.appendChild(vhPlain);
+                } else {
+                    var vhGroupTh = el('th', 'fp-th-group', vhCaption);
+                    vhGroupTh.setAttribute('data-id', itemKey(cols[i]));
+                    topTr.appendChild(vhGroupTh);
+                    for (var vhk = 0; vhk < vhHeadKids.length; vhk++) {
+                        var vhTh = isFalse(prop(vhHeadKids[vhk], ['ShowInHeader']))
+                            ? el('th', '') : makeColumnTh(vhHeadKids[vhk], ctx);
+                        headerRows[vhk + 1].appendChild(vhTh);
+                    }
+                }
+            } else if (isHeaderGroup(cols[i])) {
                 var gKids = headerKids(cols[i]);
                 var gPhysical = tablePhysicalColumns(cols[i]);
                 var gCap = rawTitle(cols[i]) || titleOf(cols[i], ctx) || '';
@@ -12199,9 +12236,23 @@ function createControl(item, tag, ctx, parentMeta) {
             }
         }
         if (!cols.length) topTr.appendChild(el('th', '', label || item.name || 'Таблица'));
+        /* Подпись ячейки шапки, растянутой на несколько строк, платформа
+         * рисует от верхнего края ячейки, а не по центру: «Количество» в
+         * «Колонках» — на строке 136 при строках шапки 126/157/188. */
+        for (var ht = 0; ht < headerRows.length; ht++) {
+            var headerCells = headerRows[ht].children;
+            for (var hci = 0; hci < headerCells.length; hci++) {
+                if ((headerCells[hci].rowSpan || 1) > 1)
+                    headerCells[hci].classList.add('fp-th-span-top');
+            }
+        }
         for (var tri = 0; tri < headerRows.length; tri++)
             if (headerRows[tri].children.length) {
-                headerRows[tri].style.height = tableMetrics.headerRowHeight + 'px';
+                /* Шаг строки шапки у платформы — 31 px: 30 px содержимого плюс
+                 * линия-разделитель. Верхняя граница таблицы рисуется вне
+                 * первой строки, поэтому добавочная линия нужна только со
+                 * второй: эталон «Колонки» — 126, 157, 188, 219. */
+                headerRows[tri].style.height = (tableMetrics.headerRowHeight + (tri > 0 ? 1 : 0)) + 'px';
                 thead.appendChild(headerRows[tri]);
             }
         /* Header=false hides the column strip entirely. */
