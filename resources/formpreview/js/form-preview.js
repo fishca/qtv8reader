@@ -10176,11 +10176,16 @@ function layoutMeta(item) {
      * row every 34px (25 + 9), and the bare CSS fallback of 3px left every
      * following row 6px high — the form «ПоляВвода» lost 2652px on that band
      * alone. The compact 3px cadence stays for section boundaries, which
-     * applyOmittedVerticalSectionBoundaries adds on top. */
+     * applyOmittedVerticalSectionBoundaries adds on top. Buttons join the
+     * same step: «Кнопки» steps 60 → 96 in the reference (27 + 9), so a
+     * button stack is ordinary rows once viewer.css gives the button row the
+     * native 27px footprint. */
     var leafOnlyVerticalStack = orientation === 'vertical' && visibleKids.length > 1
         && !String(rawVs || '').trim()
         && visibleKids.every(function (child) {
-            return !isContainer(child.tag || '') && !isSpecialRowLayoutTag(child.tag);
+            if (isContainer(child.tag || '')) return false;
+            if (child.tag === 'Button') return true;
+            return !isSpecialRowLayoutTag(child.tag);
         });
     if (leafOnlyVerticalStack) defaultVs = true;
     /* Pages=None + following group is not two ordinary controls. Taxi keeps

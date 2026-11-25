@@ -976,6 +976,36 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
     row-gap: 7px !important;
 }
 .fp-item.fp-bare.fp-root-color-surface:not(.fp-compact-color-band) { padding: 6px 5px; }
+/* An authored button stacked in a vertical group is one native 27 px row:
+ * the platform puts the next button 36 px down (27 + Single 9) with frames at
+ * 60…85 and 96…121 in «Кнопки». The transparent item shell (1 px border +
+ * 1 px padding on both sides) drew every button 2 px low and made the row
+ * 30 px, so the compact 3 px child gap stepped them 33 px apart. The shell is
+ * paint-only chrome: fold it away and let the button own the whole row. */
+.fp-children-vertical > .fp-item[data-tag="Button"]:not(.fp-bar-item) {
+    height: 27px;
+    padding-top: 0; padding-bottom: 0;
+    border-top-width: 0; border-bottom-width: 0;
+}
+.fp-children-vertical > .fp-item[data-tag="Button"]:not(.fp-bar-item) > .fp-control-wrap {
+    height: 100%;
+    /* The wrap centres its child in a row flex box; on a 27 px row the 26 px
+     * frame therefore sat 1 px low. */
+    align-items: flex-start;
+}
+/* A stacked button fills its group's width and centres its caption, exactly as
+ * the platform paints it: the 126 px group of «Кнопки» carries a 124 px frame
+ * (the top border row loses a pixel at each rounded corner). A content-sized
+ * button measured its caption 4 px wider here and poked 3 px out of the group,
+ * which opened the canvas's own scrollbar. The frame keeps its authored 26 px
+ * height so its 1 px shadow lands on the row, not past it. */
+.fp-children-vertical > .fp-item[data-tag="Button"]:not(.fp-bar-item)
+    > .fp-control-wrap > .fp-button {
+    width: 100%;
+    height: var(--fp-button-height);
+    justify-content: center;
+    text-align: center;
+}
 .fp-platform-85.fp-taxi:not(.fp-clean85) .fp-body > .fp-item.fp-root-color-surface:has(.fp-buttongroup-compact) {
     padding-top: 0;
     padding-bottom: 0;
@@ -2501,7 +2531,7 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
     padding-right: 0;
     min-height: var(--fp-commandbar-height);
     height: var(--fp-commandbar-height);
-    margin-bottom: 1px;
+    margin-bottom: 0;
     font-size: 14px;
     gap: 7px;
     /* Native 27px buttons paint their lower shadow outside the 25px bar
@@ -2509,6 +2539,15 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
     overflow-x: clip;
     overflow-y: visible;
 }
+/* The root bar band is one native row. Its own 27 px box opens 2 px under the
+ * item top, so the first bar button paints on rows 24…50 of the canvas — the
+ * same rows as the configurator. The item shell (1 px border + 1 px padding
+ * on each side) plus a 1 px bottom margin on the bar made the band 32 px, and
+ * every following root row landed 2 px low: «Кнопки» put its group on 62
+ * where the platform has 60, which overflowed the 112 px canvas and switched
+ * on a scrollbar. Only the two bottom pixels go: the top offsets that place
+ * the button stay untouched. */
+.fp-body > .fp-item[data-tag="AutoCommandBar"] { padding-bottom: 0; }
 .fp-body > .fp-item.fp-root-flattened-page.fp-pages-none
     > .fp-control-wrap > .fp-group-block > .fp-item[data-tag="Page"] > .fp-control-wrap
     > .fp-page-block > .fp-children-horizontal:has(
@@ -3479,9 +3518,12 @@ img.fp-btn-icon { object-fit: contain; }
 /* The section caption of a group with an omitted Representation (see
  * form-preview.js sectionTitle). It must not feed the group's width: the
  * group is as wide as its content; a longer caption wraps between words.
- * 2px below it, not 4 (the first row sat 2-3px low). */
-.fp-body.fp-mockup .fp-group-title.fp-group-title-section { font-size: 16px; line-height: 18px; margin-top: -1px; margin-bottom: 5px; white-space: normal; width: 0; min-width: 100%; }
-.fp-body.fp-mockup .fp-group-block > .fp-group-title.fp-group-title-section { margin-top: -3px; margin-bottom: 7px; }
+ * The caption line opens one pixel under the group top and 3px below it sits
+ * the first row: «Группы» carries the ink on rows 63…77 over a row at 82, and
+ * «Надписи» on 63…77 over 82 as well. The 1px inset used to be -1 because the
+ * root command bar was 2px too tall and pushed every group down by 2. */
+.fp-body.fp-mockup .fp-group-title.fp-group-title-section { font-size: 16px; line-height: 18px; margin-top: 1px; margin-bottom: 3px; white-space: normal; width: 0; min-width: 100%; }
+.fp-body.fp-mockup .fp-group-block > .fp-group-title.fp-group-title-section { margin-top: -1px; margin-bottom: 5px; }
 /* Inside a coloured card the caption keeps an inset instead: the ink starts
  * 8px under the card top, the first row 32px under. */
 .fp-body.fp-mockup .fp-item.fp-backcolor > .fp-control-wrap > .fp-group-block > .fp-group-title.fp-group-title-section { margin-top: 4px; margin-bottom: 0; }
