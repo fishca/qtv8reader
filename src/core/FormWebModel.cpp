@@ -1609,6 +1609,9 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         properties.insert(QStringLiteral("SearchControlLocation"), QStringLiteral("None"));
 
     QJsonArray columns;
+    QJsonObject searchStringAddition;
+    QJsonObject viewStatusAddition;
+    QJsonObject searchControlAddition;
     const FormItem *tableBar = nullptr;
     // Имя табличной части — последний сегмент пути к данным таблицы.
     QString tableName;
@@ -1635,12 +1638,25 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
         }
         if (child.type == FormItem::Type::AutoCommandBar)
             continue;
-        // Дополнения поиска самой таблицы платформа не описывает в форме: они
-        // появляются, только если вынесены в панель (тогда их и разбираем как
-        // элементы панели). В таблице они — служебные: в выгрузке Form.xml их
-        // нет, поэтому и модель их не получает.
-        if (child.type == FormItem::Type::Search)
+        // Дополнения поиска самой таблицы платформа держит в бинарной форме
+        // детьми таблицы, а их место задают три свойства таблицы выше
+        // (SearchStringLocation, ViewStatusLocation, SearchControlLocation).
+        // Узлы отдаются рендереру поимённо, а не выбрасываются: у таблицы с
+        // местом Auto «состояние просмотра» — это полоса фильтра над сеткой
+        // (эталон «Таблицы»: плашки «Поле1: Значение1» на 95…117, сетка
+        // начинается на 126). У таблиц «Авансового отчёта» место — None, и
+        // полосы там нет, поэтому рисование остаётся на рендерере, который
+        // проверяет место добавления.
+        if (child.type == FormItem::Type::Search) {
+            const QString additionTag = elementTag(child);
+            if (additionTag == QLatin1String("ViewStatusAddition"))
+                viewStatusAddition = makeItem(child, document);
+            else if (additionTag == QLatin1String("SearchControlAddition"))
+                searchControlAddition = makeItem(child, document);
+            else if (additionTag == QLatin1String("SearchStringAddition"))
+                searchStringAddition = makeItem(child, document);
             continue;
+        }
         if (child.type == FormItem::Type::Field) {
             columns.append(makeField(child, document, true, tableName));
             continue;
@@ -1670,6 +1686,12 @@ QJsonObject makeTable(const FormItem &item, const FormDocument &document)
                     buildCommandBarNode(tableBar, document, QJsonArray(),
                                         item.name + QStringLiteral("КоманднаяПанель")));
     }
+    if (!searchStringAddition.isEmpty())
+        json.insert(QStringLiteral("searchStringAddition"), searchStringAddition);
+    if (!viewStatusAddition.isEmpty())
+        json.insert(QStringLiteral("viewStatusAddition"), viewStatusAddition);
+    if (!searchControlAddition.isEmpty())
+        json.insert(QStringLiteral("searchControlAddition"), searchControlAddition);
     return withUserVisible(item, json);
 }
 

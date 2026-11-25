@@ -142,6 +142,7 @@ private slots:
     void userVisiblePageAlignAndRowsPicture();
     void collapsedPageTitleCommandBarAndSource();
     void tableSearchLocations();
+    void tableSearchAdditions();
     void layoutNodeIsNotItemReference();
     void popupPictureAndRepresentation();
     void formCommandBarLocation();
@@ -3310,6 +3311,115 @@ void TestForm::tableSearchLocations()
     QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("SearchStringLocation")));
     QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("ViewStatusLocation")));
     QVERIFY(!props(QStringLiteral("СписокБезПоиска")).contains(QStringLiteral("SearchControlLocation")));
+}
+
+// Дополнения поиска таблицы платформа держит в бинарной форме детьми
+// таблицы — строка поиска, состояние просмотра и управление поиском. Модель
+// отдаёт их узлами таблицы (searchStringAddition, viewStatusAddition,
+// searchControlAddition), а не столбцами: по ним рендерер рисует полосу
+// «состояния просмотра» над сеткой (плашки фильтра) и ставит строку поиска.
+// У таблиц «Авансового отчёта» все три места — None, и полосы на эталоне нет.
+void TestForm::tableSearchAdditions()
+{
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name == QStringLiteral("АвансовыйОтчет")) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+    reader.loadSections(*object);
+
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+    const MetadataEntry *formEntry = nullptr;
+    for (const MetadataEntry &entry : forms->entries) {
+        if (entry.name == QStringLiteral("ФормаДокумента")) {
+            formEntry = &entry;
+            break;
+        }
+    }
+    QVERIFY(formEntry);
+
+    const V8Element *element =
+        reader.container().find(formEntry->guid + QStringLiteral(".0"));
+    QVERIFY(element);
+    QByteArray payload;
+    QVERIFY2(reader.container().elementPayload(*element, &payload, nullptr, &error),
+             qPrintable(error));
+
+    FormDocument document;
+    QVERIFY2(FormReader::parseBytes(payload, &document, &error), qPrintable(error));
+
+    const QJsonObject model = QJsonDocument::fromJson(formWebModelJson(document)).object();
+    const QJsonArray roots = model.value(QStringLiteral("childItemsRoot")).toArray();
+
+    int tables = 0;
+    int searchAdditions = 0;
+    int viewStatusAdditions = 0;
+    int searchControlAdditions = 0;
+    int leakedColumns = 0;
+    int hiddenLocations = 0;
+    int autoLocations = 0;
+    std::function<void(const QJsonArray &)> scan = [&](const QJsonArray &items) {
+        for (const QJsonValue &value : items) {
+            const QJsonObject item = value.toObject();
+            if (item.value(QStringLiteral("tag")).toString() == QLatin1String("Table")) {
+                ++tables;
+                /* Платформа пишет место строкой только когда оно не Auto:
+                 * у пяти таблиц «Авансового отчёта» это None (полосы нет), у
+                 * «Билетов» места не заданы — они и рисуются. */
+                const QJsonObject properties =
+                    item.value(QStringLiteral("properties")).toObject();
+                if (properties.value(QStringLiteral("ViewStatusLocation")).toString()
+                    == QLatin1String("None"))
+                    ++hiddenLocations;
+                else
+                    ++autoLocations;
+                const QString searchTag = item.value(QStringLiteral("searchStringAddition"))
+                                              .toObject().value(QStringLiteral("tag")).toString();
+                const QString viewTag = item.value(QStringLiteral("viewStatusAddition"))
+                                            .toObject().value(QStringLiteral("tag")).toString();
+                const QString controlTag = item.value(QStringLiteral("searchControlAddition"))
+                                               .toObject().value(QStringLiteral("tag")).toString();
+                if (searchTag == QLatin1String("SearchStringAddition"))
+                    ++searchAdditions;
+                if (viewTag == QLatin1String("ViewStatusAddition"))
+                    ++viewStatusAdditions;
+                if (controlTag == QLatin1String("SearchControlAddition"))
+                    ++searchControlAdditions;
+                const QJsonArray columns = item.value(QStringLiteral("childItems")).toArray();
+                for (const QJsonValue &column : columns) {
+                    if (column.toObject().value(QStringLiteral("tag")).toString()
+                            .endsWith(QLatin1String("Addition")))
+                        ++leakedColumns;
+                }
+            }
+            scan(item.value(QStringLiteral("childItems")).toArray());
+        }
+    };
+    scan(roots);
+
+    QCOMPARE(tables, 6);
+    QCOMPARE(searchAdditions, 6);
+    QCOMPARE(viewStatusAdditions, 6);
+    QCOMPARE(searchControlAdditions, 6);
+    QCOMPARE(leakedColumns, 0);
+    QCOMPARE(hiddenLocations, 5);
+    QCOMPARE(autoLocations, 1);
 }
 
 // Ссылка на элемент формы — {номер, GUID}, и у группы номер часто равен 28
