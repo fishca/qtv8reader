@@ -35,6 +35,7 @@ import shutil
 import socketserver
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -105,27 +106,74 @@ def sync_resources(root: str) -> int:
 
 
 def shoot(args, out_path: str) -> None:
-    stamp = str(int(time.time()))
+    """Снимает форму в окне ровно ``args.width``x``args.height``.
+
+    Страница рендерера снимается внутри рамки фиксированного размера, а не
+    напрямую: флаг ``--window-size`` задаёт размер *окна*, и Chrome на Windows
+    не даёт окну стать уже ~500 px. При эталоне 342x189 область просмотра
+    выходила 500x189, снимок обрезался слева до 342, и всё правое (кнопка
+    автопанели «Ещё») уезжало за кадр: на каждой форме это давало ~360 px
+    «расхождения» из ничего. Замер _ruler.html подтверждает: без рамки
+    маркер ``right:0`` не попадает в снимок, в рамке 342x189 — попадает.
+    """
+    from PIL import Image
+
+    out_path = os.path.abspath(out_path)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     if os.path.exists(out_path):
         os.remove(out_path)
-    subprocess.run(
-        # Без --hide-scrollbars: приложение рисует собственную полосу прокрутки
-        # формы (18 px, см. qv8-host.css), и место под неё входит в ширину
-        # полотна. С флагом Chromium дорожку не занимает, полотно выходит шире
-        # эталона, и снимок перестаёт мерить то, что видно в программе.
-        #
-        # --virtual-time-budget: кадр снимается после загрузки страницы, а
-        # model-app.js ставит __QV8_READY позже — когда раскодируются все
-        # <img>. Без бюджета снимок иногда ловил пустые кнопки-картинки
-        # (Дт/Кт, ↑↓, календарь): расхождение с эталоном гуляло на ±430 px.
-        [find_chrome(), "--headless=new", "--disable-gpu",
-         "--force-device-scale-factor=1",
-         "--virtual-time-budget=8000",
-         "--window-size=%d,%d" % (args.width, args.height),
-         "--screenshot=" + out_path,
-         "%s/model.html?t=%s" % (args.url, stamp)],
-        capture_output=True, env=qt_env(), timeout=180, check=False,
-    )
+    stamp = str(int(time.time()))
+    root = os.path.abspath(getattr(args, "root", None)
+                           or os.path.join(REPO, "out", "preview"))
+    os.makedirs(root, exist_ok=True)
+    frame = os.path.join(root, "_shot.html")
+    width, height = int(args.width), int(args.height)
+    with open(frame, "w", encoding="utf-8") as handle:
+        handle.write(
+            "<!doctype html>\n<html lang=\"ru\"><head><meta charset=\"utf-8\">\n"
+            "<style>html,body{margin:0;padding:0;overflow:hidden;background:#fff}\n"
+            "iframe{border:0;display:block;width:%dpx;height:%dpx}</style></head>\n"
+            "<body><iframe src=\"model.html?t=%s\"></iframe></body></html>\n"
+            % (width, height, stamp))
+    raw = out_path + ".raw.png"
+    if os.path.exists(raw):
+        os.remove(raw)
+    profile = tempfile.mkdtemp(prefix="qv8-shot-")
+    try:
+        subprocess.run(
+            # Без --hide-scrollbars: приложение рисует собственную полосу
+            # прокрутки формы (18 px, см. qv8-host.css), и место под неё
+            # входит в ширину полотна. С флагом Chromium дорожку не занимает,
+            # полотно выходит шире эталона, и снимок перестаёт мерить то, что
+            # видно в программе.
+            #
+            # Окно берётся заметно больше полотна: оно нужно только как
+            # поверхность для рамки, а размер страницы задаёт сама рамка.
+            #
+            # --virtual-time-budget: кадр снимается после загрузки страницы, а
+            # model-app.js ставит __QV8_READY позже — когда раскодируются все
+            # <img>. Без бюджета снимок иногда ловил пустые кнопки-картинки
+            # (Дт/Кт, ↑↓, календарь): расхождение с эталоном гуляло на ±430 px.
+            [find_chrome(), "--headless=new", "--disable-gpu",
+             "--force-device-scale-factor=1",
+             "--virtual-time-budget=8000",
+             "--user-data-dir=" + profile,
+             "--window-size=%d,%d" % (max(width, 900), max(height, 700)),
+             "--screenshot=" + raw,
+             "%s/_shot.html?t=%s" % (args.url, stamp)],
+            capture_output=True, env=qt_env(), timeout=180, check=False,
+        )
+        if not os.path.exists(raw):
+            raise SystemExit("снимок не создан: " + out_path)
+        image = Image.open(raw).convert("RGB")
+        if image.size != (width, height):
+            image = image.crop((0, 0, min(width, image.size[0]),
+                                min(height, image.size[1])))
+        image.save(out_path)
+    finally:
+        if os.path.exists(raw):
+            os.remove(raw)
+        shutil.rmtree(profile, ignore_errors=True)
     if not os.path.exists(out_path):
         raise SystemExit("снимок не создан: " + out_path)
 

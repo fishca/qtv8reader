@@ -117,6 +117,19 @@ def find_forms(root: str) -> list:
     return sorted(glob.glob(pattern))
 
 
+def cli_env() -> dict:
+    """PATH с библиотеками Qt: без него v8reader_cli не стартует.
+
+    Запуск из обычной консоли наследует PATH с Qt, а сборочный агент — нет:
+    процесс падал с пустым выводом и гейт сообщал «form-model: » на каждой
+    форме, ничего не проверив.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import form_view_measure  # noqa: PLC0415
+
+    return form_view_measure.qt_env()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cli", required=True, help="путь к v8reader_cli")
@@ -147,7 +160,8 @@ def main() -> int:
             [args.cli, "form-model", cf, "Обработка." + processor,
              "--form", form, "-o", os.path.join(
                  os.path.dirname(cf), ".model-" + form + ".json")],
-            capture_output=True, text=True, encoding="utf-8", errors="replace")
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=cli_env())
         if result.returncode != 0:
             problems.append("%s: form-model: %s"
                             % (form, (result.stdout + result.stderr).strip()))

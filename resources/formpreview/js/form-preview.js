@@ -10171,6 +10171,18 @@ function layoutMeta(item) {
         && (visibleKids[0].tag === 'InputField' || visibleKids[0].tag === 'CheckBoxField');
     defaultVs = (compactVerticalSingleCadence || inlinePopupVerticalCadence)
         && !String(rawVs || '').trim();
+    /* A vertical group whose children are all plain controls (no nested
+     * groups) stacks them on the Single step: the platform puts a 25px editor
+     * row every 34px (25 + 9), and the bare CSS fallback of 3px left every
+     * following row 6px high — the form «ПоляВвода» lost 2652px on that band
+     * alone. The compact 3px cadence stays for section boundaries, which
+     * applyOmittedVerticalSectionBoundaries adds on top. */
+    var leafOnlyVerticalStack = orientation === 'vertical' && visibleKids.length > 1
+        && !String(rawVs || '').trim()
+        && visibleKids.every(function (child) {
+            return !isContainer(child.tag || '') && !isSpecialRowLayoutTag(child.tag);
+        });
+    if (leafOnlyVerticalStack) defaultVs = true;
     /* Pages=None + following group is not two ordinary controls. Taxi keeps
      * 6px there. CompactOrdinaryRows would publish Single 9px and shift the
      * group by +3 without moving the field above. */
