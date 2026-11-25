@@ -5452,7 +5452,23 @@ function appendPictureIcon(parent, ref, ctx, fallbackName, cls) {
             std.classList.add('fp-std-picture-stop-fallback-85');
         std.alt = '';
         std.setAttribute('aria-hidden', 'true');
+        /* Один повтор до подмены на контур.
+         *
+         * std-pictures/ читается с диска, и первый запрос может сорваться не
+         * из-за отсутствия файла: файл бывает занят антивирусом сразу после
+         * записи, а параллельная съёмка нескольких форм делит один сервер.
+         * Тогда кнопка навсегда оставалась серым контуром — в замере это
+         * ровно +79 px в прямоугольнике 163…174 × 212…223 (кнопка
+         * «Переместить вниз» в «АвансовомОтчёте»), а снимок гулял между
+         * двумя значениями. Повтор с новым URL отличает случайный сбой от
+         * настоящего 404: второй отказ тоже уходит в контур. */
+        var attempts = 0;
         std.onerror = function () {
+            if (attempts < 1) {
+                attempts += 1;
+                std.src = stdUrl + (stdUrl.indexOf('?') < 0 ? '?' : '&') + 'retry=' + attempts;
+                return;
+            }
             if (std.parentNode) std.parentNode.replaceChild(svgIcon(fallbackName || 'photo', iconClass), std);
         };
         std.src = stdUrl;
