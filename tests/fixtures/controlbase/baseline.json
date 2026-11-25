@@ -5,8 +5,8 @@
    "text": 625
   },
   "Группы": {
-   "structure": 485,
-   "text": 2428
+   "structure": 249,
+   "text": 2405
   },
   "Заголовок": {
    "structure": 0,
@@ -37,15 +37,15 @@
    "text": 1785
   },
   "Переключатели": {
-   "structure": 198,
-   "text": 1618
+   "structure": 183,
+   "text": 1551
   },
   "ПоляВвода": {
-   "structure": 271,
+   "structure": 159,
    "text": 970
   },
   "Страницы": {
-   "structure": 178,
+   "structure": 72,
    "text": 841
   },
   "Таблица": {

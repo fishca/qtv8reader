@@ -100,7 +100,7 @@ var TAXI_LAYOUT_METRICS = {
     autoMaxEditorPaintInset: 10,
     inputButtonLaneWidth: 21,
     viewStatusHeight: 23,
-    sideTitleGap: 5,
+    sideTitleGap: 4,
     topTitleGap: 4,
     compactRowGap: 3,
     rowGap: 9,
@@ -5553,8 +5553,11 @@ function authoredEditorPaintWidth(raw, tag, buttons) {
     if (!declared || (tag !== 'InputField' && tag !== 'ValueList')) return declared;
     var appended = Math.max(0, Number(buttons) || 0);
     /* Width is the editable text lane. Drop-list, choice and calendar
-     * affordances are appended native tracks, not pixels taken from it. */
-    return declared + (appended ? 1 + appended * 21 : 0);
+     * affordances are appended native tracks, not pixels taken from it.
+     * The frame itself is one pixel wider than the 10·n+10 band: «Число(8)»
+     * в «Группах» — 111 px, «Строка(25)» в «ПоляхВвода» — 261, и без этой
+     * единицы рамка кончается на пиксель раньше эталона. */
+    return declared + 1 + appended * 21;
 }
 
 /* A card rail beside tabbed pages is a full-width clean-client workspace.
@@ -14456,13 +14459,13 @@ function containedColumnCaptionLabels(box) {
     return columns.length >= 2 ? columns : [];
 }
 
-/* Ячейка подписи в общей колонке: глиф плюс 1 px оболочки элемента. Расстояние
- * до поля добавляет сам ряд (`gap` 5 px), поэтому колонка подписей вместе с
+/* Ячейка подписи в общей колонке: глиф плюс 2 px оболочки элемента. Расстояние
+ * до поля добавляет сам ряд (`gap` 4 px), поэтому колонка подписей вместе с
  * ним даёт 104 px — как в конфигураторе: «Подразделение:» занимает 98.3 px,
- * ячейка 99, ряд начинается на 10 и поле — на 114. Собственный
+ * ячейка 100, ряд начинается на 10 и поле — на 114. Собственный
  * `throughAlignTitleChrome` (11) сюда не годится, он считает одиночную колонку
  * страницы вместе с её отступом. */
-var THROUGH_ALIGN_LANE_CHROME = 1;
+var THROUGH_ALIGN_LANE_CHROME = 2;
 
 function sharedThroughAlignLaneWidth(columns) {
     var widest = 0;
@@ -14638,24 +14641,60 @@ function fitRootHeaderColumnRemainder(root) {
     return changed;
 }
 
-/* Ширина колонки подписей для обычной строки поля.
+/* Продвижение строки так, как его меряет GDI.
  *
- * Платформа меряет подпись целыми единицами, поэтому коробка колонки — это
- * округлённое продвижение строки, а не ширина, которую браузер получил после
- * прошлого прохода: min-width, прочитанный обратно через labelMetric, заводит
- * обратную связь. Подписи в семь знаков резервная оценка «7 px на знак» даёт
- * 49, и это значение остаётся навсегда, хотя строка просит 47 — все редакторы
- * колонки уезжают на 1 px вправо.
- *
- * Строка флажка просит на единицу больше. Это замер, а не механизм платформы:
- * в «ПоляхВвода» колонку задаёт «Булево:» из строки флажка (48), в
- * «Переключателях» — «Выбор:» из строки радиокнопок (44), и отличаются они
- * ровно этой единицей. */
+ * Платформа складывает продвижения глифов целыми единицами, поэтому её
+ * «Строка:» — 46 px, а не 47: канва Chrome даёт 46.62, и округление суммы
+ * уводит колонку на пиксель. Посимвольное округление продвижений повторяет
+ * GDI без знания его внутренностей: «Строка:» 46, «Число:» 42, «Дата:» 33 —
+ * ровно те значения, из которых платформа строит колонку подписей (поле
+ * начинается через 4 px после подписи). */
+var gdiGlyphWidthCache = typeof Map === 'function' ? new Map() : null;
+
+function gdiLineGlyphWidth(label, line) {
+    if (!line) return 0;
+    var doc = label && (label.ownerDocument
+        || (typeof document !== 'undefined' ? document : null));
+    if (!doc || !doc.createElement) return 0;
+    var font = '';
+    try {
+        var computed = doc.defaultView && doc.defaultView.getComputedStyle(label);
+        if (computed && computed.font) font = computed.font;
+    } catch (e) { /* detached label: меряем шрифтом по умолчанию */ }
+    var key = font + '\u0000' + line;
+    if (gdiGlyphWidthCache && gdiGlyphWidthCache.has(key))
+        return gdiGlyphWidthCache.get(key);
+    var total = 0;
+    try {
+        var context = doc.createElement('canvas').getContext('2d');
+        if (context) {
+            if (font) context.font = font;
+            for (var i = 0; i < line.length; i++)
+                total += Math.round(context.measureText(line.charAt(i)).width);
+        }
+    } catch (e) {
+        total = 0;
+    }
+    if (!total) total = Math.round(throughAlignGlyphMetric(label));
+    if (gdiGlyphWidthCache) gdiGlyphWidthCache.set(key, total);
+    return total;
+}
+
+/* Ширина колонки подписей для обычной строки поля. Считается по неизменному
+ * продвижению строки, а не по коробке, прочитанной обратно через labelMetric:
+ * иначе min-width замыкается сам на себя и держит ширину прошлого прохода. */
 function captionLaneMetric(label) {
-    var width = Math.round(throughAlignGlyphMetric(label));
-    var row = label && label.parentNode;
-    if (row && row.classList && row.classList.contains('fp-check-row')) width += 1;
-    return width;
+    if (!label) return 0;
+    var text = String(label.textContent || '');
+    var lines = text.split(/\r?\n/);
+    var best = 0;
+    for (var i = 0; i < lines.length; i++)
+        best = Math.max(best, gdiLineGlyphWidth(label, lines[i]));
+    /* Подпись диапазона просит на единицу больше: в «АвансовомОтчёте» поле
+     * даты начинается на 266 при подписи «от:» на 244 и 17 px строки, то есть
+     * ячейка 18. Это замер, а не механика GDI. */
+    if (/^(от|до|по|from|to):?$/i.test(text.trim())) best += 1;
+    return best;
 }
 
 function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
@@ -14734,6 +14773,19 @@ function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
             }
         }
     }
+    /* Колонка, в которой нет ни одного поля — только выбор (переключатель,
+     * тумблер или флажок), — просит на пиксель больше: в «Переключателях»
+     * платформа ставит кружок и квадрат на x=59, а «Выбор:» меряет 43 px.
+     * В «ПоляхВвода» та же «Булево:» стоит в колонке с полями, и там лишней
+     * единицы нет — поле начинается через 4 px после подписи. Это замер,
+     * а не механика платформы, поэтому правило узкое: ни одного поля в
+     * колонке. */
+    if (max > 0 && labels.every(function (label) {
+        var row = label.parentNode;
+        return !!(row && row.classList
+            && !row.querySelector('.fp-input-wrap, textarea')
+            && row.querySelector('.fp-check, .fp-radio-row, .fp-boolean-segmented'));
+    })) max += 1;
     /* A direct field followed by a nested compound period row shares one Taxi
      * caption track. The terminal colon is separator chrome there, so the
      * character fallback contributes one unit less than in ordinary columns. */
@@ -14823,6 +14875,21 @@ function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
             localWidths.push(width);
         }
     }
+    /* Подпись вложенной горизонтальной группы не входит в колонку внешней
+     * вертикальной: в «Группах» поле «Число» стоит через 4 px после своей
+     * подписи (56), а не по колонке «Строки:» (50). Внешняя колонка по-прежнему
+     * считается по всем подписям, но вложенная строка остаётся со своей. */
+    var ownerHorizontal = !!(ownerBox && ownerBox.classList
+        && ownerBox.classList.contains('fp-children-horizontal'));
+    if (!ownerHorizontal) {
+        for (var nh = 0; nh < labels.length; nh++) {
+            var nhItem = labels[nh].closest && labels[nh].closest('.fp-item.fp-control');
+            var nhBox = nhItem && nhItem.parentElement;
+            if (!nhBox || nhBox === ownerBox || !nhBox.classList
+                || !nhBox.classList.contains('fp-children-horizontal')) continue;
+            setLocalWidth(labels[nh], captionLaneMetric(labels[nh]));
+        }
+    }
     /* A compound row participates in the surrounding label column through
      * its first field. Later fields normally use the same slot unless the row
      * itself marks them local. */
@@ -14859,7 +14926,13 @@ function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
                  * multi-field rows the later caption still participates in
                  * the shared column, preserving authored through-alignment
                  * across status and totals sections. */
-                if (localCompound || /^(от|до|по):?$/i.test(String(siblingLabel.textContent || '').trim()))
+                var rangeCaption = /^(от|до|по|from|to):?$/i.test(
+                    String(siblingLabel.textContent || '').trim());
+                /* Подпись диапазона просит целую ячейку GDI плюс свою единицу —
+                 * см. captionLaneMetric; она выше и локальной строки ряда. */
+                if (rangeCaption)
+                    setLocalWidth(siblingLabel, captionLaneMetric(siblingLabel));
+                else if (localCompound)
                     setLocalWidth(siblingLabel,
                         localCompoundTitleTrackWidth(throughAlignGlyphMetric(siblingLabel)));
                 else if (fieldPosition > 1) {
@@ -14915,6 +14988,45 @@ function applyLabelWidth(labels, forceAcrossColumns, ownerBox) {
         if (targets[k].classList && targets[k].classList.contains('fp-label-decoration'))
             targets[k].style.display = 'inline-block';
     }
+}
+
+/* Ячейка подписи — целое число единиц GDI, а браузерный advance бывает
+ * длиннее округлённого («Строка:» 46.62 против 46): одна min-width такую
+ * коробку не удержит, подпись остаётся 46.62, и поле уезжает на пиксель.
+ * Проход идёт после колонки подписей: коробкой считается уже назначенная
+ * колонка (если она шире собственной ячейки) или сама ячейка GDI. */
+function freezeCaptionBoxes(root) {
+    if (!root || !root.querySelectorAll) return 0;
+    var labels = root.querySelectorAll('.fp-field-label');
+    var changed = 0;
+    for (var i = 0; i < labels.length; i++) {
+        var label = labels[i];
+        var row = label.parentNode;
+        if (!row || !row.classList) continue;
+        /* Подпись сверху занимает строку целиком и переносится — это не
+         * колонка; мягкий перенос и компактная колонка уже выставили свою
+         * ширину и max-width. */
+        if (row.classList.contains('fp-title-top')
+            || row.classList.contains('fp-title-bottom')
+            || row.classList.contains('fp-multiline')) continue;
+        if (labelHasAuthoredWrap(label)) continue;
+        if (label.style.maxWidth || label.style.width) continue;
+        /* Коробка колонки уже назначена проходом подписей; здесь берём ту, что
+         * не меньше собственной ячейки GDI. */
+        var width = Math.max(captionLaneMetric(label),
+            parseFloat(label.style.minWidth || '') || 0);
+        if (width <= 0) continue;
+        /* Замораживаем только там, где браузерная строка длиннее коробки:
+         * тогда одна min-width её не удержит («Строка:» 46.62 против 46).
+         * Остальным хватает min-width, а лишний flex перекраивает широкие
+         * строки — «АвансовыйОтчёт» отвечал на него полосой прокрутки. */
+        if (throughAlignGlyphMetric(label) <= width + 0.01) continue;
+        label.style.minWidth = width + 'px';
+        label.style.width = width + 'px';
+        label.style.flex = '0 0 ' + width + 'px';
+        changed++;
+    }
+    return changed;
 }
 
 function fitIndentedCompoundRow(box) {
@@ -21837,6 +21949,7 @@ function runHorizontalStrategyPass(body) {
     }
     fitWrappedSideCaptions(body);
     fitSharedThroughAlignCaptionLane(body);
+    freezeCaptionBoxes(body);
     fitAllLeadingCaptionsBeforeTitledPagesNone(body);
     if (!version85ConfigBody(body)) fitFollowingTooltipTitleTracks(body);
     if (!version85ConfigBody(body)) fitSideEditorTooltips(body);
@@ -24153,6 +24266,7 @@ function render(model, container, options) {
         equalizeLocalFieldBlocks(body);
         fitWrappedSideCaptions(body);
         fitSharedThroughAlignCaptionLane(body);
+        freezeCaptionBoxes(body);
         fitAllLeadingCaptionsBeforeTitledPagesNone(body);
         anchorBottomAlignedRuns(body);
         var strategyState = runHorizontalStrategyPass(body);

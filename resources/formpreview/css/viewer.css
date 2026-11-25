@@ -497,14 +497,13 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
     --fp-radio-height: 17px;
     --fp-button-height: 26px;
     --fp-view-status-height: 23px;
-    --fp-side-title-gap: 5px;
+    --fp-side-title-gap: 4px;
     --fp-top-title-gap: 4px;
     --fp-row-gap: 9px;
     --fp-page-padding-x: 10px;
     --fp-page-padding-y: 9px;
     /* Reference field frames end 2px further out on each side than the
      * text box alone suggests. */
-    --fp-field-trailing-inset: 1px;
     /* Convex chrome sampled from 1C:Enterprise 8.3 Taxi screenshots.
      * Buttons are a white-to-#ececec vertical gradient
      * with a darker bottom edge, which is what reads as "raised" in 1C. */
@@ -2021,13 +2020,10 @@ html.theme-dark #commit-message { background:#1e1e1e; color:#ddd; border:1px sol
 .fp-date-mask-colon > b:first-child { bottom: 0; }
 .fp-date-mask-colon > b:last-child { bottom: 6px; }
 .fp-item.fp-hstretch .fp-input-wrap { flex: 1 1 auto; }
-/* Nested 1px Pages/group/item shells inset the painted TextBox 3px past
- * native Taxi. Full-width vertical-stack editors keep that trailing inset;
- * FIO columns inside a horizontal parent keep their own tracks. */
-.fp-children-vertical > .fp-item.fp-hstretch.fp-control[data-tag="InputField"]:not(.fp-ordinary-row-control)
-    > .fp-control-wrap.fp-field-row > .fp-input-wrap {
-    margin-right: var(--fp-field-trailing-inset);
-}
+/* Растянутое поле вертикальной стопки занимает всю дорожку до правого края
+ * группы: в «Группах» рамка «Строки» кончается на 365, как в эталоне, а
+ * прежний пиксель правого отступа сдвигал её на
+ * 364. Колонки, у которых свой трек, сохраняют его правилом ниже. */
 .fp-children-horizontal .fp-children-vertical
     > .fp-item.fp-hstretch.fp-control[data-tag="InputField"]
     > .fp-control-wrap.fp-field-row > .fp-input-wrap {
@@ -3048,6 +3044,9 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
     box-sizing: border-box; border: 1px solid var(--fp-input-border);
     background: var(--fp-input-bg); border-radius: 2px; position: relative;
 }
+/* Платформа ставит квадрат флажка на пиксель правее дорожки подписи: в
+ * «ПоляхВвода» рамка поля начинается на 63, а квадрат — на 64. */
+.fp-field-row.fp-check-row > .fp-check { margin-left: 1px; }
 .fp-check:checked::after {
     content: ''; position: absolute; left: 3px; top: 0px;
     width: 4px; height: 8px; box-sizing: border-box;
