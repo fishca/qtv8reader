@@ -2503,6 +2503,22 @@ a.fp-link.fp-picture-text-btn .fp-btn-icon { width: 16px; height: 16px; flex: 0 
     border-top-width: 0; border-bottom-width: 0;
 }
 .fp-item.fp-decoration-height-bound > .fp-control-wrap { min-height: 0; }
+/* Библиотечная картинка платформы, для которой у нас есть файл: строка
+ * декорации — ровно её 16 px. Обвязка контрола (минимум 22 px у
+ * .fp-control-wrap плюс 2 px отступов и рамок у .fp-item) растягивала строку
+ * до 26 px, и шаг по вертикали выходил 35 вместо платформенных 25 (Single 9).
+ * Сверено по эталону «Картинки»: чернила 82..97, 107..122, 132..147. */
+.fp-item:has(> .fp-control-wrap > .fp-picture-decoration.fp-picture-library16) {
+    padding: 0;
+    border-width: 0;
+}
+.fp-item:has(> .fp-control-wrap > .fp-picture-decoration.fp-picture-library16) > .fp-control-wrap {
+    min-height: 16px; height: 16px;
+}
+/* Три класса, чтобы перебить 18×18 общего правила .fp-standard-picture: у
+ * платформенной картинки в декорации коробка ровно 16 px, без поля 1 px. */
+.fp-picture-icon.fp-picture-decoration.fp-picture-library16 { width: 16px; height: 16px; }
+.fp-picture-icon.fp-picture-decoration.fp-picture-library16 .fp-btn-icon { width: 16px; height: 16px; }
 .fp-picture-decoration.fp-picture-height-bound { max-height: 100%; }
 .fp-picture-decoration.fp-picture-height-bound .fp-btn-icon { max-height: 100%; }
 /* Taxi 8.5 keeps an AutoSize picture's aspect width when its authored height
@@ -4700,6 +4716,15 @@ html.screenshot-mode #form-context-progress { display: none !important; }
 }
 .fp-item[data-name="_fmtDecreaseFontSize"] .fp-button::after { border-bottom: 0; border-top: 3px solid #2a7fc9; }
 .fp-body > .fp-item[data-tag="AutoCommandBar"] > .fp-control-wrap > .fp-commandbar > .fp-bar-spacer { min-width: 0; }
+/* Распорка нулевая, но gap полосы (7 px) перед «Ещё» остаётся: в узкой форме
+ * эти 7 px делали минимальную ширину полосы на 4 px больше колонки, кнопка
+ * выезжала за правый край и подрезалась — рамка 18…74 вместо платформенных
+ * 14…74 (эталон «Картинки» 93 px; там же видно, что авто-отступ прижимает
+ * кнопку к краю и в широкой форме его хватает). Минус тот же шаг у распорки
+ * снимает фантом: в широкой полосе его съедает margin-left:auto кнопки, в
+ * узкой ей больше не нужно выезжать за полосу. */
+.fp-body > .fp-item[data-tag="AutoCommandBar"] > .fp-control-wrap
+    > .fp-commandbar > .fp-bar-spacer { margin-right: -7px; }
 /* The table below its body source bar takes the toolbar spacing: 10px from
  * the button bottom to the first chip, not the 9px item gap plus bar margins. */
 .fp-item.fp-table-source-bar + .fp-item { margin-top: -8px; }

@@ -2072,7 +2072,7 @@ var STD_PICTURE_RU = {
     InputFieldChoose: 'ПолеВводаВыбрать', InputFieldChoice: 'ПолеВводаВыбрать',
     InputFieldChooseType: 'ПолеВводаВыбратьТип', InputFieldClear: 'ПолеВводаОчистить',
     InputFieldOpen: 'ПолеВводаОткрыть', InputOnBasis: 'ВводНаОсновании',
-    InsertRows: 'ВставкаСтрок', Paste: 'ВставитьИзБуфераОбмена',
+    InsertRows: 'ВставкаСтрок', Paste: 'ВставитьИзБуфераОбмена', Print: 'Печать',
     ListViewMode: 'РежимПросмотраСписка', ListViewModeHierarchicalList: 'РежимПросмотраСпискаИерархическийСписок',
     ListViewModeList: 'РежимПросмотраСпискаСписок', ListViewModeTree: 'РежимПросмотраСпискаДерево',
     ListSettings: 'НастройкаСписка', Load: 'Загрузить', LoadReportSettings: 'ЗагрузитьНастройкиОтчета',
@@ -12508,15 +12508,30 @@ function createControl(item, tag, ctx, parentMeta) {
         if (/^StdPicture\.Dialog/i.test(String(decorationPicture || '')))
             picWrap.classList.add('fp-picture-dialog');
         var decorationIcon = pictureDecorationIconId(decorationPicture);
+        /* Библиотечная картинка, для которой у нас есть файл, рисуется и без
+         * authored-размера, и строка декорации — ровно её 16 px (эталон
+         * «Картинки»: чернила 82..97, 107..122, 132..147 при шаге Single 9).
+         * Класс fp-picture-library16 снимает обвязку контрола: её минимум
+         * 22 px и 2 px отступов с рамками растягивали строку до 26 при шаге 35. */
+        var libraryPicture = /^StdPicture\.(?!Dialog)/i.test(String(decorationPicture || ''))
+            ? stdPictureUrl(decorationPicture) : '';
         /* The large Dialog* pictures are painted at their own size (e.g. the
          * DialogExclamation triangle). */
         if (/^StdPicture\./i.test(String(decorationPicture || ''))
             && !/^StdPicture\.Dialog/i.test(String(decorationPicture || ''))
             && !/^showright$/i.test(String(prop(item, ['ToolTipRepresentation']) || ''))
             && !prop(item, ['Width', 'Ширина']) && !prop(item, ['Height', 'Высота'])
-            && !prop(item, ['PictureSize', 'РазмерКартинки'])) {
+            && !prop(item, ['PictureSize', 'РазмерКартинки'])
+            && !libraryPicture
+            && !commonPictureResource(decorationPicture, ctx)) {
             picWrap.classList.add('fp-unpainted-picture');
             decorationIcon = '';
+        }
+        if (libraryPicture && tag === 'PictureDecoration'
+            && !prop(item, ['Width', 'Ширина']) && !prop(item, ['Height', 'Высота'])
+            && !prop(item, ['PictureSize', 'РазмерКартинки'])
+            && !/^showright$/i.test(String(prop(item, ['ToolTipRepresentation']) || ''))) {
+            picWrap.classList.add('fp-picture-library16');
         }
         /* A PictureField's ValuesPicture is a strip indexed by the value; the
          * designer has no value and paints nothing (drawing it would show the
