@@ -2197,16 +2197,33 @@ QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHi
 {
     QJsonObject properties;
     QString type = typeHint;
+    RendererTypeParts parts;
     if (!typeHint.startsWith(QLatin1String("cfg:"))) {
-        const QString mapped = rendererTypeFor(typeHint);
-        if (!mapped.isEmpty())
-            type = mapped;
+        parts = rendererTypeParts(typeHint);
+        // Вид даты, длина строки и разрядность — часть типа значения: «Дата»,
+        // «ДатаВремя» и «Время» дают один xs:dateTime, а различаются в модели
+        // только видом даты; по квалификаторам рендерер считает ширину поля и
+        // рисует кнопки (календарь у даты, калькулятор у дробного числа).
+        if (!parts.type.isEmpty())
+            type = parts.type;
     }
     properties.insert(QStringLiteral("Type"), type);
     if (mainAttribute)
         properties.insert(QStringLiteral("MainAttribute"), QStringLiteral("true"));
     if (!attribute.synonym.isEmpty())
         properties.insert(QStringLiteral("Title"), attribute.synonym);
+
+    QJsonValue numberQualifiers = QJsonValue::Null;
+    if (!parts.numberQ.isEmpty()) {
+        const QStringList qualifier = parts.numberQ.split(QLatin1Char(':'));
+        if (qualifier.size() == 2) {
+            QJsonObject object;
+            object.insert(QStringLiteral("digits"), qualifier.at(0).toInt());
+            object.insert(QStringLiteral("fractionDigits"), qualifier.at(1).toInt());
+            object.insert(QStringLiteral("allowedSign"), QStringLiteral("Any"));
+            numberQualifiers = object;
+        }
+    }
 
     QJsonObject json;
     json.insert(QStringLiteral("name"), attribute.name);
@@ -2215,9 +2232,9 @@ QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHi
     json.insert(QStringLiteral("typeDescription"), QJsonValue::Null);
     json.insert(QStringLiteral("typeRefs"), type);
     json.insert(QStringLiteral("columns"), QJsonArray());
-    json.insert(QStringLiteral("stringLen"), 0);
-    json.insert(QStringLiteral("numberQ"), QJsonValue::Null);
-    json.insert(QStringLiteral("dateFraction"), QString());
+    json.insert(QStringLiteral("stringLen"), parts.stringLen.toInt());
+    json.insert(QStringLiteral("numberQ"), numberQualifiers);
+    json.insert(QStringLiteral("dateFraction"), parts.dateFraction);
     // Настройки динамического списка: рендерер выводит из них заголовки
     // колонок для полей запроса, которых нет в метаданных объекта.
     if (attribute.dynamicList) {

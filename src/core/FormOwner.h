@@ -34,6 +34,18 @@ QString ownerKindTag(const QString &typeTitle);
 // Тип значения в терминах рендерера: «xs:string», «xs:decimal»,
 // «cfg:CatalogRef.Валюты», составной — через запятую. Пустая строка, если
 // тип не распознан.
+struct RendererTypeParts
+{
+    QString type;
+    QString stringLen;    // «40» — длина строки
+    QString numberQ;      // «10:2» — разрядность и дробная часть
+    QString dateFraction; // Date/DateTime/Time
+};
+
+// Разбор текста типа из метаданных («Строка(40)», «Число(10,2)», «Дата»,
+// «СправочникСсылка.Валюты») на то, что ожидает рендерер в модели формы.
+RendererTypeParts rendererTypeParts(const QString &typeText);
+
 QString rendererTypeFor(const QString &typeText);
 
 } // namespace v8reader

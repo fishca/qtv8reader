@@ -307,27 +307,48 @@ QString typeHintFromAttributes(const V8TextNode &node)
         bool hasBool = false;
         bool hasNumber = false;
         bool hasDate = false;
+        // Квалификаторы первого значения найденного вида платформа пишет
+        // числами сразу за кодом типа: ["S", 40] — длина строки,
+        // ["N", 10, 2] — разрядность и дробная часть. Без них модель формы
+        // теряет и ширину поля по умолчанию, и кнопку калькулятора у числа.
+        QString stringHint;
+        QString numberHint;
         for (const V8TextNode &inner : child.children) {
-            if (inner.isScalar()) {
-                const QString value = inner.scalar();
-                if (value == QLatin1String("S")) hasString = true;
-                if (value == QLatin1String("#")) hasRef = true;
-                if (value == QLatin1String("B")) hasBool = true;
-                if (value == QLatin1String("N")) hasNumber = true;
-                if (value == QLatin1String("D")) hasDate = true;
-            } else if (inner.isList() && inner.child(0)) {
-                const QString value = inner.child(0)->scalar();
-                if (value == QLatin1String("S")) hasString = true;
-                if (value == QLatin1String("#")) hasRef = true;
-                if (value == QLatin1String("B")) hasBool = true;
-                if (value == QLatin1String("N")) hasNumber = true;
-                if (value == QLatin1String("D")) hasDate = true;
+            const bool nested = !inner.isScalar();
+            const V8TextNode *codeNode = nested ? inner.child(0) : &inner;
+            if (!codeNode || !codeNode->isScalar())
+                continue;
+            const QString value = codeNode->scalar();
+            if (value == QLatin1String("S")) {
+                hasString = true;
+                if (stringHint.isEmpty() && nested) {
+                    const V8TextNode *length = inner.child(1);
+                    if (length && length->isInteger() && length->toInteger() > 0)
+                        stringHint = QStringLiteral("Строка(%1)").arg(length->toInteger());
+                }
             }
+            if (value == QLatin1String("#")) hasRef = true;
+            if (value == QLatin1String("B")) hasBool = true;
+            if (value == QLatin1String("N")) {
+                hasNumber = true;
+                if (numberHint.isEmpty() && nested) {
+                    const V8TextNode *digits = inner.child(1);
+                    const V8TextNode *scale = inner.child(2);
+                    if (digits && digits->isInteger() && digits->toInteger() > 0) {
+                        const qint64 fraction = scale && scale->isInteger()
+                            ? scale->toInteger() : 0;
+                        numberHint = fraction > 0
+                            ? QStringLiteral("Число(%1,%2)").arg(digits->toInteger()).arg(fraction)
+                            : QStringLiteral("Число(%1)").arg(digits->toInteger());
+                    }
+                }
+            }
+            if (value == QLatin1String("D")) hasDate = true;
         }
-        if (hasString) return QStringLiteral("Строка");
+        if (hasString) return stringHint.isEmpty() ? QStringLiteral("Строка") : stringHint;
         if (hasRef) return QStringLiteral("Ссылка");
         if (hasBool) return QStringLiteral("Булево");
-        if (hasNumber) return QStringLiteral("Число");
+        if (hasNumber) return numberHint.isEmpty() ? QStringLiteral("Число") : numberHint;
         if (hasDate) return QStringLiteral("Дата");
         return QStringLiteral("Составной тип");
     }

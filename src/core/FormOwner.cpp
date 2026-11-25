@@ -105,21 +105,21 @@ TypeDescription describeType(const QString &typeText)
         return description;
     }
 
-    if (text == QLatin1String("Булево")) {
+    if (text == QStringLiteral("Булево")) {
         description.type = QStringLiteral("xs:boolean");
         return description;
     }
-    if (text == QLatin1String("Дата")) {
+    if (text == QStringLiteral("Дата")) {
         description.type = QStringLiteral("xs:dateTime");
         description.dateFraction = QStringLiteral("Date");
         return description;
     }
-    if (text == QLatin1String("ДатаВремя")) {
+    if (text == QStringLiteral("ДатаВремя")) {
         description.type = QStringLiteral("xs:dateTime");
         description.dateFraction = QStringLiteral("DateTime");
         return description;
     }
-    if (text == QLatin1String("Время")) {
+    if (text == QStringLiteral("Время")) {
         description.type = QStringLiteral("xs:dateTime");
         description.dateFraction = QStringLiteral("Time");
         return description;
@@ -290,6 +290,22 @@ QString ownerKindTag(const QString &typeTitle)
 QString rendererTypeFor(const QString &typeText)
 {
     return describeType(typeText).type;
+}
+
+QString rendererDateFractionFor(const QString &typeText)
+{
+    return describeType(typeText).dateFraction;
+}
+
+RendererTypeParts rendererTypeParts(const QString &typeText)
+{
+    const TypeDescription description = describeType(typeText);
+    RendererTypeParts parts;
+    parts.type = description.type;
+    parts.stringLen = description.stringLen;
+    parts.numberQ = description.numberQ;
+    parts.dateFraction = description.dateFraction;
+    return parts;
 }
 
 void applyOwnerMetadata(const MetadataObject &object, FormDocument *document)
