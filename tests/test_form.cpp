@@ -131,6 +131,7 @@ private slots:
     void tableAndColumnProperties();
     void fieldTableListProperties();
     void columnGroupModes();
+    void valueTableColumns();
     void groupAlignment();
     void sizesStretchAndPages();
     void formattedTitlesAndGroupFlags();
@@ -2095,6 +2096,95 @@ void TestForm::columnGroupModes()
     QVERIFY(!findModelNode(columns, QStringLiteral("ГруппаПоУмолчанию"))
                  .value(QStringLiteral("properties")).toObject()
                  .contains(QStringLiteral("ShowInHeader")));
+}
+
+// Колонки таблицы значений: в записи реквизита они лежат элементами
+// {5, номер, 0, имя, заголовок, образец значения, …}, а образец — в обёртке
+// {"Pattern", {"S","10","1"}} с квалификаторами-строками. Без них рендерер
+// считает колонку нетипизированной и не растягивает её.
+void TestForm::valueTableColumns()
+{
+    const QString text = QStringLiteral(
+        "{4,"
+        "{50,0,"         // заголовок формы
+        "{55,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"Таблица\",{1,1,{\"ru\",\"Таблица\"}},"
+        "{37,{2,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"0\","
+        "\"КолонкаКод\",{1,1,{\"ru\",\"Код\"}}}"
+        "}"
+        "},"
+        "\"Процедура Тест()\\nКонецПроцедуры\","
+        "{4,\"2\","
+        "{9,{\"1\"},\"0\",\"Список\",{1,0},"
+        "{\"Pattern\",{\"#\",\"acf6192e-81ca-46ef-93a6-5a6968b78663\"}},"
+        "{0,{0,{\"B\",\"1\"},0}},{0,{0,{\"B\",\"1\"},0}},{0,\"0\"},{0,\"0\"},0,0,0,3,"
+        // Колонки: строка длиной 10, строка длиной 30 и число (10,2).
+        "{5,1,0,\"Код\",{1,1,{\"ru\",\"Код\"}},{\"Pattern\",{\"S\",\"10\",\"1\"}},"
+        "{0,{0,{\"B\",\"1\"},0}},{0,{0,{\"B\",\"1\"},0}},{0,\"0\"},0},"
+        "{5,2,0,\"Наименование\",{1,1,{\"ru\",\"Наименование\"}},"
+        "{\"Pattern\",{\"S\",\"30\",\"1\"}},{0,{0,{\"B\",\"1\"},0}},"
+        "{0,{0,{\"B\",\"1\"},0}},{0,\"0\"},0},"
+        "{5,3,0,\"Количество\",{1,1,{\"ru\",\"Количество\"}},"
+        "{\"Pattern\",{\"N\",\"10\",\"2\",\"0\"}},{0,{0,{\"B\",\"1\"},0}},"
+        "{0,{0,{\"B\",\"1\"},0}},{0,\"0\"},0},"
+        "{0,\"0\"},{0,\"0\"}"
+        "}"
+        "},"
+        "{0,0},"
+        "{0,0}"
+        "}");
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(text.toUtf8(), &document, &error),
+             qPrintable(error));
+    QCOMPARE(document.attributes.size(), 1);
+    const FormAttribute &attribute = document.attributes.at(0);
+    QCOMPARE(attribute.name, QStringLiteral("Список"));
+    // Заголовок реквизита пуст: общий поиск localizedText спускался в записи
+    // колонок и подставлял «Код» от первой из них.
+    QVERIFY(attribute.synonym.isEmpty());
+    QCOMPARE(attribute.columnNames.value(1), QStringLiteral("Код"));
+    QCOMPARE(attribute.columnNames.value(2), QStringLiteral("Наименование"));
+    QCOMPARE(attribute.columnNames.value(3), QStringLiteral("Количество"));
+    QCOMPARE(attribute.columnTypes.value(1), QStringLiteral("Строка(10)"));
+    QCOMPARE(attribute.columnTypes.value(2), QStringLiteral("Строка(30)"));
+    QCOMPARE(attribute.columnTypes.value(3), QStringLiteral("Число(10,2)"));
+
+    const QJsonObject model =
+        QJsonDocument::fromJson(formWebModelJson(document)).object();
+    // В модели кроме реквизитов формы стоит «Объект» — главный реквизит
+    // обработки, поэтому таблицу значений ищем по имени.
+    const QJsonArray attributes = model.value(QStringLiteral("attributes")).toArray();
+    QJsonObject list;
+    for (int ai = 0; ai < attributes.size(); ++ai) {
+        if (attributes.at(ai).toObject().value(QStringLiteral("name")).toString()
+            == QStringLiteral("Список")) {
+            list = attributes.at(ai).toObject();
+        }
+    }
+    QVERIFY(!list.isEmpty());
+    const QJsonArray columns = list.value(QStringLiteral("columns")).toArray();
+    QCOMPARE(columns.size(), 3);
+    const QJsonObject code = columns.at(0).toObject();
+    QCOMPARE(code.value(QStringLiteral("name")).toString(), QStringLiteral("Код"));
+    QCOMPARE(code.value(QStringLiteral("path")).toString(), QStringLiteral("Список.Код"));
+    QCOMPARE(code.value(QStringLiteral("typeRefs")).toString(), QStringLiteral("xs:string"));
+    QCOMPARE(code.value(QStringLiteral("stringLen")).toInt(), 10);
+    QCOMPARE(code.value(QStringLiteral("properties")).toObject()
+                 .value(QStringLiteral("Title")).toString(),
+             QStringLiteral("Код"));
+    const QJsonObject name = columns.at(1).toObject();
+    QCOMPARE(name.value(QStringLiteral("stringLen")).toInt(), 30);
+    const QJsonObject quantity = columns.at(2).toObject();
+    QCOMPARE(quantity.value(QStringLiteral("typeRefs")).toString(),
+             QStringLiteral("xs:decimal"));
+    const QJsonObject numberQ = quantity.value(QStringLiteral("numberQ")).toObject();
+    QCOMPARE(numberQ.value(QStringLiteral("digits")).toInt(), 10);
+    QCOMPARE(numberQ.value(QStringLiteral("fractionDigits")).toInt(), 2);
+    // У реквизита-таблицы значений своего заголовка нет.
+    QVERIFY(!list.value(QStringLiteral("properties")).toObject()
+                 .contains(QStringLiteral("Title")));
 }
 
 // Выравнивание элемента внутри группы (GroupHorizontalAlign и

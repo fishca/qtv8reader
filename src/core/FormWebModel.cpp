@@ -10,6 +10,7 @@
 #include <QJsonValue>
 #include <QStringList>
 
+#include <algorithm>
 #include <functional>
 
 namespace v8reader {
@@ -2198,6 +2199,23 @@ QJsonObject buildRefMeta(const FormDocument &document)
     return result;
 }
 
+// Разрядность и дробная часть в записи модели: {"digits": 10,
+// "fractionDigits": 2, "allowedSign": "Any"}. Строка приходит из
+// RendererTypeParts как «10:2».
+QJsonValue numberQualifiersJson(const QString &numberQ)
+{
+    if (numberQ.isEmpty())
+        return QJsonValue::Null;
+    const QStringList qualifier = numberQ.split(QLatin1Char(':'));
+    if (qualifier.size() != 2)
+        return QJsonValue::Null;
+    QJsonObject object;
+    object.insert(QStringLiteral("digits"), qualifier.at(0).toInt());
+    object.insert(QStringLiteral("fractionDigits"), qualifier.at(1).toInt());
+    object.insert(QStringLiteral("allowedSign"), QStringLiteral("Any"));
+    return object;
+}
+
 QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHint,
                            bool mainAttribute = false,
                            const QString &mainTable = QString())
@@ -2220,15 +2238,47 @@ QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHi
     if (!attribute.synonym.isEmpty())
         properties.insert(QStringLiteral("Title"), attribute.synonym);
 
-    QJsonValue numberQualifiers = QJsonValue::Null;
-    if (!parts.numberQ.isEmpty()) {
-        const QStringList qualifier = parts.numberQ.split(QLatin1Char(':'));
-        if (qualifier.size() == 2) {
-            QJsonObject object;
-            object.insert(QStringLiteral("digits"), qualifier.at(0).toInt());
-            object.insert(QStringLiteral("fractionDigits"), qualifier.at(1).toInt());
-            object.insert(QStringLiteral("allowedSign"), QStringLiteral("Any"));
-            numberQualifiers = object;
+    const QJsonValue numberQualifiers = numberQualifiersJson(parts.numberQ);
+
+    // Колонки таблицы значений. Рендерер ищет тип колонки по пути к данным
+    // («Список.Код»), а без него считает колонку нетипизированной: ширина 15
+    // знаков, растягивания нет, таблица уезжает в горизонтальную прокрутку.
+    // Записи колонок разобраны readTableColumns из бинарной формы.
+    QJsonArray columns;
+    if (!attribute.columnNames.isEmpty()) {
+        QVector<int> numbers;
+        numbers.reserve(attribute.columnNames.size());
+        for (auto it = attribute.columnNames.constBegin();
+             it != attribute.columnNames.constEnd(); ++it) {
+            numbers.append(it.key());
+        }
+        std::sort(numbers.begin(), numbers.end());
+        for (const int number : numbers) {
+            const QString columnName = attribute.columnNames.value(number);
+            if (columnName.isEmpty())
+                continue;
+            const RendererTypeParts columnParts =
+                rendererTypeParts(attribute.columnTypes.value(number));
+            QJsonObject columnProperties;
+            if (!columnParts.type.isEmpty())
+                columnProperties.insert(QStringLiteral("Type"), columnParts.type);
+            const QString columnTitle = attribute.columnTitles.value(number);
+            if (!columnTitle.isEmpty())
+                columnProperties.insert(QStringLiteral("Title"), columnTitle);
+            QJsonObject column;
+            column.insert(QStringLiteral("tag"), QStringLiteral("AttributeColumn"));
+            column.insert(QStringLiteral("name"), columnName);
+            // Путь колонки в терминах модели: по нему metaType рендерера
+            // находит тип, длину строки и разрядность.
+            column.insert(QStringLiteral("path"),
+                          attribute.name + QLatin1Char('.') + columnName);
+            column.insert(QStringLiteral("properties"), columnProperties);
+            column.insert(QStringLiteral("typeRefs"), columnParts.type);
+            column.insert(QStringLiteral("stringLen"), columnParts.stringLen.toInt());
+            column.insert(QStringLiteral("numberQ"),
+                          numberQualifiersJson(columnParts.numberQ));
+            column.insert(QStringLiteral("dateFraction"), columnParts.dateFraction);
+            columns.append(column);
         }
     }
 
@@ -2238,7 +2288,7 @@ QJsonObject buildAttribute(const FormAttribute &attribute, const QString &typeHi
     json.insert(QStringLiteral("properties"), properties);
     json.insert(QStringLiteral("typeDescription"), QJsonValue::Null);
     json.insert(QStringLiteral("typeRefs"), type);
-    json.insert(QStringLiteral("columns"), QJsonArray());
+    json.insert(QStringLiteral("columns"), columns);
     json.insert(QStringLiteral("stringLen"), parts.stringLen.toInt());
     json.insert(QStringLiteral("numberQ"), numberQualifiers);
     json.insert(QStringLiteral("dateFraction"), parts.dateFraction);

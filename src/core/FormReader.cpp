@@ -522,29 +522,54 @@ void readListSettings(const V8TextNode &settings, FormAttribute *attribute)
     }
 }
 
+// Число в записи формы бывает и скаляром-строкой: квалификаторы образца
+// значения платформа пишет «10», а не 10.
+bool scalarInteger(const V8TextNode *node, qint64 *out)
+{
+    if (!node || !out)
+        return false;
+    if (node->isInteger()) {
+        *out = node->toInteger();
+        return true;
+    }
+    if (!node->isScalar())
+        return false;
+    bool ok = false;
+    const qint64 value = node->scalar().trimmed().toLongLong(&ok);
+    if (!ok)
+        return false;
+    *out = value;
+    return true;
+}
+
 // Описание типа колонки таблицы значений: в записи колонки лежит образец
-// значения («N, 15, 3» — число, «S, 40» — строка, «B» — булево, «D» — дата).
+// значения в обёртке — ["Pattern", ["S", «10», «1»]] (строка),
+// ["Pattern", ["N", «10», «2», «0»]] (число), ["Pattern", ["B"]] (булево),
+// ["Pattern", ["D"]] (дата). Квалификаторы записаны строками.
 QString columnTypeText(const V8TextNode &pattern)
 {
-    if (!pattern.isList() || pattern.children.size() < 2)
+    const V8TextNode *value = &pattern;
+    if (pattern.isList() && pattern.children.size() >= 2
+        && pattern.child(0) && pattern.child(0)->isScalar()
+        && pattern.child(0)->scalar() == QLatin1String("Pattern")
+        && pattern.child(1) && pattern.child(1)->isList()) {
+        value = pattern.child(1);
+    }
+    if (!value->isList() || value->children.size() < 2)
         return QString();
-    const V8TextNode *tag = pattern.child(0);
+    const V8TextNode *tag = value->child(0);
     if (!tag || !tag->isScalar())
         return QString();
     const QString code = tag->scalar().trimmed();
-    if (code == QLatin1String("N") && pattern.children.size() >= 3) {
-        const V8TextNode *digits = pattern.child(1);
-        const V8TextNode *fraction = pattern.child(2);
-        if (digits && digits->isInteger() && fraction && fraction->isInteger())
-            return QStringLiteral("Число(%1,%2)")
-                .arg(digits->toInteger())
-                .arg(fraction->toInteger());
+    qint64 digits = 0;
+    qint64 fraction = 0;
+    if (code == QLatin1String("N") && value->children.size() >= 3
+        && scalarInteger(value->child(1), &digits)
+        && scalarInteger(value->child(2), &fraction)) {
+        return QStringLiteral("Число(%1,%2)").arg(digits).arg(fraction);
     }
-    if (code == QLatin1String("S") && pattern.children.size() >= 2) {
-        const V8TextNode *length = pattern.child(1);
-        if (length && length->isInteger())
-            return QStringLiteral("Строка(%1)").arg(length->toInteger());
-    }
+    if (code == QLatin1String("S") && scalarInteger(value->child(1), &digits))
+        return QStringLiteral("Строка(%1)").arg(digits);
     if (code == QLatin1String("B"))
         return QStringLiteral("Булево");
     if (code == QLatin1String("D"))
@@ -3017,7 +3042,20 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
                     attribute.id = static_cast<int>(reference->toInteger());
                 }
             }
-            attribute.synonym = localizedText(*entry);
+            /* Заголовок реквизита лежит четвёртым элементом записи
+             * (["1","0"] — без заголовка, ["1","1",["ru","…"]] — с ним).
+             * Общий поиск localizedText спускается вглубь и у таблицы
+             * значений доставал заголовок первой колонки: реквизит «Список»
+             * получал имя «Код». */
+            if (const V8TextNode *title = entry->child(4)) {
+                QString ownTitle;
+                if (localizedRecord(*title, &ownTitle))
+                    attribute.synonym = ownTitle;
+                else
+                    attribute.synonym = localizedText(*entry);
+            } else {
+                attribute.synonym = localizedText(*entry);
+            }
             attribute.typeHint = typeHintFromAttributes(*entry);
             if (const V8TextNode *settings = findListSettings(*entry))
                 readListSettings(*settings, &attribute);
