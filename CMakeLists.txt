@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.13.0
+    VERSION 0.13.1
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -239,6 +239,15 @@ if (Python3_Interpreter_FOUND)
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/control_fixture_check.py
             --cli $<TARGET_FILE:v8reader_cli>
             --dir ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/controlbase)
+
+    # Инструменты печатают справку и итоги по-русски, а на англоязычном
+    # Windows у stdout-трубы кодировка cp1252: без tools/console_utf8.py печать
+    # падала с UnicodeEncodeError уже после пройденной проверки — так краснел
+    # CI. Тест держит это на замке на обеих платформах.
+    add_test(NAME tools_utf8
+        COMMAND ${CMAKE_COMMAND} -E env PYTHONIOENCODING=cp1252
+            ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/control_fixture_check.py --help)
 endif ()
 
 if (MSVC)
