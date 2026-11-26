@@ -20,14 +20,55 @@ namespace v8reader {
 
 namespace {
 
-// Поле формы записано одним из двух кодов: 37 (в большинстве форм) и 35
-// (в форме «Банки универсального обмена» и ещё нескольких — всего 52 поля
-// корпуса). Раскладка записи у них одна и та же: код вида перед именем,
-// заголовок и подсказка через три и четыре поля после имени, видимость через
-// 37, путь к данным — в полях сразу за заголовком.
+// Класс элемента формы записан числом, и у одного и того же класса тегов
+// Form.xml в корпусе БП встречается несколько чисел: при изменении записи
+// класса платформа выдаёт ему новый код, старый больше не пишет. Коды идут
+// семействами, и внутри семейства номер обозначает только этот класс.
+// Проверено по всей конфигурации БП — 7 414 форм и 660 тысяч элементов: тег
+// каждого узла Form.xml совпал с семейством его кода, ни один номер не попал
+// в два семейства. Примеры (первым — код форм последних сборок):
+//   поле        37, 35, 34, 33, 32      — InputField, LabelField, CheckBoxField…
+//   кнопка      31, 30, 29, 28, 25      — Button
+//   таблица     55, 54, 53, 51, 50, 49, 48 — Table
+//   декорация   12, 11, 10, 8           — LabelDecoration, PictureDecoration,
+//                                        ExtendedTooltip (их различает имя)
+//   группа      22, 21, 19              — UsualGroup, Pages, CommandBar…
+//   дополнение  5, 4, 3                 — SearchStringAddition и два соседних
+// Номер вида группы/поля (целое перед именем) и вид поля от кода не зависят:
+// у полей 32…37 одинаковый набор видов (1 — Label, 2 — Input, 8 — Calendar…),
+// у групп 19…22 — один и тот же код вида (0 — CommandBar, 5 — UsualGroup…).
 bool isFieldCode(int typeCode)
 {
-    return typeCode == 37 || typeCode == 35;
+    return typeCode == 32 || typeCode == 33 || typeCode == 34
+        || typeCode == 35 || typeCode == 37;
+}
+
+bool isButtonCode(int typeCode)
+{
+    return typeCode == 25 || typeCode == 28 || typeCode == 29
+        || typeCode == 30 || typeCode == 31;
+}
+
+bool isTableCode(int typeCode)
+{
+    return typeCode == 48 || typeCode == 49 || typeCode == 50
+        || typeCode == 51 || typeCode == 53 || typeCode == 54
+        || typeCode == 55;
+}
+
+bool isDecorationCode(int typeCode)
+{
+    return typeCode == 8 || typeCode == 10 || typeCode == 11 || typeCode == 12;
+}
+
+bool isGroupCode(int typeCode)
+{
+    return typeCode == 19 || typeCode == 21 || typeCode == 22;
+}
+
+bool isAdditionCode(int typeCode)
+{
+    return typeCode == 3 || typeCode == 4 || typeCode == 5;
 }
 
 bool isItemNode(const V8TextNode &node)
@@ -222,10 +263,13 @@ bool readChoiceBlock(const V8TextNode &node, QStringList *target, int depth = 0)
     return false;
 }
 
-// Узел макета группы {28|29, ...}: в нём лежат ориентация (1), выделение
+// Узел макета группы {23|28|29, ...}: в нём лежат ориентация (1), выделение
 // (3), показ заголовка (4) и поведение (10–12). Код узла зависит от сборки,
-// которой сделана форма: из 199 групп корпуса 165 записаны кодом 29, а 34 —
-// кодом 28; по составу полей записи совпадают.
+// которой сделана форма: в корпусе БП 23 — 252 группы, 28 — 3 143, 29 — 44 411;
+// по составу полей записи они совпадают. Второе поле узла — целое (ориентация),
+// и по нему узел отличается от элемента-ребёнка: у того второе поле — ссылка
+// {номер, GUID}. Без этой проверки группа с кнопкой, записанной кодом 28/29,
+// теряла ориентацию и поведение.
 //
 // Ссылка на элемент формы — тоже список из двух элементов, {номер, GUID},
 // а номер у групп небольшой и часто равен 28 или 29. Поэтому запись с двумя
@@ -243,11 +287,18 @@ const V8TextNode *findLayoutNode(const V8TextNode &node)
         if (!first)
             continue;
         const bool isLayout = (first->isInteger()
-                               && (first->toInteger() == 29 || first->toInteger() == 28))
+                               && (first->toInteger() == 29 || first->toInteger() == 28
+                                   || first->toInteger() == 23))
             || (first->isScalar() && (first->scalar() == QLatin1String("29")
-                                      || first->scalar() == QLatin1String("28")));
-        if (isLayout)
-            return &child;
+                                      || first->scalar() == QLatin1String("28")
+                                      || first->scalar() == QLatin1String("23")));
+        if (!isLayout)
+            continue;
+        // Второе поле макета — целое, у элемента-ребёнка — ссылка {номер, GUID}.
+        const V8TextNode *orientation = child.child(1);
+        if (!orientation || !orientation->isInteger())
+            continue;
+        return &child;
     }
     return nullptr;
 }
@@ -762,9 +813,11 @@ void readFieldSizeLimits(const V8TextNode &layout, int start, FormItem *item)
 // GroupVerticalAlign) лежит в «хвосте» записи элемента, поэтому отсчёт ведётся
 // от конца записи: необязательные вложенные записи (контекстное меню,
 // расширенная подсказка, оформление) его не сдвигают. Смещения с конца:
-// у группы (22) — 3 и 2, у декорации (12) — 4 и 3, у поля (37) — 6 и 5.
-// У поля, записанного кодом 35, раскладка короче: горизонтальное выравнивание
-// лежит третьим с конца, а вертикального в корпусе не встретилось.
+// у группы (коды 19–22) — 3 и 2, у декорации (коды 8–12) — 4 и 3, у поля
+// (37) — 6 и 5. У поля, записанного кодом 35, раскладка короче:
+// горизонтальное выравнивание лежит третьим с конца, а вертикального в корпусе
+// не встретилось; у полей 32–34 запись макета короче настолько, что смещение
+// с конца не совпадает с этими — их выравнивание не читается.
 // Коды: 0 — Left/Top, 1 — Center, 2 — Right/Bottom; 3 — Auto (значение по
 // умолчанию, платформа в Form.xml его не пишет). Сверено с Form.xml по 112
 // декорациям, 361 группе и 610 полям корпуса: расхождений нет.
@@ -772,10 +825,10 @@ void readGroupAlignment(const V8TextNode &node, FormItem *item)
 {
     int horizontalFromEnd = -1;
     int verticalFromEnd = -1;
-    if (item->typeCode == 22) {
+    if (isGroupCode(item->typeCode)) {
         horizontalFromEnd = 3;
         verticalFromEnd = 2;
-    } else if (item->typeCode == 12) {
+    } else if (isDecorationCode(item->typeCode)) {
         horizontalFromEnd = 4;
         verticalFromEnd = 3;
     } else if (item->typeCode == 35) {
@@ -888,7 +941,7 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
     // Группа: ширина записана через шесть полей после имени, высота — через
     // семь, растяжение — через восемь и девять (сверено с Form.xml по всем
     // 361 группе, странице, страницам, панели и всплывающей группе корпуса).
-    if (item->typeCode == 22 && nameIndex >= 0) {
+    if (isGroupCode(item->typeCode) && nameIndex >= 0) {
         if (const V8TextNode *width = node.child(nameIndex + 6)) {
             if (width->isInteger() && width->toInteger() > 0)
                 item->widthUnits = static_cast<int>(width->toInteger());
@@ -913,7 +966,7 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
     // растяжение — через 16 и 17. Растяжение есть только у таблицы с заданными
     // шириной и высотой: платформа пишет его только тогда, когда у таблицы
     // задан размер (у «Сортировки» задана одна высота, и растяжения нет).
-    if (item->typeCode == 55 && nameIndex >= 0) {
+    if (isTableCode(item->typeCode) && nameIndex >= 0) {
         if (const V8TextNode *width = node.child(nameIndex + 14)) {
             if (width->isInteger() && width->toInteger() > 0)
                 item->widthUnits = static_cast<int>(width->toInteger());
@@ -938,7 +991,7 @@ void readGeometry(const V8TextNode &node, int nameIndex, FormItem *item)
     // Декорация: ширина и высота лежат через четыре и пять полей после имени,
     // растяжение — через шесть и семь (сверено с Form.xml: ширина — 32
     // декорации, высота — 18, растяжение — 73 надписи и 39 картинок).
-    if (item->typeCode == 12 && nameIndex >= 0) {
+    if (isDecorationCode(item->typeCode) && nameIndex >= 0) {
         if (const V8TextNode *width = node.child(nameIndex + 4)) {
             if (width->isInteger() && width->toInteger() > 0)
                 item->widthUnits = static_cast<int>(width->toInteger());
@@ -970,7 +1023,7 @@ void readUserVisible(const V8TextNode &node, int nameIndex, FormItem *item)
 {
     if (nameIndex < 3)
         return;
-    const int offset = item->typeCode == 55 ? 1 : 2;
+    const int offset = isTableCode(item->typeCode) ? 1 : 2;
     const V8TextNode *block = node.child(nameIndex - offset);
     if (!block || !block->isList() || block->children.size() < 2)
         return;
@@ -2129,21 +2182,25 @@ void readPopupAppearance(const V8TextNode &node, const FormPictureTable *picture
 }
 
 // Смещение признака видимости от расширенной подсказки в «хвосте» записи
-// элемента. Перед подсказкой идут служебные поля, и их число зависит от вида
-// элемента: у группы — три, у декорации — пять, у кнопки — шесть. Значения
-// сверены с Form.xml на формах БП (265 групп, 326 декораций, 44 кнопки).
+// элемента. Перед подсказкой идут служебные поля, и их число зависит от класса
+// элемента, но не от сборки, выпустившей форму: у всех кодов группы — три, у
+// всех кодов декорации — пять, у всех кодов кнопки — шесть. Сверено с Form.xml
+// по всей конфигурации БП (7 414 форм): у групп код 22 дал 3 329 скрытых
+// элементов и ни одного ложного, у декораций 12 — 924, у кнопок 31 — 4 627;
+// для остальных кодов своего семейства те же смещения дали точное совпадение
+// без ложных срабатываний (21 — 11, 10 — 4, 11 — 5, 28 — 8, 30 — 6). Где
+// скрытых элементов таких кодов в корпусе нет (19, 8, 25, 29), смещение взято
+// по семейству. У полей Visible ищется от имени (readFieldFlags), у таблиц и
+// дополнений — в их собственной записи.
 int visibleOffsetFromTooltip(int typeCode)
 {
-    switch (typeCode) {
-    case 22:
+    if (isGroupCode(typeCode))
         return 3;
-    case 12:
+    if (isDecorationCode(typeCode))
         return 5;
-    case 31:
+    if (isButtonCode(typeCode))
         return 6;
-    default:
-        return -1;
-    }
+    return -1;
 }
 
 // Представление подсказки (ToolTipRepresentation) лежит в «хвосте» записи
@@ -2330,7 +2387,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     item.name = findName(node, 2, &nameIndex);
     // Код вида группы и дополнения панели (строка поиска, состояние просмотра,
     // управление поиском) записан перед именем.
-    if ((item.typeCode == 22 || item.typeCode == 5) && nameIndex > 2)
+    if ((isGroupCode(item.typeCode) || isAdditionCode(item.typeCode)) && nameIndex > 2)
         item.groupKind = integerChild(node, nameIndex - 1);
     readPagesRepresentation(node, nameIndex, &item);
     item.synonym = localizedText(node);
@@ -2433,12 +2490,12 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     }
 
     // Декорации: вид (надпись или картинка), признак гиперссылки и картинка.
-    if (item.typeCode == 12 && nameIndex >= 1)
+    if (isDecorationCode(item.typeCode) && nameIndex >= 1)
         readDecorationExtras(node, nameIndex, pictures, &item);
     // Ориентация группы — второй элемент узла макета (1 — горизонтальная).
     // По умолчанию платформа (и рендерер) считают обычную группу
     // горизонтальной, поэтому группа без узла макета тоже горизонтальная.
-    if (item.typeCode == 22) {
+    if (isGroupCode(item.typeCode)) {
         if (const V8TextNode *layout = findLayoutNode(node))
             item.orientation = layoutInteger(*layout, 1);
         // Подменю: картинка и отображение лежат не в узле макета, а в записи
@@ -2467,33 +2524,27 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         }
     }
 
-    switch (item.typeCode) {
-    case 22:
+    // Класс элемента: один и тот же тег Form.xml платформа писала разными
+    // кодами в зависимости от сборки, выпустившей форму (см. isFieldCode,
+    // isButtonCode, isTableCode, isDecorationCode, isGroupCode,
+    // isAdditionCode). Код 2 у автоматической командной панели от сборки не
+    // зависит — он одинаков во всех формах корпуса БП.
+    if (isGroupCode(item.typeCode))
         item.type = FormItem::Type::Group;
-        break;
-    case 37:
-    case 35:
+    else if (isFieldCode(item.typeCode))
         item.type = FormItem::Type::Field;
-        break;
-    case 31:
+    else if (isButtonCode(item.typeCode))
         item.type = FormItem::Type::Button;
-        break;
-    case 55:
+    else if (isTableCode(item.typeCode))
         item.type = FormItem::Type::Table;
-        break;
-    case 12:
+    else if (isDecorationCode(item.typeCode))
         item.type = FormItem::Type::Decoration;
-        break;
-    case 5:
+    else if (isAdditionCode(item.typeCode))
         item.type = FormItem::Type::Search;
-        break;
-    case 2:
+    else if (item.typeCode == 2)
         item.type = FormItem::Type::AutoCommandBar;
-        break;
-    default:
+    else
         item.type = FormItem::Type::Other;
-        break;
-    }
 
     readGeometry(node, nameIndex, &item);
     readUserVisible(node, nameIndex, &item);
@@ -2503,7 +2554,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // задаёт Group: 0 — вертикальная (по умолчанию), 1 — Horizontal,
     // 2 — HorizontalIfPossible, 3 — AlwaysHorizontal. Сверено с Form.xml по
     // 76 страницам корпуса: расхождений нет.
-    if (item.typeCode == 22 && item.groupKind == 4) {
+    if (isGroupCode(item.typeCode) && item.groupKind == 4) {
         for (const V8TextNode &child : node.children) {
             if (!child.isList() || child.children.isEmpty())
                 continue;
@@ -2560,7 +2611,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
         readFieldInputHint(node, &item);
         readFieldLayoutFlags(node, &item);
         readRadioButtonType(node, &item);
-    } else if (item.typeCode == 55 && nameIndex >= 0) {
+    } else if (isTableCode(item.typeCode) && nameIndex >= 0) {
         readTableFlags(node, nameIndex, &item, pictures);
     }
 
@@ -2735,7 +2786,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // — показ заголовка (по умолчанию заголовок группы колонок скрыт),
     // двенадцатый — закрепление (1 — Left, 2 — Right; 0 — по умолчанию).
     // Сверено с Form.xml по 75 группам колонок корпуса.
-    if (item.typeCode == 22 && item.groupKind == 2) {
+    if (isGroupCode(item.typeCode) && item.groupKind == 2) {
         const auto isCode = [](const V8TextNode &value, const char *text) {
             return (value.isInteger()
                     && QString::number(value.toInteger()) == QLatin1String(text))
@@ -2768,7 +2819,7 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // Кнопка: через 10 полей после имени — LocationInCommandBar
     // (0 — только в подменю «Еще», 1 — на панели). Сверено с Form.xml
     // на 30 кнопках пяти объектов БП.
-    if (item.typeCode == 31 && nameIndex >= 0) {
+    if (isButtonCode(item.typeCode) && nameIndex >= 0) {
         const V8TextNode *onBar = node.child(nameIndex + 10);
         if (onBar && onBar->isInteger())
             item.onCommandBar = onBar->toInteger() != 0;
@@ -2856,9 +2907,9 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     // метаданных и всегда лежит в нескольких полях после имени элемента.
     // Таблица тоже привязана к данным («Список», «Объект.Товары»), но её
     // описание пути стоит дальше — сразу за заголовком и его расположением.
-    if ((isFieldCode(item.typeCode) || item.typeCode == 55) && nameIndex >= 0) {
+    if ((isFieldCode(item.typeCode) || isTableCode(item.typeCode)) && nameIndex >= 0) {
         const int last = std::min<int>(node.children.size() - 1,
-                                       nameIndex + (item.typeCode == 55 ? 12 : 8));
+                                       nameIndex + (isTableCode(item.typeCode) ? 12 : 8));
         for (int j = nameIndex + 3; j <= last; ++j) {
             const V8TextNode *candidate = node.child(j);
             if (!candidate || !isPathDescriptor(*candidate))
@@ -2901,6 +2952,25 @@ FormItem parseItem(const V8TextNode &node, const FormStyleTable *styles,
     return item;
 }
 
+// Версия сериализации формы — корневой код списка: 4 у формата платформы
+// 8.3, 3 у форм, записанных более старой платформой. Обе версии кладут
+// заголовок вторым элементом, модуль — третьим, реквизиты — четвёртым,
+// команды — шестым, а поля заголовка, которые читает разбор (ширина — 3,
+// автозаголовок — 9, заголовок — 10, командная панель — 17), стоят на тех же
+// местах: сверено с XML-выгрузкой всех одиннадцати форм документа
+// «АвансовыйОтчет» БП, среди которых две формы версии 3. Неизвестная
+// версия — -1.
+int formFormatVersion(const V8TextNode &root)
+{
+    if (!root.isList() || root.children.isEmpty())
+        return -1;
+    const V8TextNode *marker = root.child(0);
+    if (!marker || !marker->isInteger())
+        return -1;
+    const int version = static_cast<int>(marker->toInteger());
+    return version == 3 || version == 4 ? version : -1;
+}
+
 } // namespace
 
 bool FormReader::looksLikeForm(const QByteArray &data)
@@ -2913,15 +2983,15 @@ bool FormReader::looksLikeForm(const QByteArray &data)
     if (text.isEmpty())
         return false;
     text = text.trimmed();
-    if (!text.startsWith(QStringLiteral("{4,")))
+    if (!text.startsWith(QStringLiteral("{3,"))
+        && !text.startsWith(QStringLiteral("{4,")))
         return false;
 
     V8TextNode root;
     V8TextError parseError;
-    if (!V8Text::parse(text, root, &parseError) || !root.isList()
-        || root.children.isEmpty() || !root.child(0)->isInteger())
+    if (!V8Text::parse(text, root, &parseError))
         return false;
-    return root.child(0)->toInteger() == 4;
+    return formFormatVersion(root) >= 0;
 }
 
 bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
@@ -2952,13 +3022,14 @@ bool FormReader::parseBytes(const QByteArray &data, FormDocument *document,
                          .arg(parseError.toString());
         return false;
     }
-    if (!root.isList() || root.children.size() < 2 || !root.child(0)->isInteger()
-        || root.child(0)->toInteger() != 4) {
+    const int formatVersion = formFormatVersion(root);
+    if (formatVersion < 0 || root.children.size() < 2) {
         if (error)
             *error = QStringLiteral("Неизвестный формат формы: ожидался корневой "
-                                    "элемент управляемой формы (4).");
+                                    "элемент управляемой формы (3 или 4).");
         return false;
     }
+    document->formatVersion = formatVersion;
 
     const V8TextNode *header = root.child(1);
     if (!header || !header->isList()) {

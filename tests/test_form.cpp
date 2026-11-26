@@ -62,6 +62,45 @@ QByteArray makeSyntheticForm()
     return text.toUtf8();
 }
 
+// Форма, записанная платформой 8.2: корень {3, а элементы — другими кодами:
+// группа 22 (как и в поздних сборках), кнопка 29, поле 34, таблица 54,
+// декорация 11 (ею же записана расширенная подсказка). Так записаны
+// «ПериодКомандировки» и «ВыборДокументаАванса» документа «АвансовыйОтчет»
+// конфигурации БП; сверено с Form.xml выгрузки (теги Button, InputField,
+// Table, CalendarField и ExtendedTooltip).
+QByteArray makeLegacyForm()
+{
+    const QString text = QStringLiteral(
+        "{3,"
+        "{49,0,0,0,0,1,0,0,\"00000000-0000-0000-0000-000000000000\",1,{1,0},"
+        "\"0\",\"0\",\"1\",\"1\",\"1\",\"0\",\"3\","
+        "{22,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\",\"5\","
+        "\"Группа\",{1,1,{\"ru\",\"Шапка\"}},"
+        // Кнопка кодом 28 идёт до узла макета: у неё второе поле — ссылка,
+        // поэтому узел макета не должен принять её за себя.
+        "{28,{7,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\","
+        "\"Кнопка28\",{1,1,{\"ru\",\"Кнопка 28\"}}},"
+        "{23,\"0\",\"0\",\"0\",\"0\"},"
+        "{34,{2,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"1\",{\"0\"},"
+        "\"2\",\"Поле\",{1,1,{\"ru\",\"Поле ввода\"}}}},"
+        "{29,{3,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\","
+        "\"Кнопка\",{1,1,{\"ru\",\"Кнопка\"}}},"
+        "{54,{4,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\","
+        "\"Таблица\",{1,1,{\"ru\",\"Таблица\"}},"
+        "{34,{5,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"1\",{\"0\"},"
+        "\"2\",\"Колонка\",{1,1,{\"ru\",\"Колонка\"}}}},"
+        "{11,{6,02023637-7868-4a5f-8576-835a76e0c9ba},\"0\",\"0\",\"0\","
+        "\"ПолеРасширеннаяПодсказка\",{1,0}}"
+        "},"
+        "\"Процедура Старая()\\nКонецПроцедуры\","
+        "{4,\"0\"},"
+        "{0,0},"
+        "{0,\"1\",{9,{1,02023637-7868-4a5f-8576-835a76e0c9ba},\"Команда1\","
+        "{1,1,{\"ru\",\"Команда\"}}}}"
+        "}");
+    return text.toUtf8();
+}
+
 const FormItem *findItemByName(const QVector<FormItem> &items, const QString &name)
 {
     for (const FormItem &item : items) {
@@ -146,6 +185,8 @@ private slots:
     void layoutNodeIsNotItemReference();
     void popupPictureAndRepresentation();
     void formCommandBarLocation();
+    void legacyElementCodes();
+    void realBpLegacyForms();
     void ownerStandardAttributes();
 };
 
@@ -3617,6 +3658,134 @@ void TestForm::ownerStandardAttributes()
     shortRecord.ownerMeta.kindTag = QStringLiteral("Catalog");
     applyOwnerStandardAttributes(QStringLiteral("{1,{8,0,0,0},0}"), &shortRecord);
     QVERIFY(shortRecord.ownerMeta.autonumbering.isEmpty());
+}
+
+// Формы, записанные платформой 8.2: корень {3 и старые коды элементов.
+// Разбор их не отличался от формата {4, кроме самих кодов, — проверяем, что
+// элементы получают свои виды, а не попадают в «прочее».
+void TestForm::legacyElementCodes()
+{
+    const QByteArray data = makeLegacyForm();
+    QVERIFY(FormReader::looksLikeForm(data));
+
+    FormDocument document;
+    QString error;
+    QVERIFY2(FormReader::parseBytes(data, &document, &error), qPrintable(error));
+    QCOMPARE(document.formatVersion, 3);
+    // Семнадцатое поле заголовка — то же, что и у форм {4,.
+    QCOMPARE(document.commandBarLocation, 3);
+    QVERIFY(document.moduleText.contains(QStringLiteral("Процедура Старая")));
+
+    const FormItem *group = findItemByName(document.items, QStringLiteral("Группа"));
+    QVERIFY(group);
+    QCOMPARE(group->type, FormItem::Type::Group);
+    QCOMPARE(group->children.size(), 2);
+    // Узел макета старой сборки — код 23: вертикальная группа (0).
+    QCOMPARE(group->orientation, 0);
+    // Кнопка с кодом 28 внутри группы — элемент, а не узел макета.
+    const FormItem *button28 = findItemByName(group->children, QStringLiteral("Кнопка28"));
+    QVERIFY(button28);
+    QCOMPARE(button28->type, FormItem::Type::Button);
+
+    const FormItem *field = findItemByName(document.items, QStringLiteral("Поле"));
+    QVERIFY(field);
+    QCOMPARE(field->type, FormItem::Type::Field);
+    QCOMPARE(field->fieldKind, FormFieldKind::Input);
+
+    const FormItem *button = findItemByName(document.items, QStringLiteral("Кнопка"));
+    QVERIFY(button);
+    QCOMPARE(button->type, FormItem::Type::Button);
+
+    const FormItem *table = findItemByName(document.items, QStringLiteral("Таблица"));
+    QVERIFY(table);
+    QCOMPARE(table->type, FormItem::Type::Table);
+    const FormItem *column = findItemByName(table->children, QStringLiteral("Колонка"));
+    QVERIFY(column);
+    QCOMPARE(column->type, FormItem::Type::Field);
+
+    // Код 11 — та же декорация, что и 12: расширенную подсказку отбрасывает
+    // только модель по имени, сам разбор обязан узнать её вид.
+    const FormItem *tooltip =
+        findItemByName(document.items, QStringLiteral("ПолеРасширеннаяПодсказка"));
+    QVERIFY(tooltip);
+    QCOMPARE(tooltip->type, FormItem::Type::Decoration);
+}
+
+// То же на настоящем контейнере: две формы «АвансовогоОтчета» БП записаны
+// версией 3. До правки разбор отвечал «Неизвестный формат формы», и вкладка
+// формы не открывалась.
+void TestForm::realBpLegacyForms()
+{
+    const QString sample = test::corpusFile(QStringLiteral("1Cv8_bp.cf"));
+    if (sample.isEmpty())
+        QSKIP("Большая конфигурация 1Cv8_bp.cf не найдена");
+
+    ConfigurationReader reader;
+    QString error;
+    QVERIFY2(reader.open(sample, &error), qPrintable(error));
+
+    MetadataObject *object = nullptr;
+    for (MetadataCategory &category : reader.configuration().categories) {
+        for (MetadataObject &candidate : category.objects) {
+            if (candidate.name.compare(QStringLiteral("АвансовыйОтчет"),
+                                       Qt::CaseInsensitive) == 0) {
+                object = &candidate;
+                break;
+            }
+        }
+        if (object)
+            break;
+    }
+    QVERIFY(object);
+
+    reader.loadSections(*object);
+    const MetadataSection *forms = object->section(MetadataSectionKind::Forms);
+    QVERIFY(forms);
+
+    auto readForm = [&](const QString &name, QByteArray *payload) {
+        for (const MetadataEntry &entry : forms->entries) {
+            if (entry.name != name)
+                continue;
+            const V8Element *element =
+                reader.container().find(entry.guid + QStringLiteral(".0"));
+            if (!element)
+                return false;
+            return reader.container().elementPayload(*element, payload, nullptr, &error);
+        }
+        return false;
+    };
+
+    QByteArray periodPayload;
+    QVERIFY2(readForm(QStringLiteral("ПериодКомандировки"), &periodPayload),
+             qPrintable(error));
+    QVERIFY(FormReader::looksLikeForm(periodPayload));
+    FormDocument period;
+    QVERIFY2(FormReader::parseBytes(periodPayload, &period, &error), qPrintable(error));
+    QCOMPARE(period.formatVersion, 3);
+    QCOMPARE(period.commandBarLocation, 3);
+    const FormItem *calendar = findItemByName(period.items, QStringLiteral("Календарь"));
+    QVERIFY(calendar);
+    QCOMPARE(calendar->type, FormItem::Type::Field);
+    QCOMPARE(calendar->fieldKind, FormFieldKind::Calendar);
+    const FormItem *ok = findItemByName(period.items, QStringLiteral("ФормаОК"));
+    QVERIFY(ok);
+    QCOMPARE(ok->type, FormItem::Type::Button);
+
+    QByteArray choicePayload;
+    QVERIFY2(readForm(QStringLiteral("ВыборДокументаАванса"), &choicePayload),
+             qPrintable(error));
+    FormDocument choice;
+    QVERIFY2(FormReader::parseBytes(choicePayload, &choice, &error), qPrintable(error));
+    QCOMPARE(choice.formatVersion, 3);
+    // Форма выбора: CommandBarLocation не задан, значит Auto (значение 1).
+    QCOMPARE(choice.commandBarLocation, 1);
+    const FormItem *table = findItemByName(choice.items, QStringLiteral("ДокументыОплаты"));
+    QVERIFY(table);
+    QCOMPARE(table->type, FormItem::Type::Table);
+    const FormItem *radio = findItemByName(choice.items, QStringLiteral("ПоказатьВсе"));
+    QVERIFY(radio);
+    QCOMPARE(radio->type, FormItem::Type::Field);
+    QCOMPARE(radio->fieldKind, FormFieldKind::RadioButton);
 }
 
 } // namespace
