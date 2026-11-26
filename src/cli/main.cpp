@@ -47,9 +47,14 @@ int main(int argc, char **argv)
     parser.addOption(QCommandLineOption(
         QStringLiteral("nodes"),
         QStringLiteral("Показать узлы формы в порядке сериализации (для form-model)")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("module"),
+        QStringLiteral("Имя модуля (для view)"), QStringLiteral("имя")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("json"), QStringLiteral("Машиночитаемый вывод (для view)")));
     parser.addPositionalArgument(QStringLiteral("команда"),
                                  QStringLiteral("Команда: info, list, tree, dump, metadata, "
-                                                "modules, composition, form-model, mxl, "
+                                                "modules, composition, view, form-model, mxl, "
                                                 "extract, extract-all"));
     parser.addPositionalArgument(QStringLiteral("файл"),
                                  QStringLiteral("Файл .cf, .cfe, .epf или .erf"));
@@ -73,6 +78,8 @@ int main(int argc, char **argv)
     options.form = parser.value(QStringLiteral("form"));
     options.items = parser.isSet(QStringLiteral("items"));
     options.nodes = parser.isSet(QStringLiteral("nodes"));
+    options.module = parser.value(QStringLiteral("module"));
+    options.json = parser.isSet(QStringLiteral("json"));
 
     v8reader::CliApplication application;
     return application.run(options, out, err);

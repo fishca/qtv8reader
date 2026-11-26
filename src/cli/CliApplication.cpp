@@ -50,6 +50,9 @@ int CliApplication::run(const Options &options, QTextStream &outStream,
         return cli::commandModules(options.path, options.argument, options.output);
     if (command == QStringLiteral("composition"))
         return cli::commandComposition(options.path, options.argument);
+    if (command == QStringLiteral("view"))
+        return cli::commandView(options.path, options.argument, options.module,
+                                options.json);
     if (command == QStringLiteral("form-model"))
         return cli::commandFormModel(options.path, options.argument, options.form,
                                      options.output, options.items, options.nodes);

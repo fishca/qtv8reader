@@ -16,6 +16,8 @@ int commandMetadata(const QString &path, const QString &objectQuery,
 int commandModules(const QString &path, const QString &objectQuery,
                    const QString &output);
 int commandComposition(const QString &path, const QString &objectQuery);
+int commandView(const QString &path, const QString &objectQuery,
+                const QString &moduleName, bool json);
 int commandFormModel(const QString &path, const QString &objectQuery,
                      const QString &formQuery, const QString &output, bool itemsOnly,
                      bool nodes = false);

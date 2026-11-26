@@ -18,6 +18,10 @@ public:
         QString output;
         // Имя или синоним формы для команды form-model.
         QString form;
+        // Имя модуля для команды view.
+        QString module;
+        // Машиночитаемый вывод (команда view).
+        bool json = false;
         bool raw = false;
         // Только дерево элементов формы (отладка разбора).
         bool items = false;

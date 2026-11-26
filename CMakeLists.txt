@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.13.3
+    VERSION 0.14.0
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -177,6 +177,8 @@ add_library(qtv8reader_cli_lib STATIC
     src/cli/MetadataCommand.cpp
     src/cli/ModulesCommand.cpp
     src/cli/CompositionCommand.cpp
+    src/cli/ViewCommand.h
+    src/cli/ViewCommand.cpp
     src/cli/FormModelCommand.cpp
     src/cli/MxlCommand.cpp
     src/cli/ExtractCommand.cpp
