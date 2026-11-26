@@ -13,6 +13,7 @@ import {
   fileVersion,
   inspectPathValue,
   inspectTarget,
+  selectionTag,
   stateCacheKey
 } from './paths.js'
 
@@ -93,12 +94,13 @@ export function createResource({ cli, cache, settings, stat, platform = process.
     const moduleName = (url.searchParams.get('module') ?? '').trim()
     const file = inspectTarget(pathValue, { stat: stat ?? undefined, platform })
 
-    const etag = `"${fileVersion(file)}"`
+    const version = fileVersion(file)
+    const etag = `"${version}-${selectionTag(object, moduleName)}"`
     const key = stateCacheKey(file, object, moduleName)
     const cached = cache.get(key)
     const versionHeaders = {
       etag,
-      'x-v8reader-version': fileVersion(file),
+      'x-v8reader-version': version,
       'cache-control': 'no-cache'
     }
 

@@ -25,11 +25,26 @@ function filterCategory(category, query) {
 }
 
 /**
+ * Whether a tree row is the selected object. The GUID wins because the same
+ * name can exist in two categories of one configuration.
+ * @param {object} object - one `categories[].objects[]` entry.
+ * @param {{ name: string, guid: string } | null} selected - current selection.
+ * @returns {boolean} true when the row is selected.
+ */
+function isSelected(object, selected) {
+  if (selected === null || selected === undefined) return false
+  if (typeof selected.guid === 'string' && selected.guid !== '') {
+    return object.guid === selected.guid
+  }
+  return object.name === selected.name
+}
+
+/**
  * The category and object tree.
  * @param {{
  *   categories: object[],
- *   selected: string,
- *   onSelect: (name: string) => void,
+ *   selected: { name: string, guid: string } | null,
+ *   onSelect: (object: object) => void,
  *   translate: (key: string, params?: object) => string
  * }} props - tree data and the current selection.
  * @returns {React.ReactNode} the tree column.
@@ -100,9 +115,9 @@ export function Tree({ categories, selected, onSelect, translate: t }) {
                   key={`${object.guid ?? object.name}:${object.name}`}
                   type="button"
                   className="v8r-object"
-                  aria-current={object.name === selected ? 'true' : 'false'}
+                  aria-current={isSelected(object, selected) ? 'true' : 'false'}
                   title={object.synonym === '' ? object.name : `${object.name} — ${object.synonym}`}
-                  onClick={() => { onSelect(object.name) }}
+                  onClick={() => { onSelect(object) }}
                 >
                   {object.name}
                   {object.synonym !== undefined && object.synonym !== '' && (

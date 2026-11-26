@@ -116,7 +116,7 @@ export function PanelView({ useTabInfo, t: provided }) {
   const [pathInput, setPathInput] = useState(readLastPath)
   const [document, setDocument] = useState(null)
   const [detail, setDetail] = useState(null)
-  const [objectName, setObjectName] = useState('')
+  const [selected, setSelected] = useState(null)
   const [moduleName, setModuleName] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [busy, setBusy] = useState(false)
@@ -155,7 +155,7 @@ export function PanelView({ useTabInfo, t: provided }) {
     run({ path: value }, (body) => {
       setDocument(body)
       setDetail(null)
-      setObjectName('')
+      setSelected(null)
       setModuleName('')
       setActiveSection('')
       setPathInput(value)
@@ -163,11 +163,14 @@ export function PanelView({ useTabInfo, t: provided }) {
     })
   }, [run])
 
-  const openObject = useCallback((name) => {
-    if (document === null) return
-    run({ path: document.file.path, object: name }, (body) => {
+  const openObject = useCallback((object) => {
+    if (document === null || object === undefined || object === null) return
+    // GUID is the only unambiguous query: the same name may exist in two
+    // categories of a large configuration.
+    const query = typeof object.guid === 'string' && object.guid !== '' ? object.guid : object.name
+    run({ path: document.file.path, object: query }, (body) => {
       setDetail(body)
-      setObjectName(name)
+      setSelected({ name: object.name, guid: object.guid ?? '' })
       setModuleName('')
       const first = Array.isArray(body.object?.sections) && body.object.sections.length > 0
         ? body.object.sections[0].kind
@@ -177,19 +180,20 @@ export function PanelView({ useTabInfo, t: provided }) {
   }, [document, run])
 
   const openModule = useCallback((name) => {
-    if (document === null || objectName === '') return
-    run({ path: document.file.path, object: objectName, module: name }, (body) => {
+    if (document === null || selected === null) return
+    const query = selected.guid !== '' ? selected.guid : selected.name
+    run({ path: document.file.path, object: query, module: name }, (body) => {
       setDetail(body)
       setModuleName(name)
     })
-  }, [document, objectName, run])
+  }, [document, selected, run])
 
   const reload = useCallback(() => {
     if (document === null) {
       openPath(pathInput)
       return
     }
-    if (objectName === '') {
+    if (selected === null) {
       openPath(document.file.path)
       return
     }
@@ -197,8 +201,8 @@ export function PanelView({ useTabInfo, t: provided }) {
       openModule(moduleName)
       return
     }
-    openObject(objectName)
-  }, [document, moduleName, objectName, openModule, openObject, openPath, pathInput])
+    openObject(selected)
+  }, [document, moduleName, openModule, openObject, openPath, pathInput, selected])
 
   useEffect(() => {
     const actions = tab?.actions
@@ -266,7 +270,7 @@ export function PanelView({ useTabInfo, t: provided }) {
         <div className="v8r-body">
           <Tree
             categories={document.categories}
-            selected={objectName}
+            selected={selected}
             onSelect={openObject}
             translate={t}
           />

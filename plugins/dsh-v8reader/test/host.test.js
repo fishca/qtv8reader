@@ -380,6 +380,17 @@ test('state route answers 304 for a matching ETag and HEAD without a body', asyn
   assert.equal(cached.status, 304)
   assert.equal(await cached.text(), '')
 
+  // The ETag names the answer, not just the file: revalidating one object's
+  // answer with another selection's tag must return a body.
+  const withObject = await resource(request(stateUrl({ object: 'Документ.АвансовыйОтчет' })))
+  assert.notEqual(withObject.headers.get('etag'), etag)
+  const mismatched = await resource(request(
+    stateUrl({ object: 'Документ.АвансовыйОтчет' }),
+    { headers: { 'if-none-match': etag } }
+  ))
+  assert.equal(mismatched.status, 200)
+  assert.equal((await mismatched.json()).schema, 1)
+
   const head = await resource(request(stateUrl(), { method: 'HEAD' }))
   assert.equal(head.status, 200)
   assert.equal(await head.text(), '')

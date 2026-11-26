@@ -196,6 +196,13 @@ window.__ModuleLoader__.load({
       });
       return { category, items, total: items.length };
     }
+    function isSelected(object, selected) {
+      if (selected === null || selected === void 0) return false;
+      if (typeof selected.guid === "string" && selected.guid !== "") {
+        return object.guid === selected.guid;
+      }
+      return object.name === selected.name;
+    }
     function Tree({ categories, selected, onSelect, translate: t }) {
       const [filter, setFilter] = (0, import_react.useState)("");
       const [expanded, setExpanded] = (0, import_react.useState)(() => {
@@ -257,10 +264,10 @@ window.__ModuleLoader__.load({
             key: `${object.guid ?? object.name}:${object.name}`,
             type: "button",
             className: "v8r-object",
-            "aria-current": object.name === selected ? "true" : "false",
+            "aria-current": isSelected(object, selected) ? "true" : "false",
             title: object.synonym === "" ? object.name : `${object.name} \u2014 ${object.synonym}`,
             onClick: () => {
-              onSelect(object.name);
+              onSelect(object);
             }
           },
           object.name,
@@ -318,7 +325,7 @@ window.__ModuleLoader__.load({
       const [pathInput, setPathInput] = (0, import_react2.useState)(readLastPath);
       const [document, setDocument] = (0, import_react2.useState)(null);
       const [detail, setDetail] = (0, import_react2.useState)(null);
-      const [objectName, setObjectName] = (0, import_react2.useState)("");
+      const [selected, setSelected] = (0, import_react2.useState)(null);
       const [moduleName, setModuleName] = (0, import_react2.useState)("");
       const [activeSection, setActiveSection] = (0, import_react2.useState)("");
       const [busy, setBusy] = (0, import_react2.useState)(false);
@@ -347,36 +354,38 @@ window.__ModuleLoader__.load({
         run({ path: value }, (body) => {
           setDocument(body);
           setDetail(null);
-          setObjectName("");
+          setSelected(null);
           setModuleName("");
           setActiveSection("");
           setPathInput(value);
           writeLastPath(value);
         });
       }, [run]);
-      const openObject = (0, import_react2.useCallback)((name) => {
-        if (document === null) return;
-        run({ path: document.file.path, object: name }, (body) => {
+      const openObject = (0, import_react2.useCallback)((object2) => {
+        if (document === null || object2 === void 0 || object2 === null) return;
+        const query = typeof object2.guid === "string" && object2.guid !== "" ? object2.guid : object2.name;
+        run({ path: document.file.path, object: query }, (body) => {
           setDetail(body);
-          setObjectName(name);
+          setSelected({ name: object2.name, guid: object2.guid ?? "" });
           setModuleName("");
           const first = Array.isArray(body.object?.sections) && body.object.sections.length > 0 ? body.object.sections[0].kind : "";
           setActiveSection(first);
         });
       }, [document, run]);
       const openModule = (0, import_react2.useCallback)((name) => {
-        if (document === null || objectName === "") return;
-        run({ path: document.file.path, object: objectName, module: name }, (body) => {
+        if (document === null || selected === null) return;
+        const query = selected.guid !== "" ? selected.guid : selected.name;
+        run({ path: document.file.path, object: query, module: name }, (body) => {
           setDetail(body);
           setModuleName(name);
         });
-      }, [document, objectName, run]);
+      }, [document, selected, run]);
       const reload = (0, import_react2.useCallback)(() => {
         if (document === null) {
           openPath(pathInput);
           return;
         }
-        if (objectName === "") {
+        if (selected === null) {
           openPath(document.file.path);
           return;
         }
@@ -384,8 +393,8 @@ window.__ModuleLoader__.load({
           openModule(moduleName);
           return;
         }
-        openObject(objectName);
-      }, [document, moduleName, objectName, openModule, openObject, openPath, pathInput]);
+        openObject(selected);
+      }, [document, moduleName, openModule, openObject, openPath, pathInput, selected]);
       (0, import_react2.useEffect)(() => {
         const actions = tab?.actions;
         if (actions === void 0 || typeof actions.bindCommands !== "function") return void 0;
@@ -441,7 +450,7 @@ window.__ModuleLoader__.load({
         Tree,
         {
           categories: document.categories,
-          selected: objectName,
+          selected,
           onSelect: openObject,
           translate: t
         }

@@ -122,3 +122,24 @@ export function stateCacheKey(file, object, module) {
 export function fileVersion(file) {
   return `${file.mtimeMs.toString(36)}-${file.size.toString(36)}`
 }
+
+/**
+ * Short tag of one object/module selection.
+ *
+ * The ETag of a `state` answer must identify the whole answer, not only the
+ * file: two objects of one file share the file generation, and reusing their
+ * ETags interchangeably would let a revalidation answer 304 for a different
+ * body.
+ * @param {string} object - object query or an empty string.
+ * @param {string} module - module name or an empty string.
+ * @returns {string} a stable short tag of the selection.
+ */
+export function selectionTag(object, module) {
+  const text = `${object}\u0000${module}`
+  let hash = 0x811c9dc5
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(36)
+}
