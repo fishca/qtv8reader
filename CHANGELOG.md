@@ -21,6 +21,29 @@
   и `@page` из параметров печати. Экранирование текста, `format = 0` и пустой
   макет не роняют экспорт.
 
+### Плагин DSH `plugins/dsh-v8reader` 0.1.0
+
+- Страница «1С: конфигурация» в правой панели DeepSeek Harness: `+` в правом
+  сайдбаре → «1С: чтение конфигурации», абсолютный путь к `.cf/.cfe/.epf/.erf`,
+  затем дерево метаданных с фильтром, состав объекта по разделам (реквизиты,
+  табличные части, формы, макеты, команды) и текст модуля. Последний путь
+  запоминается в `localStorage`; подписи — из локали плагина.
+- Host-половина: префиксный маршрут `/v8reader` с `GET /v8reader/state`
+  (один вызов `v8reader_cli view --json` на экран) и `GET /v8reader/health`
+  (найденный бинарник, версия, проверенные пути). Поиск: `cliPath` строки,
+  `V8READER_CLI`, выходы сборки (`out/cli-deploy`, `out/mingw`, `out/vs`,
+  `out/build`), `PATH`. Аргументы — массивом, без shell; таймаут убивает дерево
+  процессов; stdout ограничен `maxJsonBytes`; не больше `maxConcurrent`
+  одновременных запусков; LRU-кэш 32 записи / 64 МБ по `(путь, размер, mtime,
+  объект, модуль)` с ETag. Ошибки — стабильные коды `bad-path`,
+  `unsupported-format`, `cli-failed`, `cli-missing`, `cli-old`, `too-large`,
+  `timeout`, `forbidden`, `not-found`, `method-not-allowed`.
+- Клиент собран из `src/client` esbuild-ом в `client.js` (обёртка
+  `__ModuleLoader__`, React — из модульной таблицы страницы); артефакт
+  закоммичен.
+- Тесты плагина: `node --test` — 19 кейсов; интеграционный берёт настоящий
+  `v8reader_cli` и фикстуру `1Cv8_controls.cf` и пропускается без них.
+
 ### Тесты
 
 - `test_mxl`: `exporterHtml`, `exporterEscaping`, `exporterWithoutFormats`,

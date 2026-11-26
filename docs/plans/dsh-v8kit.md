@@ -53,7 +53,7 @@ workspace; параллельный diff конфигураций.
 | Автооткрытие `.cf/.cfe/.epf/.erf` из дерева Files и ссылок | `ctx.documentPreviews.register({ id, extensions, binaryExtensions, priority, title, loading:'renderer' })` + тело в `sidebar.right.tab.document` |
 | Данные клиенту | `ctx.webServer.register(...)` — Fetch-подобный ответ на префикс `/v8reader` |
 | Абсолютный путь открытого файла | метаданные `WorkspaceFileStat { absolutePath, version, bytes }` через `useResource<'file'>(tab.contentId)` |
-| Запуск CLI | `ctx.subprocess.resolveExecutable/spawn`; при отсутствии сервиса — `node:child_process.spawn` с argv-массивом |
+| Запуск CLI | `node:child_process.spawn` с argv-массивом; на Windows дерево убивается `taskkill /T`, на POSIX — `SIGKILL`. Сервис `ctx.subprocess` не используется: лишняя зависимость от чужой реализации процесса и второй путь исполнения, который пришлось бы держать в тестах |
 | Локализация и метаданные плагина | `ctx.locale.bind('v8reader')`, `locale/ru.json`, `locale/en.json` с `meta.title/description/detail` |
 
 Обе точки входа используют один React-компонент `PanelView`; различие — источник
@@ -152,14 +152,20 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 
 Правила исполнения:
 
-- Поиск бинарника: `config.cliPath` → `env.V8READER_CLI` → `PATH`; кэш пути до отказа.
+- Поиск бинарника: `config.cliPath` → `env.V8READER_CLI` → выходы сборки этого
+  репозитория (`out/cli-deploy`, `out/mingw`, `out/vs`, `out/build` — удобство
+  разработки, вне репозитория эти пути просто не существуют) → `PATH`; кэш пути
+  до отказа.
 - Конфигурация строки плагина (без объявленной схемы `Config` в v1): `cliPath`,
-  `timeoutMs = 20000`, `maxJsonBytes = 16777216`, `maxConcurrent = 2`.
+  `timeoutMs = 20000`, `maxJsonBytes = 16777216`, `maxConcurrent = 2`,
+  `cacheEntries = 32`, `cacheBytes = 67108864`.
 - Аргументы — массивом, без shell; `cwd` — каталог файла; таймаут → kill процесса
   (Windows — `taskkill /T`), ответ 504.
 - Ошибка CLI (exit ≠ 0) → статус 4xx/5xx с `{ error: { code, message, detail? } }`;
   `code` из набора: `bad-path`, `unsupported-format`, `cli-failed`, `cli-missing`,
-  `cli-old`, `too-large`, `timeout`.
+  `cli-old`, `too-large`, `timeout`, а также `forbidden`, `not-found`,
+  `method-not-allowed` (добавлены на M2 для запросов не с того сайта, неизвестного
+  маршрута и не-GET метода).
 - Проверка пути: абсолютный, существует, обычный файл, расширение из
   `cf|cfe|epf|erf`, без NUL; UNC-пути допустимы.
 - LRU-кэш ответов `state` по `(path, size, mtimeMs, object, module)`, 32 записи /
@@ -252,8 +258,8 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 обход дерева, форма, макет, темы light/dark, консоль без ошибок, отсутствие
 «висящих» процессов `v8reader_cli`.
 
-**CI** — job `plugin` в `build.yml`: Node 22, `npm ci`, `npm run build`,
-`npm test` с `V8READER_CLI`, `npm pack --dry-run`.
+**CI** — job `plugin` в `build.yml`: Node 22, `pnpm install --frozen-lockfile`,
+`pnpm run build`, `pnpm test` с `V8READER_CLI`, `npm pack --dry-run`.
 
 ## 12. Этапы
 
@@ -263,9 +269,18 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
       на БП `mxl --json` — 2 макета за 1,2 с, HTML первого — 129 КБ,
       страница снята headless Chrome и сверена глазами (таблица, объединения,
       контур областей).
-- [ ] **M2** Каркас плагина: пакет, patch, локаль/иконка/DETAIL; Host: маршрут
+- [x] **M2** Каркас плагина: пакет, patch, локаль/иконка/DETAIL; Host: маршрут
       `state`, spawn, кэш, ошибки; Client: тип вкладки-страницы + `PanelView`
       (путь, дерево, разделы, реквизиты); локальная установка.
+      Готово: `node --test` — 19 кейсов (host 14, client 5); бандл установлен в
+      профиль `desktop` (`application: applied`, symlink на каталог репозитория),
+      живой `/v8reader/health` нашёл `out/cli-deploy/v8reader_cli.exe` 0.14.0,
+      `/v8reader/state` на фикстуре `1Cv8_controls.cf` — 200 за 84 мс (2
+      категории, etag), состав объекта и модуль «Кнопки» — 272 символа, ошибки
+      `bad-path` 400 и `unsupported-format` 415. Клиент собран esbuild
+      (`npm run build`), добавлен кандидат `out/cli-deploy` в поиск бинарника.
+      Не проверено автоматически: отрисовка панели в GUI — браузерный канал
+      этой сессии не открывает loopback-адрес DSH, нужен взгляд человека.
 - [ ] **M3** Код: `CodeView`, порт BSL-правил, настройки, лимит строк, копирование.
 - [ ] **M4** Документ-рендерер: `documentPreviews.register` + тело по `absolutePath`,
       Reload, баннер изменения файла.
