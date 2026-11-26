@@ -15,6 +15,7 @@ export const ERROR_CODES = Object.freeze({
   cliOld: 'cli-old',
   tooLarge: 'too-large',
   timeout: 'timeout',
+  denied: 'denied',
   forbidden: 'forbidden',
   notFound: 'not-found',
   methodNotAllowed: 'method-not-allowed'

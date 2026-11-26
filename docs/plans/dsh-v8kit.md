@@ -144,6 +144,7 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 | Маршрут | Ответ |
 |---|---|
 | `/v8reader/state?path=[&object=&module=]` | JSON из `view` |
+| `/v8reader/browse?path=[&all=1]` | один уровень каталога для обзора файлов: `dir`, `parent`, `breadcrumbs`, `entries[{name,path,kind,size?}]`, `truncated`, `hiddenCount`; без `path` — домашний каталог, путь к файлу сводится к его каталогу |
 | `/v8reader/form?path=&object=&form=` | редирект 302 на `/v8reader/assets/model.html?model=<model.json URL>&title=<…>` |
 | `/v8reader/model.json?path=&object=&form=` | JSON из `form-model` |
 | `/v8reader/mxl?path=&object=&template=&zoom=` | HTML-страница макета (`mxl --html -`), `zoom` — CSS `zoom` |
@@ -165,7 +166,10 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
   `code` из набора: `bad-path`, `unsupported-format`, `cli-failed`, `cli-missing`,
   `cli-old`, `too-large`, `timeout`, а также `forbidden`, `not-found`,
   `method-not-allowed` (добавлены на M2 для запросов не с того сайта, неизвестного
-  маршрута и не-GET метода).
+  маршрута и не-GET метода) и `denied` (нет доступа к каталогу при обзоре).
+- Обзор каталога (`browse`) — только чтение: `readdir`/`stat`, без записи; dot-файлы
+  и системные каталоги скрыты, по умолчанию видны только `cf|cfe|epf|erf`
+  (`all=1` — все файлы), не больше 1000 записей на ответ.
 - Проверка пути: абсолютный, существует, обычный файл, расширение из
   `cf|cfe|epf|erf`, без NUL; UNC-пути допустимы.
 - LRU-кэш ответов `state` по `(path, size, mtimeMs, object, module)`, 32 записи /
@@ -176,7 +180,9 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 
 **Тип вкладки-страницы**: `id = '@fishca/dsh-v8reader'`, `kind = 'v8reader'`,
 `guide: [{ id: 'open', title, description }]`, `keepMounted: true`. Тело —
-`PanelView` в режиме `path` (поле ввода абсолютного пути, история в `localStorage`).
+`PanelView` в режиме `path`: поле ввода абсолютного пути и обзор файлов на
+диске (`FilePicker` поверх `/v8reader/browse`, стартует с последнего каталога
+из `localStorage`).
 
 **Тип документа**: `id = '@fishca/dsh-v8reader/config'`,
 `extensions: ['cf','cfe','epf','erf']`, те же `binaryExtensions`,
@@ -285,6 +291,16 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
       Не проверено автоматически: отрисовка панели в GUI — браузерный канал
       этой сессии не открывает loopback-адрес DSH (прокси и отсутствие
       авторизованной вкладки), нужен взгляд человека.
+- [x] **M2.1** Обзор файлов вместо слепого «Открыть»: маршрут `browse`
+      (`dir`, `parent`, `breadcrumbs`, `entries`, `hiddenCount`, `truncated`,
+      ошибки `bad-path`/`denied`), `FilePicker` в панели (крошки, поле пути
+      для другого диска и UNC, фильтр, «Все файлы», недоступные файлы не
+      выбираются), «Открыть» с пустым полем открывает обзор, «Обзор…» и
+      «Выбрать файл…» в пустом состоянии, последний каталог в
+      `localStorage['dsh.v8reader.dir.v1']`.
+      Готово: `node --test` — 29 кейсов (host 19, client 10), живой
+      `/v8reader/browse?path=…controlbase` — 200, 7 крошек, `1Cv8_controls.cf`
+      в списке; в GUI руками не проверено (см. выше).
 - [ ] **M3** Код: `CodeView`, порт BSL-правил, настройки, лимит строк, копирование.
 - [ ] **M4** Документ-рендерер: `documentPreviews.register` + тело по `absolutePath`,
       Reload, баннер изменения файла.

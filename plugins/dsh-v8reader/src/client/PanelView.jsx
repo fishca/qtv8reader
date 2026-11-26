@@ -7,38 +7,53 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { StateError, fetchState } from './api.js'
+import { FilePicker } from './FilePicker.jsx'
 import { fileKindLabel, flattenEntries, formatBytes, sectionLabel } from './labels.js'
+import { dirOf } from './paths.js'
 import { PANEL_CSS } from './styles.js'
 import { Tree } from './Tree.jsx'
 
 /** Key of the last opened path; only the path is remembered, never file contents. */
 export const LAST_PATH_KEY = 'dsh.v8reader.path.v1'
 
+/** Key of the directory the file chooser starts in. */
+export const LAST_DIR_KEY = 'dsh.v8reader.dir.v1'
+
 /** Module characters rendered before the "truncated" note. */
 const MODULE_LIMIT = 300000
 
 /**
- * Read the remembered path.
- * @returns {string} the last opened absolute path, or an empty string.
+ * Read a remembered value.
+ * @param {string} key - the storage key.
+ * @returns {string} the stored string, or an empty one.
  */
-function readLastPath() {
+function readStored(key) {
   try {
-    return globalThis.localStorage?.getItem(LAST_PATH_KEY) ?? ''
+    return globalThis.localStorage?.getItem(key) ?? ''
   } catch {
     return ''
   }
 }
 
 /**
- * Remember the opened path, ignoring storage failures (private windows, quota).
- * @param {string} value - the absolute path.
+ * Remember a value, ignoring storage failures (private windows, quota).
+ * @param {string} key - the storage key.
+ * @param {string} value - what to remember.
  */
-function writeLastPath(value) {
+function writeStored(key, value) {
   try {
-    globalThis.localStorage?.setItem(LAST_PATH_KEY, value)
+    globalThis.localStorage?.setItem(key, value)
   } catch {
-    // remembering the path is a convenience
+    // remembering a path is a convenience
   }
+}
+
+/**
+ * Read the remembered path.
+ * @returns {string} the last opened absolute path, or an empty string.
+ */
+function readLastPath() {
+  return readStored(LAST_PATH_KEY)
 }
 
 /**
@@ -114,6 +129,8 @@ export function PanelView({ useTabInfo, t: provided }) {
   const tab = typeof useTabInfo === 'function' ? useTabInfo().tab : undefined
 
   const [pathInput, setPathInput] = useState(readLastPath)
+  const [lastDir, setLastDir] = useState(() => readStored(LAST_DIR_KEY))
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [document, setDocument] = useState(null)
   const [detail, setDetail] = useState(null)
   const [selected, setSelected] = useState(null)
@@ -122,6 +139,7 @@ export function PanelView({ useTabInfo, t: provided }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const controller = useRef(null)
+  const browseButton = useRef(null)
 
   /**
    * Run one request and hand its document to the caller's setter.
@@ -152,16 +170,56 @@ export function PanelView({ useTabInfo, t: provided }) {
   const openPath = useCallback((raw) => {
     const value = String(raw ?? '').trim()
     if (value === '') return
+    // The field shows what was asked for even when the answer is an error, so
+    // the user can fix the path instead of wondering which file was attempted.
+    setPathInput(value)
     run({ path: value }, (body) => {
       setDocument(body)
       setDetail(null)
       setSelected(null)
       setModuleName('')
       setActiveSection('')
-      setPathInput(value)
-      writeLastPath(value)
+      writeStored(LAST_PATH_KEY, value)
+      const dir = dirOf(value)
+      if (dir !== '') {
+        setLastDir(dir)
+        writeStored(LAST_DIR_KEY, dir)
+      }
     })
   }, [run])
+
+  /**
+   * The toolbar's open action: an empty field is not a dead end, it opens the
+   * chooser, because a typed path is only one of the two ways to pick a file.
+   */
+  const openFromToolbar = useCallback(() => {
+    if (String(pathInput ?? '').trim() === '') {
+      setPickerOpen(true)
+      return
+    }
+    openPath(pathInput)
+  }, [openPath, pathInput])
+
+  const openChooser = useCallback(() => { setPickerOpen(true) }, [])
+
+  /**
+   * Close the chooser, remembering the directory it was left in and returning
+   * focus to the control that opened it.
+   * @param {string} [finalDir] - the directory the chooser ended in.
+   */
+  const closeChooser = useCallback((finalDir = '') => {
+    setPickerOpen(false)
+    if (finalDir !== '') {
+      setLastDir(finalDir)
+      writeStored(LAST_DIR_KEY, finalDir)
+    }
+    browseButton.current?.focus?.()
+  }, [])
+
+  const pickFromChooser = useCallback((picked) => {
+    setPickerOpen(false)
+    openPath(picked)
+  }, [openPath])
 
   const openObject = useCallback((object) => {
     if (document === null || object === undefined || object === null) return
@@ -190,6 +248,7 @@ export function PanelView({ useTabInfo, t: provided }) {
 
   const reload = useCallback(() => {
     if (document === null) {
+      if (String(pathInput ?? '').trim() === '') return
       openPath(pathInput)
       return
     }
@@ -220,6 +279,7 @@ export function PanelView({ useTabInfo, t: provided }) {
 
   const moduleText = typeof content?.text === 'string' ? content.text : ''
   const moduleShown = moduleText.length > MODULE_LIMIT ? moduleText.slice(0, MODULE_LIMIT) : moduleText
+  const hasPath = String(pathInput ?? '').trim() !== ''
 
   return (
     <div className="v8r">
@@ -235,34 +295,53 @@ export function PanelView({ useTabInfo, t: provided }) {
           aria-label={t('panel.path.placeholder')}
           onChange={(event) => { setPathInput(event.target.value) }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') openPath(pathInput)
+            if (event.key === 'Enter') openFromToolbar()
           }}
         />
         <button
           type="button"
-          className="v8r-button v8r-button--primary"
-          disabled={busy || pathInput.trim() === ''}
-          onClick={() => { openPath(pathInput) }}
+          className={hasPath ? 'v8r-button v8r-button--primary' : 'v8r-button'}
+          disabled={busy || !hasPath}
+          title={t('panel.open.title')}
+          onClick={openFromToolbar}
         >
           {t('panel.open')}
         </button>
         <button
           type="button"
-          className="v8r-button"
-          disabled={busy || document === null}
-          onClick={reload}
+          className={hasPath ? 'v8r-button' : 'v8r-button v8r-button--primary'}
+          title={t('panel.browse.title')}
+          ref={browseButton}
+          onClick={openChooser}
         >
-          {t('panel.reload')}
+          {t('panel.browse')}
         </button>
+        {document !== null && (
+          <button
+            type="button"
+            className="v8r-button"
+            disabled={busy}
+            onClick={reload}
+          >
+            {t('panel.reload')}
+          </button>
+        )}
       </div>
 
       {busy && <div className="v8r-loading">{t('panel.loading')}</div>}
       {error !== null && <ErrorBanner error={error} translate={t} />}
 
-      {document === null && !busy && error === null && (
+      {document === null && !busy && error === null && !pickerOpen && (
         <div className="v8r-empty">
           <div className="v8r-empty-title">{t('panel.empty.title')}</div>
           <div>{t('panel.empty.hint')}</div>
+          <button
+            type="button"
+            className="v8r-button v8r-button--primary"
+            onClick={openChooser}
+          >
+            {t('panel.chooseFile')}
+          </button>
         </div>
       )}
 
@@ -352,6 +431,15 @@ export function PanelView({ useTabInfo, t: provided }) {
             )}
           </div>
         </div>
+      )}
+
+      {pickerOpen && (
+        <FilePicker
+          initialDir={lastDir}
+          translate={t}
+          onPick={pickFromChooser}
+          onClose={closeChooser}
+        />
       )}
     </div>
   )

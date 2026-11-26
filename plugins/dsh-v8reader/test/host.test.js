@@ -11,9 +11,24 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 
 import { ERROR_CODES, RouteError } from '../src/host/errors.js'
+import {
+  MAX_BROWSE_ENTRIES,
+  breadcrumbsOf,
+  listDirectory,
+  resolveDirectory
+} from '../src/host/browse.js'
 import {
   inspectPathValue,
   inspectTarget,
@@ -473,6 +488,147 @@ test('health reports a missing CLI without failing the request', async () => {
   const ok = await (await healthy(request('http://127.0.0.1:1/v8reader/health'))).json()
   assert.equal(ok.ok, true)
   assert.equal(ok.cli.version, MIN_CLI_VERSION)
+})
+
+test('browse lists one directory level: folders first, supported files only unless all', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'v8r-browse-'))
+  try {
+    mkdirSync(path.join(dir, 'forms'))
+    mkdirSync(path.join(dir, 'Alpha'))
+    writeFileSync(path.join(dir, 'a.cf'), 'x'.repeat(64))
+    writeFileSync(path.join(dir, 'b.txt'), 'y')
+    writeFileSync(path.join(dir, '.hidden.cf'), 'z')
+    writeFileSync(path.join(dir, 'c.EPF'), 'w')
+
+    const listing = listDirectory(dir, { platform: process.platform })
+    assert.equal(listing.schema, 1)
+    assert.deepEqual(listing.entries.map((entry) => entry.name), ['Alpha', 'forms', 'a.cf', 'c.EPF'])
+    assert.deepEqual(listing.entries.map((entry) => entry.kind), ['dir', 'dir', 'file', 'file'])
+    assert.equal(listing.hiddenCount, 1)
+    assert.equal(listing.all, false)
+    assert.equal(listing.truncated, false)
+    assert.equal(listing.entries[2].size, 64)
+    assert.equal(listing.entries[2].path, path.join(dir, 'a.cf'))
+
+    const all = listDirectory(dir, { all: true, platform: process.platform })
+    assert.deepEqual(
+      all.entries.map((entry) => entry.name),
+      ['Alpha', 'forms', 'a.cf', 'b.txt', 'c.EPF']
+    )
+    assert.equal(all.hiddenCount, 0)
+    assert.equal(all.all, true)
+    assert.ok(all.supported.includes('.cf'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('browse resolves a file path to its directory and walks to the root', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'v8r-browse-'))
+  try {
+    const file = path.join(dir, 'base.cf')
+    writeFileSync(file, 'x')
+    assert.equal(resolveDirectory(file, { platform: process.platform }), dir)
+    assert.equal(resolveDirectory(dir, { platform: process.platform }), dir)
+
+    const crumbs = breadcrumbsOf(dir, process.platform)
+    assert.ok(crumbs.length >= 2)
+    assert.equal(crumbs[crumbs.length - 1].path, path.resolve(dir))
+    assert.equal(crumbs[0].path, path.parse(path.resolve(dir)).root)
+    assert.deepEqual(
+      listDirectory(file, { platform: process.platform }).dir,
+      dir
+    )
+    assert.equal(listDirectory(file, { platform: process.platform }).parent, path.dirname(dir))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('browse stops at the entry limit and keeps the filter usable', () => {
+  const many = MAX_BROWSE_ENTRIES + 5
+  const listing = listDirectory('C:\\work', {
+    platform: 'win32',
+    stat: () => ({ isFile: () => false, isDirectory: () => true, size: 0 }),
+    readdir: () => Array.from({ length: many }, (_, index) => ({
+      name: `file-${index}.cf`,
+      isDirectory: () => false,
+      isFile: () => true
+    }))
+  })
+  assert.equal(listing.truncated, true)
+  assert.equal(listing.entries.length, MAX_BROWSE_ENTRIES)
+  assert.equal(listing.entries[0].kind, 'file')
+})
+
+test('browse route answers a listing, HEAD without a body, and stable failures', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'v8r-browse-'))
+  try {
+    writeFileSync(path.join(dir, 'base.cf'), 'x')
+    mkdirSync(path.join(dir, 'sub'))
+    const resource = createResource({
+      cli: fakeCli(),
+      cache: createLruCache(),
+      settings: DEFAULT_SETTINGS,
+      stat: statSync,
+      readdir: readdirSync,
+      home: dir,
+      platform: process.platform
+    })
+
+    const home = await resource(request('http://127.0.0.1:1/v8reader/browse'))
+    assert.equal(home.status, 200)
+    const body = await home.json()
+    assert.equal(body.schema, 1)
+    assert.equal(body.dir, dir)
+    assert.deepEqual(body.entries.map((entry) => entry.name), ['sub', 'base.cf'])
+
+    const head = await resource(request('http://127.0.0.1:1/v8reader/browse', { method: 'HEAD' }))
+    assert.equal(head.status, 200)
+    assert.equal(await head.text(), '')
+
+    const seeded = await resource(request(
+      `http://127.0.0.1:1/v8reader/browse?path=${encodeURIComponent(path.join(dir, 'base.cf'))}`
+    ))
+    assert.equal((await seeded.json()).dir, dir)
+
+    const all = await resource(request(
+      `http://127.0.0.1:1/v8reader/browse?path=${encodeURIComponent(dir)}&all=1`
+    ))
+    assert.equal((await all.json()).all, true)
+
+    const missing = await resource(request(
+      `http://127.0.0.1:1/v8reader/browse?path=${encodeURIComponent(path.join(dir, 'nope'))}`
+    ))
+    assert.equal(missing.status, 404)
+    const missingBody = await missing.json()
+    assert.equal(missingBody.error.code, ERROR_CODES.badPath)
+    assert.equal(missingBody.error.detail.reason, 'directory-missing')
+
+    const relative = await resource(request('http://127.0.0.1:1/v8reader/browse?path=work'))
+    assert.equal(relative.status, 400)
+
+    const crossSite = await resource(request('http://127.0.0.1:1/v8reader/browse', {
+      headers: { 'sec-fetch-site': 'cross-site' }
+    }))
+    assert.equal(crossSite.status, 403)
+    assert.equal((await crossSite.json()).error.code, ERROR_CODES.forbidden)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('browse reports a denied directory with its own code', () => {
+  assert.throws(
+    () => listDirectory('C:\\private', {
+      platform: 'win32',
+      readdir: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }) },
+      stat: () => ({ isFile: () => false, isDirectory: () => true, size: 0 })
+    }),
+    (error) => error instanceof RouteError
+      && error.code === ERROR_CODES.denied
+      && error.status === 403
+  )
 })
 
 test('plugin wires one prefix route and disposes the runner', async () => {

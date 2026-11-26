@@ -86,6 +86,8 @@ export function createPlugin({
   platform = process.platform,
   spawn,
   stat,
+  readdir,
+  home,
   cache: providedCache
 } = {}) {
   const settings = resolveSettings(config)
@@ -101,7 +103,15 @@ export function createPlugin({
     maxEntries: settings.cacheEntries,
     maxBytes: settings.cacheBytes
   })
-  const resource = createResource({ cli, cache, settings, stat, platform })
+  const resource = createResource({
+    cli,
+    cache,
+    settings,
+    ...(stat === undefined ? {} : { stat }),
+    ...(readdir === undefined ? {} : { readdir }),
+    ...(home === undefined ? {} : { home }),
+    platform
+  })
 
   return {
     settings,

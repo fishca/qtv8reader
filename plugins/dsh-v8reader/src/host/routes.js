@@ -1,6 +1,7 @@
 /**
- * The one HTTP surface of the plugin: `GET /v8reader/state` and
- * `GET /v8reader/health`, registered as a prefix route on the Host.
+ * The one HTTP surface of the plugin: `GET /v8reader/state`,
+ * `GET /v8reader/browse`, and `GET /v8reader/health`, registered as a prefix
+ * route on the Host.
  *
  * The resource is Fetch-shaped (`Request` in, `Response` out) because that is
  * what `ctx.webServer.register({ kind: 'prefix', resource })` accepts. Routes
@@ -8,6 +9,7 @@
  * requests only; a cross-site `Sec-Fetch-Site` is refused here on top of that.
  */
 import path from 'node:path'
+import { listDirectory } from './browse.js'
 import { ERROR_CODES, RouteError, cliFailure } from './errors.js'
 import {
   fileVersion,
@@ -77,11 +79,21 @@ export function sameOriginRequest(request) {
  *   cache: ReturnType<import('./cache.js').createLruCache>,
  *   settings: object,
  *   stat?: unknown,
+ *   readdir?: unknown,
+ *   home?: string,
  *   platform?: NodeJS.Platform
  * }} options - the plugin's parts and test seams.
  * @returns {(request: Request) => Promise<Response>} the resource.
  */
-export function createResource({ cli, cache, settings, stat, platform = process.platform }) {
+export function createResource({
+  cli,
+  cache,
+  settings,
+  stat,
+  readdir,
+  home,
+  platform = process.platform
+}) {
   /**
    * Answer `GET /v8reader/state`.
    * @param {URL} url - the request URL.
@@ -189,6 +201,25 @@ export function createResource({ cli, cache, settings, stat, platform = process.
     return jsonResponse(200, body)
   }
 
+  /**
+   * Answer `GET /v8reader/browse`.
+   * @param {URL} url - the request URL.
+   * @param {boolean} head - whether the body must be dropped.
+   * @returns {Promise<Response>} the listing of one directory level.
+   */
+  async function browseRoute(url, head) {
+    const body = await listDirectory(url.searchParams.get('path'), {
+      all: url.searchParams.get('all') === '1',
+      ...(readdir === undefined ? {} : { readdir }),
+      ...(stat === undefined ? {} : { stat }),
+      ...(home === undefined ? {} : { home }),
+      platform
+    })
+    const response = jsonResponse(200, body)
+    if (!head) return response
+    return new Response(null, { status: response.status, headers: response.headers })
+  }
+
   return async function resource(request) {
     try {
       const method = request.method.toUpperCase()
@@ -208,6 +239,7 @@ export function createResource({ cli, cache, settings, stat, platform = process.
       const head = method === 'HEAD'
 
       if (route === '/health') return await health()
+      if (route === '/browse') return await browseRoute(url, head)
       if (route === '/state') {
         const ifNoneMatch = request.headers.get('if-none-match')
         const response = await state(url, head)
@@ -224,7 +256,7 @@ export function createResource({ cli, cache, settings, stat, platform = process.
         ERROR_CODES.notFound,
         `Неизвестный маршрут: ${url.pathname}`,
         404,
-        { routes: [`${ROUTE_PREFIX}/health`, `${ROUTE_PREFIX}/state`] }
+        { routes: [`${ROUTE_PREFIX}/health`, `${ROUTE_PREFIX}/state`, `${ROUTE_PREFIX}/browse`] }
       )
     } catch (error) {
       return errorResponse(error)

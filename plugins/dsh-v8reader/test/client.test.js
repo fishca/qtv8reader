@@ -13,9 +13,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 
-import { StateError, buildStateUrl, fetchState } from '../src/client/api.js'
+import { StateError, buildBrowseUrl, buildStateUrl, fetchBrowse, fetchState } from '../src/client/api.js'
+import { browseErrorText } from '../src/client/errors.js'
 import { flattenEntries, formatBytes, sectionLabel } from '../src/client/labels.js'
 import { en, ru } from '../src/client/messages.js'
+import { dirOf, extensionOf } from '../src/client/paths.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
@@ -200,4 +202,100 @@ test('panel labels and nested section rows', () => {
     ['Б1', 1],
     ['Б1.1', 2]
   ])
+})
+
+test('dirOf keeps drive, UNC, and POSIX roots intact', () => {
+  assert.equal(dirOf('E:\\work\\repo\\base.cf'), 'E:\\work\\repo')
+  assert.equal(dirOf('E:\\base.cf'), 'E:\\')
+  assert.equal(dirOf('E:/work/base.cf'), 'E:/work')
+  assert.equal(dirOf('\\\\srv\\share\\base.cf'), '\\\\srv\\share\\')
+  assert.equal(dirOf('\\\\srv\\share\\deep\\base.cf'), '\\\\srv\\share\\deep')
+  assert.equal(dirOf('/work/base.cf'), '/work')
+  assert.equal(dirOf('/base.cf'), '/')
+  assert.equal(dirOf('base.cf'), '')
+  assert.equal(dirOf('   '), '')
+  assert.equal(dirOf('E:\\work\\'), 'E:\\work')
+})
+
+test('extensionOf reads the suffix the chooser filters on', () => {
+  assert.equal(extensionOf('base.cf'), '.cf')
+  assert.equal(extensionOf('BASE.CFE'), '.cfe')
+  assert.equal(extensionOf('report.tar.gz'), '.gz')
+  assert.equal(extensionOf('noext'), '')
+  assert.equal(extensionOf('.hidden'), '')
+  assert.equal(extensionOf(''), '')
+})
+
+test('browse URL encodes the directory once and omits an empty one', () => {
+  assert.equal(buildBrowseUrl(), '/v8reader/browse')
+  assert.equal(buildBrowseUrl('', false), '/v8reader/browse')
+  assert.equal(buildBrowseUrl('', true), '/v8reader/browse?all=1')
+
+  const url = buildBrowseUrl('C:\\work\\Авансовый отчет', true)
+  const parsed = new URL(url, 'http://127.0.0.1:1')
+  assert.equal(parsed.pathname, '/v8reader/browse')
+  assert.equal(parsed.searchParams.get('path'), 'C:\\work\\Авансовый отчет')
+  assert.equal(parsed.searchParams.get('all'), '1')
+})
+
+test('fetchBrowse returns the listing and maps failures to StateError', async () => {
+  const listing = {
+    schema: 1,
+    dir: 'C:\\work',
+    parent: 'C:\\',
+    breadcrumbs: [{ name: 'C:\\', path: 'C:\\' }, { name: 'work', path: 'C:\\work' }],
+    entries: [{ name: 'base.cf', path: 'C:\\work\\base.cf', kind: 'file', size: 10 }],
+    truncated: false,
+    hiddenCount: 2,
+    all: false,
+    supported: ['.cf']
+  }
+  const ok = await fetchBrowse({
+    dir: 'C:\\work',
+    fetchImpl: async (url) => {
+      assert.equal(url, buildBrowseUrl('C:\\work'))
+      return new Response(JSON.stringify(listing), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+  })
+  assert.equal(ok.entries.length, 1)
+  assert.equal(ok.hiddenCount, 2)
+
+  const denied = await fetchBrowse({
+    dir: 'C:\\private',
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { code: 'denied', message: 'Нет доступа к папке: C:\\private' }
+    }), { status: 403 })
+  }).catch((error) => error)
+  assert.ok(denied instanceof StateError)
+  assert.equal(denied.code, 'denied')
+
+  const wrong = await fetchBrowse({
+    dir: 'C:\\work',
+    fetchImpl: async () => new Response(JSON.stringify({ schema: 1, dir: 'C:\\work' }), {
+      status: 200
+    })
+  }).catch((error) => error)
+  assert.ok(wrong instanceof StateError)
+  assert.equal(wrong.code, 'bad-path')
+})
+
+test('chooser copy distinguishes a missing folder from a rejected file', () => {
+  const t = (key, params = {}) => (ru[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? '')
+  assert.equal(
+    browseErrorText(t, new StateError('bad-path', 'x', 404, { reason: 'directory-missing' })),
+    ru['picker.error.missing']
+  )
+  assert.equal(
+    browseErrorText(t, new StateError('bad-path', 'x', 400, { reason: 'not-a-directory' })),
+    ru['picker.error.notDirectory']
+  )
+  assert.equal(
+    browseErrorText(t, new StateError('bad-path', 'x', 400)),
+    ru['error.bad-path']
+  )
+  assert.equal(browseErrorText(t, new StateError('denied', 'x', 403)), ru['error.denied'])
+  assert.equal(browseErrorText(t, new StateError('weird', 'x', 500)), ru['error.unknown'])
 })
