@@ -56,8 +56,14 @@ int CliApplication::run(const Options &options, QTextStream &outStream,
     if (command == QStringLiteral("form-model"))
         return cli::commandFormModel(options.path, options.argument, options.form,
                                      options.output, options.items, options.nodes);
-    if (command == QStringLiteral("mxl"))
-        return cli::commandMxl(options.path, options.argument, options.output);
+    if (command == QStringLiteral("mxl")) {
+        cli::MxlCommandOptions mxlOptions;
+        mxlOptions.templateName = options.templateName;
+        mxlOptions.htmlOutput = options.htmlOutput;
+        mxlOptions.json = options.json;
+        return cli::commandMxl(options.path, options.argument, options.output,
+                               mxlOptions);
+    }
     if (command == QStringLiteral("extract"))
         return cli::commandExtract(options.path, options.argument, options.output);
     if (command == QStringLiteral("extract-all"))

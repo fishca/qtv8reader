@@ -49,6 +49,8 @@ add_library(qtv8reader_core STATIC
     src/core/MxlDocument.cpp
     src/core/MxlReader.h
     src/core/MxlReader.cpp
+    src/core/MxlHtmlExporter.h
+    src/core/MxlHtmlExporter.cpp
     src/core/FormDocument.h
     src/core/FormDocument.cpp
     src/core/FormOwner.h
@@ -202,6 +204,7 @@ qt_add_executable(qtv8reader_tests
     tests/test_v8container.cpp
     tests/test_metadata.cpp
     tests/test_mxl.cpp
+    tests/SyntheticMxl.h
     tests/test_form.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
@@ -216,6 +219,7 @@ qt_add_executable(qtv8reader_cli_tests
     tests/test_cli.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
+    tests/SyntheticMxl.h
     tests/TestPaths.h
 )
 

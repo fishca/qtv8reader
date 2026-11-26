@@ -51,7 +51,15 @@ int main(int argc, char **argv)
         QStringLiteral("module"),
         QStringLiteral("Имя модуля (для view)"), QStringLiteral("имя")));
     parser.addOption(QCommandLineOption(
-        QStringLiteral("json"), QStringLiteral("Машиночитаемый вывод (для view)")));
+        QStringLiteral("template"),
+        QStringLiteral("Имя макета (для mxl)"), QStringLiteral("имя")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("html"),
+        QStringLiteral("Экспорт макета в HTML-файл или «-» (для mxl)"),
+        QStringLiteral("путь")));
+    parser.addOption(QCommandLineOption(
+        QStringLiteral("json"),
+        QStringLiteral("Машиночитаемый вывод (для view и mxl)")));
     parser.addPositionalArgument(QStringLiteral("команда"),
                                  QStringLiteral("Команда: info, list, tree, dump, metadata, "
                                                 "modules, composition, view, form-model, mxl, "
@@ -79,6 +87,8 @@ int main(int argc, char **argv)
     options.items = parser.isSet(QStringLiteral("items"));
     options.nodes = parser.isSet(QStringLiteral("nodes"));
     options.module = parser.value(QStringLiteral("module"));
+    options.templateName = parser.value(QStringLiteral("template"));
+    options.htmlOutput = parser.value(QStringLiteral("html"));
     options.json = parser.isSet(QStringLiteral("json"));
 
     v8reader::CliApplication application;

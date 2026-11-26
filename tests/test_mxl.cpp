@@ -1,9 +1,13 @@
 #include "core/ConfigurationReader.h"
 #include "core/MxlDocument.h"
+#include "core/MxlHtmlExporter.h"
 #include "core/MxlReader.h"
 #include "core/V8Container.h"
+#include "SyntheticMxl.h"
 #include "TestPaths.h"
 
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QTest>
 
 #include <QCoreApplication>
@@ -11,78 +15,6 @@
 
 using namespace v8reader;
 using namespace v8reader::mxl;
-
-namespace {
-
-// Собирает минимальный корректный MXL8: заголовок + тело со строками,
-// форматами, шрифтами, цветами, линиями и объединениями.
-QByteArray makeSyntheticMxl()
-{
-    const QString body = QStringLiteral(
-        "{8,1,12,"
-        "{0},{0},{0},{0},{0},{0},{0},{0},{0},{0},{0},{0},"
-        // блок строк: 2 строки
-        "2,"
-        "0,0,2,"
-        "0,{2,1,{\"S\",\"Привет\"}},"
-        "1,{2,1,{\"S\",\"Мир\"}},"
-        "1,0,1,"
-        "0,{16,2,{1,1,{\"ru\",\"Итого\"}}},"
-        // группа колонок: 2 колонки, ширины через форматы 1 и 2
-        "{2,0,00000000-0000-0000-0000-000000000000,2,0,1,1,2},"
-        "2,"          // число строк (дубль)
-        "0,"          // доп. групп колонок
-        "0,"          // карта строка-группа
-        "0,0,"        // графические объекты: нет
-        "{1,{0,0,1,0,0}}," // объединение A1:B1
-        // именованные области: 2 области строк
-        "{2,"
-        "\"Шапка\",{\"1\",{\"1\",\"-1\",\"1\",\"-1\",\"5\","
-        "00000000-0000-0000-0000-000000000000},\"0\"},"
-        "\"Строка\",{\"1\",{\"1\",\"-1\",\"7\",\"-1\",\"7\","
-        "00000000-0000-0000-0000-000000000000},\"0\"}},"
-        // параметры печати: A4 альбомная, масштаб 80%, поля 10/12 мм
-        "{{\"0\",\"7\",\"0\",{\"S\",\"A4\"},"
-        "\"1\",{\"N\",\"2\"},"
-        "\"2\",{\"N\",\"80\"},"
-        "\"6\",{\"N\",\"1000\"},"
-        "\"7\",{\"N\",\"1200\"},"
-        "\"8\",{\"N\",\"1000\"},"
-        "\"9\",{\"N\",\"1200\"}}},"
-        // таблица форматов: 2 записи
-        "2,"
-        "{65,0,120}," // шрифт 0, высота 120 (1/288")
-        "{65,1,0},"
-        // таблица шрифтов: 2 записи
-        "2,"
-        "{7,0,575,80,0,0,0,400,0,0,0,204,0,0,0,34,\"Arial\",0,100},"
-        "{7,0,575,140,0,0,0,700,0,0,0,204,0,0,0,34,\"Arial\",0,100},"
-        // таблица цветов
-        "2,"
-        "{3,0,{16711680}},"
-        "{3,3,{-3}},"
-        // таблица линий: 2 записи
-        "{2,(1,{4,0,{0},1,1,0,00000000-0000-0000-0000-000000000000,0},0),"
-        "(1,{4,0,{0},2,1,0,00000000-0000-0000-0000-000000000000,0},0)}"
-        "}");
-
-    QByteArray data;
-    data.append("MOXCEL", 6);
-    data.append('\0');
-    data.append('\x08');
-    data.append('\0');
-    data.append('\x01');
-    data.append('\0');
-    data.append('\x0C');
-    data.append('\0');
-    data.append('\xEF');
-    data.append('\xBB');
-    data.append('\xBF');
-    data.append(body.toUtf8());
-    return data;
-}
-
-} // namespace
 
 class TestMxl : public QObject
 {
@@ -95,11 +27,16 @@ private slots:
     void parsesBodyWithoutHeader();
     void lookupHelpers();
     void realBpTemplate();
+    void exporterHtml();
+    void exporterEscaping();
+    void exporterWithoutFormats();
+    void exporterEmpty();
+    void exporterSummary();
 };
 
 void TestMxl::parseSynthetic()
 {
-    const QByteArray data = makeSyntheticMxl();
+    const QByteArray data = test::syntheticMxl();
     QVERIFY(MxlReader::looksLikeMxl(data));
 
     Document document;
@@ -206,7 +143,7 @@ void TestMxl::rejectsNonMxl()
 void TestMxl::parsesBodyWithoutHeader()
 {
     // Тело без заголовка допускается (полезно для тестов и внешних вызовов).
-    const QByteArray full = makeSyntheticMxl();
+    const QByteArray full = test::syntheticMxl();
     Document document;
     QString error;
     QVERIFY2(MxlReader::parseBytes(full.mid(16), &document, &error), qPrintable(error));
@@ -216,7 +153,7 @@ void TestMxl::parsesBodyWithoutHeader()
 
 void TestMxl::lookupHelpers()
 {
-    const QByteArray data = makeSyntheticMxl();
+    const QByteArray data = test::syntheticMxl();
     Document document;
     QVERIFY(MxlReader::parseBytes(data, &document, nullptr));
 
@@ -281,6 +218,184 @@ void TestMxl::realBpTemplate()
     QCOMPARE(document.printSettings.topMarginMm, 10.0);
     QCOMPARE(document.printSettings.bottomMarginMm, 10.0);
 }
+
+// HTML-экспорт синтетического макета: объединение, параметры печати,
+// именованные области и масштаб страницы.
+void TestMxl::exporterHtml()
+{
+    Document document;
+    QString error;
+    QVERIFY2(MxlReader::parseBytes(test::syntheticMxl(), &document, &error),
+             qPrintable(error));
+
+    const QString html = MxlHtmlExporter::toHtml(document);
+    QVERIFY(html.startsWith(QStringLiteral("<!DOCTYPE html>")));
+    QVERIFY(html.contains(QStringLiteral("<table class=\"mxl\"")));
+    QVERIFY(html.contains(QStringLiteral("colspan=\"2\""))); // A1:B1
+    QVERIFY(!html.contains(QStringLiteral("rowspan=\"2\"")));
+    QVERIFY(html.contains(QStringLiteral("Привет")));
+    QVERIFY(html.contains(QStringLiteral("Итого")));
+    QVERIFY(html.contains(QStringLiteral(
+        "@page{size:A4 landscape;margin:10mm 12mm 12mm 10mm}")));
+    QVERIFY(html.contains(QStringLiteral("zoom:80%"))); // масштаб печати
+    QVERIFY(html.contains(QStringLiteral("@media print")));
+    QVERIFY(html.contains(QStringLiteral("class=\"area\"")));
+    QVERIFY(html.contains(QStringLiteral("Шапка")));
+    // Область строк 7..7 за пределами двух строк не рисуется.
+    QVERIFY(!html.contains(QStringLiteral("Строка")));
+    QVERIFY(!html.contains(QStringLiteral(".sheet{zoom:")));
+
+    HtmlExportOptions options;
+    options.title = QStringLiteral("Макет1");
+    options.zoomPercent = 150;
+    const QString zoomed = MxlHtmlExporter::toHtml(document, options);
+    QVERIFY(zoomed.contains(QStringLiteral("<title>Макет1</title>")));
+    QVERIFY(zoomed.contains(QStringLiteral(".sheet{zoom:150%}")));
+
+    HtmlExportOptions noAreas;
+    noAreas.namedAreas = false;
+    QVERIFY(!MxlHtmlExporter::toHtml(document, noAreas)
+                 .contains(QStringLiteral("class=\"area\"")));
+}
+
+// Экранирование текста, шрифты, цвета, рамки и выравнивание ячейки.
+void TestMxl::exporterEscaping()
+{
+    Document document;
+    document.valid = true;
+
+    Row row;
+    row.index = 0;
+    Cell cell;
+    cell.format = 1;
+    cell.text = QStringLiteral("<a&\"b'>\nстрока");
+    row.cells.append({0, cell});
+    document.rows.append(row);
+
+    CellFormat format;
+    format.font = 0;
+    format.textColor = 0;
+    format.bgColor = 1;
+    format.pattern = 0;
+    format.patternColor = 1;
+    format.borderLeft = 0; // 0-базный индекс в таблице линий
+    format.bordersColor = 0;
+    format.hAlign = 6;
+    format.vAlign = 24;
+    format.textControl = 3;
+    document.formats.append(format);
+
+    FontSpec font;
+    font.family = QStringLiteral("Arial");
+    font.sizeTenthPt = 140;
+    font.bold = true;
+    font.italic = true;
+    font.underline = true;
+    document.fonts.append(font);
+
+    Color red;
+    red.kind = Color::Kind::Rgb;
+    red.rgb = 0x0000FF; // COLORREF: R в младшем байте
+    Color green;
+    green.kind = Color::Kind::Rgb;
+    green.rgb = 0x00FF00;
+    document.colors.append(red);
+    document.colors.append(green);
+
+    LineStyle line;
+    line.kind = 1;
+    line.thickness = 2;
+    document.lines.append(line);
+
+    const QString html = MxlHtmlExporter::toHtml(document, HtmlExportOptions{});
+    QVERIFY(html.contains(QStringLiteral("&lt;a&amp;&quot;b&#39;&gt;<br>строка")));
+    QVERIFY(html.contains(QStringLiteral("font-family:'Arial'")));
+    QVERIFY(html.contains(QStringLiteral("font-size:19px")));
+    QVERIFY(html.contains(QStringLiteral("font-weight:bold")));
+    QVERIFY(html.contains(QStringLiteral("font-style:italic")));
+    QVERIFY(html.contains(QStringLiteral("text-decoration:underline")));
+    QVERIFY(html.contains(QStringLiteral("color:#ff0000")));
+    QVERIFY(html.contains(QStringLiteral("background:#00ff00")));
+    QVERIFY(html.contains(QStringLiteral("border-left:2px solid #ff0000")));
+    QVERIFY(html.contains(QStringLiteral("text-align:center")));
+    QVERIFY(html.contains(QStringLiteral("vertical-align:middle")));
+    QVERIFY(html.contains(QStringLiteral("white-space:pre-wrap")));
+}
+
+// Ячейка с format=0 и пустые таблицы форматов не должны ронять экспорт.
+void TestMxl::exporterWithoutFormats()
+{
+    Document document;
+    document.valid = true;
+
+    Row row;
+    row.index = 0;
+    Cell cell;
+    cell.format = 0;
+    cell.text = QStringLiteral("Без формата");
+    row.cells.append({0, cell});
+    document.rows.append(row);
+
+    const QString html = MxlHtmlExporter::toHtml(document);
+    QVERIFY(html.contains(QStringLiteral("Без формата")));
+    QVERIFY(html.contains(QStringLiteral("font-family:Arial, Helvetica, sans-serif")));
+    QVERIFY(html.contains(QStringLiteral("font-size:13px")));
+    QVERIFY(!html.contains(QStringLiteral("@page")));
+}
+
+void TestMxl::exporterEmpty()
+{
+    Document document;
+    const QString html = MxlHtmlExporter::toHtml(document);
+    QVERIFY(html.startsWith(QStringLiteral("<!DOCTYPE html>")));
+    QVERIFY(html.contains(QStringLiteral("Макет не содержит данных")));
+    QVERIFY(!html.contains(QStringLiteral("<table")));
+    QVERIFY(html.endsWith(QStringLiteral("</html>\n")));
+}
+
+// Сводка для mxl --json: числа, области и параметры печати.
+void TestMxl::exporterSummary()
+{
+    Document document;
+    QString error;
+    QVERIFY2(MxlReader::parseBytes(test::syntheticMxl(), &document, &error),
+             qPrintable(error));
+
+    const QJsonObject summary = MxlHtmlExporter::summarize(document);
+    QCOMPARE(summary.value(QStringLiteral("schema")).toInt(), 1);
+    QCOMPARE(summary.value(QStringLiteral("rows")).toInt(), 2);
+    QCOMPARE(summary.value(QStringLiteral("columns")).toInt(), 2);
+    QCOMPARE(summary.value(QStringLiteral("formats")).toInt(), 2);
+    QCOMPARE(summary.value(QStringLiteral("fonts")).toInt(), 2);
+    QCOMPARE(summary.value(QStringLiteral("merges")).toInt(), 1);
+    QCOMPARE(summary.value(QStringLiteral("namedAreas")).toArray().size(), 2);
+
+    const QJsonObject area =
+        summary.value(QStringLiteral("namedAreas")).toArray().at(0).toObject();
+    QCOMPARE(area.value(QStringLiteral("name")).toString(), QStringLiteral("Шапка"));
+    QCOMPARE(area.value(QStringLiteral("type")).toString(), QStringLiteral("rows"));
+    QCOMPARE(area.value(QStringLiteral("top")).toInt(), 1);
+    QCOMPARE(area.value(QStringLiteral("bottom")).toInt(), 5);
+    QVERIFY(!area.contains(QStringLiteral("left")));
+
+    const QJsonObject print = summary.value(QStringLiteral("print")).toObject();
+    QVERIFY(print.value(QStringLiteral("valid")).toBool());
+    QCOMPARE(print.value(QStringLiteral("pageSize")).toString(), QStringLiteral("A4"));
+    QCOMPARE(print.value(QStringLiteral("orientation")).toString(),
+             QStringLiteral("landscape"));
+    QCOMPARE(print.value(QStringLiteral("scale")).toInt(), 80);
+    const QJsonObject margins = print.value(QStringLiteral("marginsMm")).toObject();
+    QCOMPARE(margins.value(QStringLiteral("top")).toDouble(), 10.0);
+    QCOMPARE(margins.value(QStringLiteral("right")).toDouble(), 12.0);
+    QCOMPARE(margins.value(QStringLiteral("bottom")).toDouble(), 12.0);
+    QCOMPARE(margins.value(QStringLiteral("left")).toDouble(), 10.0);
+
+    const QJsonObject empty = MxlHtmlExporter::summarize(Document{});
+    QCOMPARE(empty.value(QStringLiteral("rows")).toInt(), 0);
+    QVERIFY(!empty.value(QStringLiteral("print")).toObject()
+                 .value(QStringLiteral("valid")).toBool());
+}
+
 int runMxlTests(int argc, char **argv)
 {
     TestMxl test;

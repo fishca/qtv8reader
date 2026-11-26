@@ -21,8 +21,16 @@ int commandView(const QString &path, const QString &objectQuery,
 int commandFormModel(const QString &path, const QString &objectQuery,
                      const QString &formQuery, const QString &output, bool itemsOnly,
                      bool nodes = false);
+// Параметры команды mxl: выбор макета и экспорт в HTML.
+struct MxlCommandOptions
+{
+    QString templateName; // --template: имя макета
+    QString htmlOutput;   // --html: файл или «-» (в stdout)
+    bool json = false;    // --json: сводка в JSON (схема 1)
+};
+
 int commandMxl(const QString &path, const QString &objectQuery,
-               const QString &output);
+               const QString &output, const MxlCommandOptions &options);
 int commandExtract(const QString &path, const QString &objectQuery,
                    const QString &output);
 int commandExtractAll(const QString &path, const QString &output);

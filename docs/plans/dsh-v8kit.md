@@ -257,8 +257,12 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 
 ## 12. Этапы
 
-- [ ] **M1** CLI 0.14.0: `view --json`, `mxl --template/--json/--html`,
+- [x] **M1** CLI 0.14.0: `view --json`, `mxl --template/--json/--html`,
       `MxlHtmlExporter`, тесты, справка, CHANGELOG.
+      Готово: 6/6 `ctest`, `test_mxl` — 13 кейсов, `test_cli` — 21 кейс;
+      на БП `mxl --json` — 2 макета за 1,2 с, HTML первого — 129 КБ,
+      страница снята headless Chrome и сверена глазами (таблица, объединения,
+      контур областей).
 - [ ] **M2** Каркас плагина: пакет, patch, локаль/иконка/DETAIL; Host: маршрут
       `state`, spawn, кэш, ошибки; Client: тип вкладки-страницы + `PanelView`
       (путь, дерево, разделы, реквизиты); локальная установка.
