@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.13.2
+    VERSION 0.13.3
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
