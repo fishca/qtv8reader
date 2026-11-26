@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.13.1
+    VERSION 0.13.2
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -248,6 +248,14 @@ if (Python3_Interpreter_FOUND)
         COMMAND ${CMAKE_COMMAND} -E env PYTHONIOENCODING=cp1252
             ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/control_fixture_check.py --help)
+
+    # Пустой кадр Chrome — не расхождение с эталоном, а несостоявшийся замер:
+    # в 0.13.1 белое полотно «ПоляВвода» дало 8710 px структуры вместо 15.
+    # Сторож проверяет распознавание на кадрах, нарисованных PIL; Chrome не
+    # нужен, а без Pillow проверка сама пропускается.
+    add_test(NAME blank_shot
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/blank_shot_check.py)
 endif ()
 
 if (MSVC)

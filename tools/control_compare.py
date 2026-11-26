@@ -14,6 +14,10 @@
    ``split.png`` (синее — текст, красное — структура), пишется
    ``result.json``, общий отчёт — ``out/control-report.md``.
 
+5. пустой кадр (страница не нарисовала форму) не считается расхождением:
+   ``form_view_measure.shoot`` переснимает его один раз, а если пустота
+   осталась, форма попадает в отчёт как не снятая, и ``--check`` падает.
+
 Запуск::
 
     python tools/form_view_measure.py serve --root out/preview --port 8765  # один раз
@@ -114,7 +118,15 @@ def render_form(form: str, width: int, height: int, url: str) -> tuple:
     if result.returncode != 0:
         raise SystemExit("form-model: " + (result.stdout + result.stderr).strip())
     ours = os.path.join(out_dir, "ours.png")
-    measure.shoot(args, ours)
+    try:
+        # Пустой кадр (страница не нарисовала форму) — ошибка замера, а не
+        # результат: shoot переснимает его один раз, а если пустота осталась,
+        # поднимает EmptyShotError. Модель тогда уже не нужна — убираем.
+        measure.shoot(args, ours)
+    except Exception:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+        raise
     return ours, model_path
 
 
@@ -244,7 +256,14 @@ def process(form: str, url: str) -> dict:
     ref_path = os.path.join(REFS, form + ".png")
     if not entry or not os.path.isfile(ref_path):
         return {"form": form, "error": "нет эталона"}
-    result, model_path = render_form(form, entry["width"], entry["height"], url)
+    try:
+        result, model_path = render_form(form, entry["width"], entry["height"], url)
+    except measure.EmptyShotError:
+        # Снимок не получился после повтора: сравнивать нечего, и выдавать это
+        # за расхождение пикселей нельзя — в 0.13.1 такой кадр дал 8710 px
+        # структуры вместо 15. Форма идёт в отчёт как не снятая, прогон
+        # продолжается, --check при этом падает.
+        return {"form": form, "error": "пустой снимок"}
     try:
         rects = collect_text_rects(model_path, entry["width"], entry["height"], url)
     finally:
@@ -338,9 +357,13 @@ def write_report(results: list, baseline: dict, update: bool) -> list:
                      % (form, result["width"], result["height"], result["total"],
                         result["percent"], result["structure"], result["text"],
                         format_baseline(entry), status))
+    failed = [result["form"] for result in results if "error" in result]
     lines += ["", "Структурных расхождений: %d. Эталоны — "
                   "`tests/fixtures/controlbase/refs`, снимки — `out/control`."
-                  % total_structure, ""]
+                  % total_structure]
+    if failed:
+        lines[-1] += " Не снято форм: %d — %s." % (len(failed), ", ".join(failed))
+    lines.append("")
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, "control-report.md"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines))
@@ -391,10 +414,14 @@ def main() -> int:
             print("  %-24s %d px (%.2f%%): структура %d, текст %d"
                   % (result["form"], result["total"], result["percent"],
                      result["structure"], result["text"]))
-    if args.check and over_budget:
+    failed = [result["form"] for result in results if "error" in result]
+    if args.check and (over_budget or failed):
         print("")
         for form, problems in over_budget:
             print("  ЗА БЮДЖЕТОМ %-20s %s" % (form, ", ".join(problems)))
+        for result in results:
+            if "error" in result:
+                print("  НЕ СНЯТО     %-20s %s" % (result["form"], result["error"]))
         print("бюджет: tests/fixtures/controlbase/baseline.json"
               " (--update-baseline — принять новый уровень)")
         return 1

@@ -148,8 +148,71 @@ def sync_resources(root: str) -> tuple:
     return (copied, unchanged)
 
 
-def shoot(args, out_path: str) -> None:
+class EmptyShotError(RuntimeError):
+    """Кадр снялся пустым: страница не нарисовала форму.
+
+    Chrome иногда отдаёт одноцветное полотно — запрос к ``model.html`` или
+    к ресурсу рендерера срывается, и страница остаётся белой. Сравнивать
+    такой кадр с эталоном нельзя: расхождение получается по всему полотну
+    (в прогоне 0.13.1 форма «ПоляВвода» дала 8710 px структуры вместо 15,
+    и замер объявлял регрессию на ровном месте). Поэтому пустота — это
+    ошибка замера, а не «форма стала хуже».
+    """
+
+
+BLANK_SHARE = 0.995
+"""Доля пикселей одного цвета, при которой кадр считается пустым.
+
+0.995 полотна 342x189 (64 638 px) — это 323 px «чужого» цвета. Пустое
+полотно даёт ноль, нарисованная форма — тысячи (рамки, подписи, полосы
+прокрутки), так что порог стоит с большим запасом посередине.
+"""
+
+
+def frame_is_blank(path: str, share: float = BLANK_SHARE) -> bool:
+    """Пустой кадр — почти всё полотно одного цвета (обычно белого).
+
+    Считать по числу цветов нельзя: на реальной форме их много от
+    антиалиасинга и ClearType, а на пустом полотне ровно один. Поэтому
+    смотрим на долю самого частого цвета.
+
+    Ловится полный провал отрисовки; частичный (нарисовалось всё, кроме
+    одной картинки) этим признаком не виден — его показывает только
+    расхождение с эталоном.
+    """
+    import numpy as np
+    from PIL import Image
+
+    image = np.asarray(Image.open(path).convert("RGB"), dtype=np.uint8)
+    flat = image.reshape(-1, 3)
+    if flat.size == 0:
+        return True
+    _, counts = np.unique(flat, axis=0, return_counts=True)
+    return int(counts.max()) >= share * flat.shape[0]
+
+
+def shoot(args, out_path: str, attempts: int = 2) -> None:
     """Снимает форму в окне ровно ``args.width``x``args.height``.
+
+    Пустой кадр переснимается. Причина — одиночный сбойный запрос к раздаче
+    (он же давал подставной значок вместо платформенной картинки): страница
+    остаётся белой, и без повтора замер выдаёт пустое полотно за результат.
+    ``attempts`` — сколько всего попыток; если пустота повторилась,
+    поднимается ``EmptyShotError``, то есть замер не состоялся.
+    """
+    attempts = max(1, int(attempts))
+    for attempt in range(1, attempts + 1):
+        _capture_once(args, out_path)
+        if not frame_is_blank(out_path):
+            return
+        print("снимок пуст (попытка %d из %d): %s"
+              % (attempt, attempts, os.path.basename(out_path)), file=sys.stderr)
+    raise EmptyShotError("форма не отрисовалась за %d попытки: %s"
+                         % (attempts, out_path))
+
+
+def _capture_once(args, out_path: str) -> None:
+    """Один запуск Chrome: снимает страницу рамки и обрезает до полотна.
 
     Страница рендерера снимается внутри рамки фиксированного размера, а не
     напрямую: флаг ``--window-size`` задаёт размер *окна*, и Chrome на Windows
@@ -393,7 +456,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     use_utf8_stdio()
     args = build_parser().parse_args()
-    args.handler(args)
+    try:
+        args.handler(args)
+    except EmptyShotError as error:
+        print("ошибка замера: %s" % error, file=sys.stderr)
+        return 1
     return 0
 
 
