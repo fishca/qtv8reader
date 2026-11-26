@@ -33,6 +33,8 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
+from console_utf8 import use_utf8_stdio
+
 # Теги элементов формы, которые в Form.xml являются элементами дерева.
 ITEM_TAGS = {
     'UsualGroup', 'ButtonGroup', 'ColumnGroup', 'Pages', 'Page', 'Popup',
@@ -359,6 +361,7 @@ def iter_dump_forms(dump: str, objects: set[str] | None):
 
 
 def main() -> int:
+    use_utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--cli', required=True, help='путь к v8reader_cli')

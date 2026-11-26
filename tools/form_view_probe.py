@@ -33,6 +33,7 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 import form_view_measure as measure  # noqa: E402
+from console_utf8 import use_utf8_stdio  # noqa: E402
 
 PAGE_ROOT = os.path.join(REPO, "out", "preview")
 PROBE_DIR = os.path.join(PAGE_ROOT, "probe")
@@ -169,6 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    use_utf8_stdio()
     args = build_parser().parse_args()
     snippet = DEFAULT_SNIPPET
     if args.script:

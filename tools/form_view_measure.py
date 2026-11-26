@@ -41,6 +41,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from console_utf8 import use_utf8_stdio
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = os.path.join(REPO, "out", "mingw", "v8reader_cli.exe")
 FORM_RESOURCES = os.path.join(REPO, "resources", "formpreview")
@@ -389,6 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    use_utf8_stdio()
     args = build_parser().parse_args()
     args.handler(args)
     return 0

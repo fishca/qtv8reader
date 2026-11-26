@@ -43,6 +43,8 @@ import uuid
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape, quoteattr
 
+from console_utf8 import use_utf8_stdio
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE = os.path.join(REPO, "tests", "fixtures", "controlbase")
 SKELETON = os.path.join(FIXTURE, "skeleton")
@@ -745,6 +747,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    use_utf8_stdio()
     args = build_parser().parse_args()
     args.handler(args)
     return 0

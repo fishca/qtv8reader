@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import argparse
 import glob
-import io
 import json
 import os
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+
+from console_utf8 import use_utf8_stdio
 
 SKIP_TAGS = {"ContextMenu", "ExtendedTooltip", "Events"}
 
@@ -129,33 +130,6 @@ def cli_env() -> dict:
     import form_view_measure  # noqa: PLC0415
 
     return form_view_measure.qt_env()
-
-
-def use_utf8_stdio() -> None:
-    """Вывод в UTF-8, когда это не консоль.
-
-    На англоязычном Windows (cp1252) печать кириллицы в трубу падала
-    с ``UnicodeEncodeError``: сам гейт проходил, а тест кончался ненулевым
-    кодом. Консоль не трогаем — там Python пишет через консольный API
-    и кодировка потока не участвует.
-    """
-    for name in ("stdout", "stderr"):
-        stream = getattr(sys, name, None)
-        if stream is None:
-            continue
-        try:
-            if stream.isatty():
-                continue
-        except (AttributeError, ValueError):
-            pass
-        try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except AttributeError:
-            buffer = getattr(stream, "buffer", None)
-            if buffer is not None:
-                setattr(sys, name, io.TextIOWrapper(
-                    buffer, encoding="utf-8", errors="replace",
-                    line_buffering=True))
 
 
 def main() -> int:

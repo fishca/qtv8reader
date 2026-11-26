@@ -24,6 +24,8 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
+from console_utf8 import use_utf8_stdio
+
 LOG_FORM = "http://v8.1c.ru/8.3/xcf/logform"
 NAMESPACES = {"lf": LOG_FORM, "v8": "http://v8.1c.ru/8.1/data/core"}
 
@@ -140,6 +142,7 @@ def _toposort(nodes: set, edges: dict[str, set]) -> list:
 
 
 def main() -> int:
+    use_utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dump", default=r"E:\work\dt_cf\bp\ConfigFiles",
                         help="каталог выгрузки конфигурации в файлы")

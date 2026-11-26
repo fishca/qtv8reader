@@ -31,6 +31,8 @@ import http.server
 import os
 import sys
 
+from console_utf8 import use_utf8_stdio
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -48,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    use_utf8_stdio()
     args = build_parser().parse_args()
     root = os.path.abspath(args.root)
     state = {"failed": 0}

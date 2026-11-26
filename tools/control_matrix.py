@@ -35,6 +35,8 @@ import re
 import subprocess
 import sys
 
+from console_utf8 import use_utf8_stdio
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE = os.path.join(REPO, "tests", "fixtures", "controlbase")
 SPEC = os.path.join(FIXTURE, "spec", "controls.json")
@@ -320,6 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    use_utf8_stdio()
     args = build_parser().parse_args()
     if args.refresh and os.path.isdir(MODELS):
         for path in glob.glob(os.path.join(MODELS, "*.json")):
