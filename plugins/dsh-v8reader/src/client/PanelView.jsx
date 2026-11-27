@@ -2,17 +2,30 @@
  * The right-Sidebar page that reads one 1C:Enterprise container.
  *
  * The panel owns no data of its own: every object screen is one `state` request
- * the Host serves from its cache, modules are code with BSL highlighting, and a
+ * the Host serves from its cache, modules are code with BSL highlighting, a
  * form is the application's own exact-view renderer served as a page and shown
- * in an iframe. The metadata tree is hierarchical: configuration → category →
- * object → section → entry, filled from the same documents.
+ * in an iframe, and a template is the exported table document (MXL) page. The
+ * metadata tree is hierarchical: configuration → category → object → section →
+ * entry, filled from the same documents.
+ *
+ * The same panel serves the Sidebar's document preview: there the file path
+ * comes from the tab's resource instead of the path field, and the preview
+ * owner's renderer contract (`content`) reports loading and reloads through
+ * one revision counter.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { StateError, buildFormUrl, fetchState } from './api.js'
+import { StateError, buildFormUrl, buildTemplateUrl, fetchState } from './api.js'
 import { CodeView } from './CodeView.jsx'
 import { FilePicker } from './FilePicker.jsx'
 import { FormPreview } from './FormPreview.jsx'
+import { MxlPreview } from './MxlPreview.jsx'
 import { fileKindLabel, flattenEntries, formatBytes, sectionLabel } from './labels.js'
+import {
+  MXL_ZOOM_STEPS,
+  clampMxlZoom,
+  readMxlSettings,
+  writeMxlSettings
+} from './mxl.js'
 import { dirOf } from './paths.js'
 import { PANEL_CSS } from './styles.js'
 import { MODULES_GROUP, sameObject } from './tree.js'
@@ -218,22 +231,96 @@ function FormView({
 }
 
 /**
+ * The table-document screen: header with zoom and fit width, then the exported
+ * page. The page itself carries no controls, so every control lives here and
+ * only rewrites the scale of the already loaded document.
+ * @param {{
+ *   object: object,
+ *   templateName: string,
+ *   src: string,
+ *   zoom: number,
+ *   fit: boolean,
+ *   nonce: number,
+ *   translate: (key: string, params?: object) => string,
+ *   onBack: () => void,
+ *   onSelect: (value: string) => void,
+ *   onReload: () => void
+ * }} props - the exported page and its controls.
+ * @returns {React.ReactNode} the table-document screen.
+ */
+function TemplateView({
+  object,
+  templateName,
+  src,
+  zoom,
+  fit,
+  nonce,
+  translate: t,
+  onBack,
+  onSelect,
+  onReload
+}) {
+  return (
+    <>
+      <div className="v8r-viewhead">
+        <button type="button" className="v8r-button" onClick={onBack}>{`← ${t('panel.back')}`}</button>
+        <div className="v8r-viewhead-text">
+          <h3 className="v8r-viewhead-title">{templateName}</h3>
+          <div className="v8r-viewhead-sub">{object.name}</div>
+        </div>
+        <span className="v8r-zoom">
+          <span>{t('template.zoom')}</span>
+          <select
+            className="v8r-select"
+            aria-label={t('template.zoom')}
+            value={fit ? 'fit' : String(zoom)}
+            onChange={(event) => { onSelect(event.target.value) }}
+          >
+            <option value="fit">{t('template.fit')}</option>
+            {MXL_ZOOM_STEPS.map((step) => (
+              <option key={step} value={String(step)}>{`${step}%`}</option>
+            ))}
+          </select>
+          <button type="button" className="v8r-button" onClick={onReload}>{t('panel.reload')}</button>
+        </span>
+      </div>
+
+      <MxlPreview
+        key={`${src}#${nonce}`}
+        src={src}
+        title={templateName}
+        zoom={zoom}
+        fit={fit}
+        nonce={nonce}
+        translate={t}
+        onRetry={onReload}
+      />
+    </>
+  )
+}
+
+/**
  * One section as a table of name, synonym, and type.
  *
- * The Forms branch is the one place where a row is actionable: a form name
- * opens the exact-view screen, which is where the composition and the renderer
- * meet. Other rows stay read-only.
+ * The Forms and Templates branches are the places where a row is actionable:
+ * a form name opens the exact-view screen, a template name opens the exported
+ * table document. Other rows stay read-only.
  * @param {{
  *   section: object,
  *   translate: (key: string, params?: object) => string,
- *   onOpenForm?: (name: string) => void
+ *   onOpenForm?: (name: string) => void,
+ *   onOpenTemplate?: (name: string) => void
  * }} props - the section.
  * @returns {React.ReactNode} the table.
  */
-function SectionTable({ section, translate: t, onOpenForm }) {
+function SectionTable({ section, translate: t, onOpenForm, onOpenTemplate }) {
   const rows = flattenEntries(Array.isArray(section.entries) ? section.entries : [])
   if (rows.length === 0) return <p className="v8r-muted">{t('panel.sectionEmpty')}</p>
-  const forms = section.kind === 'forms' && typeof onOpenForm === 'function'
+  const action = section.kind === 'forms' && typeof onOpenForm === 'function'
+    ? { label: t('panel.openForm'), run: onOpenForm }
+    : section.kind === 'templates' && typeof onOpenTemplate === 'function'
+      ? { label: t('panel.openTemplate'), run: onOpenTemplate }
+      : null
 
   return (
     <table className="v8r-table">
@@ -242,7 +329,7 @@ function SectionTable({ section, translate: t, onOpenForm }) {
           <th>{t('panel.column.name')}</th>
           <th>{t('panel.column.synonym')}</th>
           <th>{t('panel.column.type')}</th>
-          {forms && <th>{t('panel.openForm')}</th>}
+          {action !== null && <th>{action.label}</th>}
         </tr>
       </thead>
       <tbody>
@@ -256,15 +343,15 @@ function SectionTable({ section, translate: t, onOpenForm }) {
             </td>
             <td>{entry.synonym}</td>
             <td className="v8r-muted">{entry.typeText}</td>
-            {forms && (
+            {action !== null && (
               <td>
                 <button
                   type="button"
                   className="v8r-button"
-                  title={t('panel.openForm')}
-                  onClick={() => { onOpenForm(entry.name) }}
+                  title={action.label}
+                  onClick={() => { action.run(entry.name) }}
                 >
-                  {t('panel.openForm')}
+                  {action.label}
                 </button>
               </td>
             )}
@@ -304,18 +391,38 @@ function ErrorBanner({ error, translate: t }) {
 
 /**
  * The panel page.
+ *
+ * In the `1С` tab the path comes from the toolbar or the file chooser and is
+ * remembered. In the Sidebar's document preview the same panel is mounted with
+ * `fixedPath` — the tab's own file — and the preview owner's `content`
+ * contract: a successful read reports the displayed version, a failed one ends
+ * the load, and a new `refreshToken` (the owner's reload) refetches the screen
+ * that is open.
  * @param {{
  *   useTabInfo?: () => { tab?: object },
  *   t?: (key: string, params?: object) => string,
- *   scheme?: 'light'|'dark'
- * }} props - slot props and the current theme scheme.
+ *   scheme?: 'light'|'dark',
+ *   fixedPath?: string,
+ *   documentVersion?: string,
+ *   documentContent?: object,
+ *   refreshToken?: number
+ * }} props - slot props, the current theme scheme, and the document-preview contract.
  * @returns {React.ReactNode} the page.
  */
-export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
+export function PanelView({
+  useTabInfo,
+  t: provided,
+  scheme = 'light',
+  fixedPath = '',
+  documentVersion = '',
+  documentContent,
+  refreshToken
+}) {
   const t = typeof provided === 'function' ? provided : (key) => key
   const tab = typeof useTabInfo === 'function' ? useTabInfo().tab : undefined
+  const documentMode = typeof fixedPath === 'string' && fixedPath !== ''
 
-  const [pathInput, setPathInput] = useState(readLastPath)
+  const [pathInput, setPathInput] = useState(documentMode ? fixedPath : readLastPath)
   const [lastDir, setLastDir] = useState(() => readStored(LAST_DIR_KEY))
   const [pickerOpen, setPickerOpen] = useState(false)
   const [document, setDocument] = useState(null)
@@ -326,12 +433,22 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
   const [loadedModule, setLoadedModule] = useState('')
   const [formName, setFormName] = useState('')
   const [formNonce, setFormNonce] = useState(0)
+  const [templateName, setTemplateName] = useState('')
+  const [templateNonce, setTemplateNonce] = useState(0)
+  const [mxl, setMxl] = useState(readMxlSettings)
   const [zoom, setZoom] = useState(readZoom)
   const [activeSection, setActiveSection] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const controller = useRef(null)
   const browseButton = useRef(null)
+
+  // The owner's contract and the file version it displays are read from refs:
+  // `run` is created once, while both change with every render.
+  const contentRef = useRef(documentContent)
+  contentRef.current = documentContent
+  const versionRef = useRef(documentVersion)
+  versionRef.current = documentVersion
 
   /**
    * Run one request and hand its document to the caller's setter.
@@ -349,8 +466,16 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
       const body = await fetchState({ ...params, signal: next.signal, noStore })
       if (next.signal.aborted) return
       onDone(body)
+      // The preview owner compares the recorded version with the live metadata
+      // one to decide whether the file changed. An empty version would look
+      // like a newer file than the one that is open and reload forever, so a
+      // read without a reported version ends the load without recording one.
+      const version = versionRef.current
+      if (typeof version === 'string' && version !== '') contentRef.current?.loaded?.(version)
+      else contentRef.current?.failed?.()
     } catch (failure) {
       if (next.signal.aborted || failure?.name === 'AbortError') return
+      contentRef.current?.failed?.()
       setError(failure instanceof StateError
         ? failure
         : new StateError('unknown', String(failure?.message ?? failure), 0))
@@ -359,9 +484,10 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
     }
   }, [])
 
-  const openPath = useCallback((raw) => {
+  const openPath = useCallback((raw, options = {}) => {
     const value = String(raw ?? '').trim()
     if (value === '') return
+    const remember = options.remember !== false
     // The field shows what was asked for even when the answer is an error, so
     // the user can fix the path instead of wondering which file was attempted.
     setPathInput(value)
@@ -372,8 +498,10 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
       setModuleName('')
       setLoadedModule('')
       setFormName('')
+      setTemplateName('')
       setViewMode('object')
       setActiveSection('')
+      if (!remember) return
       writeStored(LAST_PATH_KEY, value)
       const dir = dirOf(value)
       if (dir !== '') {
@@ -425,6 +553,7 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
     setModuleName('')
     setLoadedModule('')
     setFormName('')
+    setTemplateName('')
     setViewMode('object')
     run({ path: document.file.path, object: query }, (body) => {
       setDetail(body)
@@ -441,6 +570,7 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
     setModuleName(name)
     setLoadedModule('')
     setFormName('')
+    setTemplateName('')
     setViewMode('module')
     run({ path: document.file.path, object: query, module: name }, (body) => {
       setDetail(body)
@@ -455,7 +585,19 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
     setFormName(name)
     setModuleName('')
     setLoadedModule('')
+    setTemplateName('')
     setViewMode('form')
+  }, [document, detail, selected])
+
+  const openTemplate = useCallback((name) => {
+    if (document === null || detail === null || detail.object === null) return
+    if (!sameObject(detail.object, selected)) return
+    setError(null)
+    setTemplateName(name)
+    setModuleName('')
+    setLoadedModule('')
+    setFormName('')
+    setViewMode('template')
   }, [document, detail, selected])
 
   const showObject = useCallback((kind) => {
@@ -464,17 +606,22 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
     setModuleName('')
     setLoadedModule('')
     setFormName('')
+    setTemplateName('')
     setViewMode('object')
   }, [])
 
   const reload = useCallback(() => {
     if (document === null) {
       if (String(pathInput ?? '').trim() === '') return
-      openPath(pathInput)
+      openPath(pathInput, { remember: !documentMode })
       return
     }
     if (viewMode === 'form') {
       setFormNonce((current) => current + 1)
+      return
+    }
+    if (viewMode === 'template') {
+      setTemplateNonce((current) => current + 1)
       return
     }
     if (viewMode === 'module') {
@@ -482,23 +629,63 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
       return
     }
     if (selected === null) {
-      openPath(document.file.path)
+      openPath(document.file.path, { remember: !documentMode })
       return
     }
     openObject(selected)
-  }, [document, moduleName, openModule, openObject, openPath, pathInput, selected, viewMode])
+  }, [document, documentMode, moduleName, openModule, openObject, openPath, pathInput, selected, viewMode])
+
+  // In the document preview the file is the tab's own: the first render and a
+  // file replacement both arrive as `fixedPath`, and the path is never written
+  // to the last-opened preference of the page tab.
+  const fixedPathRef = useRef('')
+  useEffect(() => {
+    if (!documentMode || fixedPathRef.current === fixedPath) return
+    fixedPathRef.current = fixedPath
+    openPath(fixedPath, { remember: false })
+  }, [documentMode, fixedPath, openPath])
+
+  // The preview owner's reload starts a new revision; refetch whatever screen
+  // is open, without leaving it.
+  const reloadRef = useRef(reload)
+  reloadRef.current = reload
+  const tokenRef = useRef(refreshToken)
+  useEffect(() => {
+    if (refreshToken === undefined) return
+    if (tokenRef.current === refreshToken) return
+    tokenRef.current = refreshToken
+    reloadRef.current()
+  }, [refreshToken])
 
   useEffect(() => {
+    // The page tab's own refresh shortcut. The document preview binds the same
+    // shortcut itself for its whole body, so binding it here as well would
+    // steal the owner's reload and skip its revision bookkeeping.
+    if (documentMode) return undefined
     const actions = tab?.actions
     if (actions === undefined || typeof actions.bindCommands !== 'function') return undefined
     return actions.bindCommands({ refresh: reload })
-  }, [tab, reload])
+  }, [documentMode, tab, reload])
 
   useEffect(() => () => { controller.current?.abort() }, [])
 
   const onZoom = useCallback((value) => {
     setZoom(value)
     writeZoom(value)
+  }, [])
+
+  const onMxlSelect = useCallback((value) => {
+    if (value === 'fit') {
+      setMxl((current) => {
+        const next = { zoom: current.zoom, fit: true }
+        writeMxlSettings(next)
+        return next
+      })
+      return
+    }
+    const next = { zoom: clampMxlZoom(value), fit: false }
+    setMxl(next)
+    writeMxlSettings(next)
   }, [])
 
   const object = detail?.object ?? null
@@ -519,51 +706,53 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
   const modulesTab = activeSection === MODULES_GROUP && modules.length > 0
 
   return (
-    <div className="v8r" data-scheme={scheme}>
+    <div className={documentMode ? 'v8r v8r--document' : 'v8r'} data-scheme={scheme}>
       <style>{PANEL_CSS}</style>
 
-      <div className="v8r-toolbar">
-        <input
-          className="v8r-input"
-          type="text"
-          value={pathInput}
-          spellCheck={false}
-          placeholder={t('panel.path.placeholder')}
-          aria-label={t('panel.path.placeholder')}
-          onChange={(event) => { setPathInput(event.target.value) }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') openFromToolbar()
-          }}
-        />
-        <button
-          type="button"
-          className={hasPath ? 'v8r-button v8r-button--primary' : 'v8r-button'}
-          disabled={busy}
-          title={t('panel.open.title')}
-          onClick={openFromToolbar}
-        >
-          {t('panel.open')}
-        </button>
-        <button
-          type="button"
-          className={hasPath ? 'v8r-button' : 'v8r-button v8r-button--primary'}
-          title={t('panel.browse.title')}
-          ref={browseButton}
-          onClick={openChooser}
-        >
-          {t('panel.browse')}
-        </button>
-        {document !== null && (
+      {!documentMode && (
+        <div className="v8r-toolbar">
+          <input
+            className="v8r-input"
+            type="text"
+            value={pathInput}
+            spellCheck={false}
+            placeholder={t('panel.path.placeholder')}
+            aria-label={t('panel.path.placeholder')}
+            onChange={(event) => { setPathInput(event.target.value) }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') openFromToolbar()
+            }}
+          />
           <button
             type="button"
-            className="v8r-button"
+            className={hasPath ? 'v8r-button v8r-button--primary' : 'v8r-button'}
             disabled={busy}
-            onClick={reload}
+            title={t('panel.open.title')}
+            onClick={openFromToolbar}
           >
-            {t('panel.reload')}
+            {t('panel.open')}
           </button>
-        )}
-      </div>
+          <button
+            type="button"
+            className={hasPath ? 'v8r-button' : 'v8r-button v8r-button--primary'}
+            title={t('panel.browse.title')}
+            ref={browseButton}
+            onClick={openChooser}
+          >
+            {t('panel.browse')}
+          </button>
+          {document !== null && (
+            <button
+              type="button"
+              className="v8r-button"
+              disabled={busy}
+              onClick={reload}
+            >
+              {t('panel.reload')}
+            </button>
+          )}
+        </div>
+      )}
 
       {busy && (
         <div className="v8r-loading" role="status">
@@ -572,7 +761,7 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
       )}
       {error !== null && <ErrorBanner error={error} translate={t} />}
 
-      {document === null && !busy && error === null && !pickerOpen && (
+      {!documentMode && document === null && !busy && error === null && !pickerOpen && (
         <div className="v8r-empty">
           <div className="v8r-empty-title">{t('panel.empty.title')}</div>
           <div>{t('panel.empty.hint')}</div>
@@ -598,10 +787,12 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
             activeSection={activeSection}
             moduleName={moduleName}
             formName={formName}
+            templateName={templateName}
             busy={busy}
             onSelect={openObject}
             onSection={showObject}
             onOpenForm={openForm}
+            onOpenTemplate={openTemplate}
             onOpenModule={openModule}
             translate={t}
           />
@@ -686,6 +877,7 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
                     section={active}
                     translate={t}
                     onOpenForm={openForm}
+                    onOpenTemplate={openTemplate}
                   />
                 ) : null}
               </>
@@ -731,11 +923,32 @@ export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
                 {busy ? t('panel.loading.object') : t('panel.objectUnavailable')}
               </p>
             )}
+
+            {viewMode === 'template' && detailMatches && object !== null && (
+              <TemplateView
+                object={object}
+                templateName={templateName}
+                src={buildTemplateUrl(document.file.path, selectedQuery, templateName)}
+                zoom={mxl.zoom}
+                fit={mxl.fit}
+                nonce={templateNonce}
+                translate={t}
+                onBack={() => { showObject() }}
+                onSelect={onMxlSelect}
+                onReload={reload}
+              />
+            )}
+
+            {viewMode === 'template' && !detailMatches && (
+              <p className="v8r-muted">
+                {busy ? t('panel.loading.object') : t('panel.objectUnavailable')}
+              </p>
+            )}
           </div>
         </div>
       )}
 
-      {pickerOpen && (
+      {pickerOpen && !documentMode && (
         <FilePicker
           initialDir={lastDir}
           translate={t}

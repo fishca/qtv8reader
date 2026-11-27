@@ -18,6 +18,7 @@ import {
   buildBrowseUrl,
   buildFormUrl,
   buildStateUrl,
+  buildTemplateUrl,
   fetchBrowse,
   fetchState
 } from '../src/client/api.js'
@@ -28,10 +29,20 @@ import {
   readCodeSettings,
   writeCodeSettings
 } from '../src/client/code.js'
+import { DOCUMENT_EXTENSIONS, DOCUMENT_ID, documentPath, documentVersion } from '../src/client/document.js'
 import { browseErrorText } from '../src/client/errors.js'
 import { frameDocumentError, sameFrameUrl } from '../src/client/form.js'
 import { flattenEntries, formatBytes, sectionLabel } from '../src/client/labels.js'
 import { en, ru } from '../src/client/messages.js'
+import {
+  DEFAULT_MXL_ZOOM,
+  MXL_SETTINGS_KEY,
+  MXL_ZOOM_STEPS,
+  clampMxlZoom,
+  fitWidthZoom,
+  readMxlSettings,
+  writeMxlSettings
+} from '../src/client/mxl.js'
 import { dirOf, extensionOf } from '../src/client/paths.js'
 import { colorSchemeOf } from '../src/client/scheme.js'
 import {
@@ -78,6 +89,10 @@ test('bundle is a loader factory without ESM syntax', () => {
   assert.match(bundle, /__ModuleLoader__\.load/)
   assert.ok(!/^\s*import\s/m.test(bundle), 'bundle must not keep import statements')
   assert.ok(!/^\s*export\s/m.test(bundle), 'bundle must not keep export statements')
+  // The document renderer and the table-document view must be part of the
+  // artifact, not only of the sources.
+  assert.ok(bundle.includes('documentPreviews'))
+  assert.ok(bundle.includes('v8r-mxl'))
 
   const { entry, exports } = loadBundle()
   assert.equal(entry.id, '@fishca/dsh-v8reader')
@@ -89,7 +104,19 @@ test('bundle is a loader factory without ESM syntax', () => {
 
 test('apply registers the tab type, copy, and body through public seats', () => {
   const { exports } = loadBundle()
-  const calls = { locale: [], types: [], injected: [], registered: [], effects: [], events: [] }
+  const calls = {
+    locale: [], types: [], injected: [], services: [], registered: [], previews: [], effects: [], events: []
+  }
+  const slots = {
+    inject: (name, callback) => {
+      calls.injected.push(name)
+      return callback()
+    },
+    register: (options, component) => {
+      calls.registered.push({ options, component })
+      return () => {}
+    }
+  }
   const ctx = {
     locale: {
       bind: (namespace) => (key) => key,
@@ -104,16 +131,7 @@ test('apply registers the tab type, copy, and body through public seats', () => 
         return () => {}
       }
     },
-    slots: {
-      inject: (name, callback) => {
-        calls.injected.push(name)
-        return callback()
-      },
-      register: (options, component) => {
-        calls.registered.push({ options, component })
-        return () => {}
-      }
-    },
+    slots,
     theme: {
       getTheme: () => ({ active: { colorScheme: 'light' } })
     },
@@ -124,6 +142,19 @@ test('apply registers the tab type, copy, and body through public seats', () => 
     effect: (callback, label) => {
       calls.effects.push(label)
       return callback()
+    },
+    inject: (deps, callback) => {
+      calls.services.push(deps)
+      callback({
+        documentPreviews: {
+          register: (definition) => {
+            calls.previews.push(definition)
+            return () => {}
+          }
+        },
+        slots,
+        effect: ctx.effect
+      })
     }
   }
 
@@ -134,6 +165,7 @@ test('apply registers the tab type, copy, and body through public seats', () => 
   assert.equal(calls.locale[0].dicts.ru['type.title'], '1С: конфигурация')
   assert.equal(calls.locale[0].dicts.en['panel.open'], 'Open')
   for (const key of Object.keys(ru)) assert.ok(key in en, `dictionary misses ${key}`)
+  for (const key of Object.keys(en)) assert.ok(key in ru, `dictionary misses ${key}`)
 
   assert.equal(calls.types.length, 1)
   const definition = calls.types[0]
@@ -147,15 +179,34 @@ test('apply registers the tab type, copy, and body through public seats', () => 
   assert.equal(definition.guide[0].title(), 'guide.title')
   assert.equal(definition.guide[0].description(), 'guide.description')
 
-  assert.deepEqual(calls.injected, ['sidebar.right.pane.tab'])
-  assert.equal(calls.registered.length, 1)
+  // The page body and the document body share the slot registry but not a key.
+  assert.deepEqual(calls.injected, ['sidebar.right.pane.tab', 'sidebar.right.tab.document'])
+  assert.equal(calls.registered.length, 2)
   assert.equal(calls.registered[0].options.name, 'sidebar.right.pane.tab')
   assert.equal(calls.registered[0].options.key, exports.TYPE_ID)
   assert.equal(calls.registered[0].options.locale, 'v8reader')
   assert.equal(typeof calls.registered[0].component, 'function')
+  assert.equal(calls.registered[1].options.name, 'sidebar.right.tab.document')
+  assert.equal(calls.registered[1].options.key, DOCUMENT_ID)
+  assert.equal(calls.registered[1].options.locale, 'v8reader')
+  assert.equal(typeof calls.registered[1].component, 'function')
+
+  // The document renderer is optional and registers only once its service exists.
+  assert.deepEqual(calls.services.map((deps) => [...deps]), [['documentPreviews', 'slots']])
+  assert.equal(calls.previews.length, 1)
+  const preview = calls.previews[0]
+  assert.equal(preview.id, DOCUMENT_ID)
+  assert.deepEqual([...preview.extensions], [...DOCUMENT_EXTENSIONS])
+  assert.deepEqual([...preview.binaryExtensions], [...DOCUMENT_EXTENSIONS])
+  assert.equal(preview.priority, 'extension')
+  assert.equal(preview.loading, 'renderer')
+  assert.equal(preview.title(), 'document.title')
+
   assert.deepEqual(calls.events, ['theme/change'])
   assert.ok(calls.effects.includes('dsh-v8reader: tab type'))
   assert.ok(calls.effects.includes('dsh-v8reader: theme scheme'))
+  assert.ok(calls.effects.includes('dsh-v8reader: document preview'))
+  assert.ok(calls.effects.includes('dsh-v8reader: document body'))
 })
 
 test('state URL encodes Cyrillic, spaces, and plus signs once', () => {
@@ -342,6 +393,71 @@ test('form page URL encodes each value once', () => {
   assert.equal(parsed.searchParams.get('path'), 'C:\\work\\Контролы.cf')
   assert.equal(parsed.searchParams.get('object'), 'e3489bca-d691-53a8-8feb-890730540f20')
   assert.equal(parsed.searchParams.get('form'), 'Модуль формы «Кнопки»')
+})
+
+test('template page URL encodes each value once', () => {
+  const url = buildTemplateUrl('C:\\work\\Контролы.cf', 'Контролы', 'Макет отчёта «Итоги»')
+  assert.ok(url.startsWith('/v8reader/mxl?'))
+  assert.ok(!url.includes(' '))
+  const parsed = new URL(url, 'http://127.0.0.1:1')
+  assert.equal(parsed.pathname, '/v8reader/mxl')
+  assert.equal(parsed.searchParams.get('path'), 'C:\\work\\Контролы.cf')
+  assert.equal(parsed.searchParams.get('object'), 'Контролы')
+  assert.equal(parsed.searchParams.get('template'), 'Макет отчёта «Итоги»')
+})
+
+test('document preview resolves the file path and version from resource metadata', () => {
+  assert.equal(DOCUMENT_ID, '@fishca/dsh-v8reader/config')
+  assert.deepEqual([...DOCUMENT_EXTENSIONS], ['cf', 'cfe', 'epf', 'erf'])
+
+  assert.equal(documentPath({ value: { absolutePath: 'C:\\work\\a.cf' } }), 'C:\\work\\a.cf')
+  assert.equal(documentPath({ value: {} }), '')
+  assert.equal(documentPath({ value: { absolutePath: 42 } }), '')
+  assert.equal(documentPath(undefined), '')
+
+  assert.equal(documentVersion({ value: { version: 'v1' } }), 'v1')
+  assert.equal(documentVersion({ value: {} }), '')
+  assert.equal(documentVersion(null), '')
+})
+
+test('table-document zoom clamps, fits the frame, and survives bad storage', () => {
+  assert.equal(DEFAULT_MXL_ZOOM, 100)
+  assert.deepEqual([...MXL_ZOOM_STEPS], [25, 50, 75, 100, 125, 150, 200, 300, 400])
+
+  assert.equal(clampMxlZoom(150), 150)
+  assert.equal(clampMxlZoom('80'), 80)
+  assert.equal(clampMxlZoom(10), 25)
+  assert.equal(clampMxlZoom(900), 400)
+  assert.equal(clampMxlZoom('wide'), 100)
+  assert.equal(clampMxlZoom(Number.NaN, 75), 75)
+
+  // A 400 px table in a 400 px frame needs less than 100 % once the chrome is
+  // removed; a zero width means the frame is not laid out yet.
+  assert.equal(fitWidthZoom(0, 800), 100)
+  assert.equal(fitWidthZoom(800, 0), 100)
+  assert.equal(fitWidthZoom(100, 824), 400)
+  assert.ok(fitWidthZoom(800, 400) < 100)
+  assert.equal(fitWidthZoom(800, 32), 25)
+
+  assert.deepEqual(readMxlSettings({ getItem: () => null }), { zoom: 100, fit: false })
+  assert.deepEqual(readMxlSettings({ getItem: () => '{broken' }), { zoom: 100, fit: false })
+  assert.deepEqual(
+    readMxlSettings({ getItem: (key) => (key === MXL_SETTINGS_KEY ? JSON.stringify({ zoom: 150, fit: true }) : null) }),
+    { zoom: 150, fit: true }
+  )
+  assert.deepEqual(
+    readMxlSettings({ getItem: () => JSON.stringify({ zoom: 5000 }) }),
+    { zoom: 400, fit: false }
+  )
+
+  let saved
+  writeMxlSettings({ zoom: 200, fit: false }, {
+    setItem: (key, value) => { saved = { key, value } }
+  })
+  assert.equal(saved.key, MXL_SETTINGS_KEY)
+  assert.deepEqual(JSON.parse(saved.value), { zoom: 200, fit: false })
+  // Storage failures are a convenience, not an error.
+  writeMxlSettings({ zoom: 200, fit: true }, { setItem: () => { throw new Error('blocked') } })
 })
 
 test('code view settings clamp one field at a time and survive bad storage', () => {

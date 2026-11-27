@@ -37,6 +37,7 @@ export const ru = {
   'panel.objectUnavailable': 'Состав объекта не прочитан. Подробности — в сообщении об ошибке.',
   'panel.back': 'К объекту',
   'panel.openForm': 'Открыть форму',
+  'panel.openTemplate': 'Открыть макет',
   'panel.column.name': 'Имя',
   'panel.column.synonym': 'Синоним',
   'panel.column.type': 'Тип',
@@ -61,6 +62,14 @@ export const ru = {
   'form.error.title': 'Форма не отрисована',
   'form.retry': 'Повторить',
   'form.zoom': 'Масштаб',
+
+  'template.loading': 'Отрисовка макета…',
+  'template.error.title': 'Макет не отрисован',
+  'template.zoom': 'Масштаб',
+  'template.fit': 'По ширине',
+
+  'document.title': 'Конфигурация 1С',
+  'document.waiting': 'Ожидание пути к файлу…',
 
   'picker.title': 'Выбор файла конфигурации',
   'picker.close': 'Закрыть обзор',
@@ -118,6 +127,7 @@ export const ru = {
   'error.assets-missing': 'Ресурсы рендерера формы не установлены: выполните npm run assets в каталоге плагина.',
   'error.form-error': 'Рендерер формы сообщил об ошибке.',
   'error.form-timeout': 'Рендерер формы не ответил за отведённое время.',
+  'error.mxl-error': 'Не удалось показать табличный документ.',
   'error.unknown': 'Неизвестная ошибка.',
   'error.hint.cli-missing': 'Соберите v8reader_cli (cmake --build out/mingw) и разложите его windeployqt в out/cli-deploy, либо задайте config.cliPath в строке плагина или переменную V8READER_CLI.',
   'error.details': 'Ответ утилиты'
@@ -155,6 +165,7 @@ export const en = {
   'panel.objectUnavailable': 'The object composition was not read. See the error message.',
   'panel.back': 'Back to object',
   'panel.openForm': 'Open form',
+  'panel.openTemplate': 'Open template',
   'panel.column.name': 'Name',
   'panel.column.synonym': 'Synonym',
   'panel.column.type': 'Type',
@@ -179,6 +190,14 @@ export const en = {
   'form.error.title': 'The form did not render',
   'form.retry': 'Retry',
   'form.zoom': 'Zoom',
+
+  'template.loading': 'Rendering the template…',
+  'template.error.title': 'The template did not render',
+  'template.zoom': 'Zoom',
+  'template.fit': 'Fit width',
+
+  'document.title': '1C configuration',
+  'document.waiting': 'Waiting for the file path…',
 
   'picker.title': 'Choose a configuration file',
   'picker.close': 'Close the chooser',
@@ -236,6 +255,7 @@ export const en = {
   'error.assets-missing': 'The form renderer assets are not installed: run npm run assets in the plugin directory.',
   'error.form-error': 'The form renderer reported an error.',
   'error.form-timeout': 'The form renderer did not answer in time.',
+  'error.mxl-error': 'The table document could not be shown.',
   'error.unknown': 'Unknown error.',
   'error.hint.cli-missing': 'Build v8reader_cli (cmake --build out/mingw) and deploy it with windeployqt into out/cli-deploy, or set config.cliPath on the plugin row or the V8READER_CLI environment variable.',
   'error.details': 'Tool output'

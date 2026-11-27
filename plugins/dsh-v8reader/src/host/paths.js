@@ -145,6 +145,19 @@ export function formCacheKey(file, object, form) {
 }
 
 /**
+ * Locked selection of the `mxl` route: the file generation, the object and the
+ * template. The exported page is a few hundred kilobytes, so it is cached per
+ * generation like the form model and never outlives the file it describes.
+ * @param {{ path: string, size: number, mtimeMs: number }} file - inspected file facts.
+ * @param {string} object - object query or an empty string.
+ * @param {string} template - template name or synonym.
+ * @returns {string} a cache key for one exported table document.
+ */
+export function mxlCacheKey(file, object, template) {
+  return ['mxl', file.path, file.size, file.mtimeMs, object, template].join('\u0000')
+}
+
+/**
  * Short tag of one object/module selection.
  *
  * The ETag of a `state` answer must identify the whole answer, not only the

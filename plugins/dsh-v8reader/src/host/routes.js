@@ -1,7 +1,7 @@
 /**
  * The one HTTP surface of the plugin: `GET /v8reader/state`,
- * `GET /v8reader/browse`, and `GET /v8reader/health`, registered as a prefix
- * route on the Host.
+ * `GET /v8reader/browse`, `GET /v8reader/form`, `GET /v8reader/mxl`, and
+ * `GET /v8reader/health`, registered as a prefix route on the Host.
  *
  * The resource is Fetch-shaped (`Request` in, `Response` out) because that is
  * what `ctx.webServer.register({ kind: 'prefix', resource })` accepts. Routes
@@ -18,6 +18,7 @@ import {
   formCacheKey,
   inspectPathValue,
   inspectTarget,
+  mxlCacheKey,
   selectionTag,
   stateCacheKey
 } from './paths.js'
@@ -28,10 +29,25 @@ export const ROUTE_PREFIX = '/v8reader'
 /** Route of the ready-to-show form page (inline model, assets via `<base>`). */
 export const FORM_ROUTE = '/form'
 
+/** Route of the exported table document (MXL) page. */
+export const TEMPLATE_ROUTE = '/mxl'
+
 /** JSON response of every failure and of the health probe. */
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store'
+})
+
+/**
+ * Headers of an exported table document. The page is the renderer's whole
+ * world — one table with inline styles and no scripts — so the policy allows
+ * inline styles and embedded images and nothing else.
+ */
+const PAGE_HEADERS = Object.freeze({
+  'content-type': 'text/html; charset=utf-8',
+  'cache-control': 'no-store',
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:",
+  'x-content-type-options': 'nosniff'
 })
 
 /**
@@ -330,6 +346,76 @@ export function createResource({
   }
 
   /**
+   * Run one CLI argument vector for an exported table document.
+   * @param {{ path: string }} file - inspected container.
+   * @param {string} object - object query.
+   * @param {string} template - template name or synonym.
+   * @param {AbortSignal} [signal] - aborted when the panel disconnects.
+   * @returns {Promise<string>} the self-contained HTML page.
+   * @throws {RouteError} any CLI or contract failure.
+   */
+  async function readTemplateHtml(file, object, template, signal) {
+    const outcome = await cli.run(['mxl', file.path, object, '--template', template, '--html', '-'], {
+      cwd: path.dirname(file.path),
+      timeoutMs: settings.timeoutMs,
+      maxBytes: settings.maxJsonBytes,
+      signal
+    })
+    if (outcome.aborted) throw abortError()
+    if (outcome.timedOut || outcome.overflow || outcome.code !== 0) {
+      throw cliFailure(outcome)
+    }
+    // The exporter's page starts with a doctype; anything else is not the
+    // renderer's answer and is reported instead of being painted in a frame.
+    if (!/^\s*(?:<!doctype\s+html|<html)/i.test(outcome.stdout)) {
+      throw new RouteError(
+        ERROR_CODES.cliFailed,
+        'v8reader_cli вернул не HTML табличного документа',
+        502,
+        { bytes: outcome.stdout.length }
+      )
+    }
+    return outcome.stdout
+  }
+
+  /**
+   * Answer `GET /v8reader/mxl`.
+   *
+   * The page comes from `mxl --html -`: a self-contained table document with
+   * inline styles, so one request yields either a complete page or a JSON
+   * error. The panel shows it in a sandboxed frame and scales the frame's
+   * document itself, so the page is cached per file generation without the
+   * zoom baked in.
+   * @param {URL} url - the request URL.
+   * @param {boolean} head - whether the body must be dropped.
+   * @param {Request} request - the incoming request, for cancellation.
+   * @returns {Promise<Response>} the page or a failure.
+   */
+  async function templateRoute(url, head, request) {
+    const pathValue = inspectPathValue(url.searchParams.get('path'), { platform })
+    const object = (url.searchParams.get('object') ?? '').trim()
+    const template = (url.searchParams.get('template') ?? '').trim()
+    if (object === '') {
+      throw new RouteError(ERROR_CODES.badRequest, 'Параметр object обязателен для макета', 400)
+    }
+    if (template === '') {
+      throw new RouteError(ERROR_CODES.badRequest, 'Параметр template обязателен', 400)
+    }
+    const file = inspectTarget(pathValue, { stat: stat ?? undefined, platform })
+
+    const key = mxlCacheKey(file, object, template)
+    let html = cache.get(key)
+    if (html === undefined) {
+      html = await readTemplateHtml(file, object, template, request.signal)
+      cache.set(key, html)
+    }
+    return new Response(head ? null : html, {
+      status: 200,
+      headers: { ...PAGE_HEADERS, 'x-v8reader-version': fileVersion(file) }
+    })
+  }
+
+  /**
    * Answer `GET /v8reader/assets/<path>` with one renderer file.
    * @param {string} rawPath - the path after the assets route.
    * @param {Request} request - the incoming request, for revalidation.
@@ -372,6 +458,7 @@ export function createResource({
       if (route === '/health') return await health()
       if (route === '/browse') return await browseRoute(url, head)
       if (route === FORM_ROUTE) return await formRoute(url, head, request)
+      if (route === TEMPLATE_ROUTE) return await templateRoute(url, head, request)
       if (route.startsWith(`${ASSETS_ROUTE}/`)) {
         const rawPath = url.pathname.slice(ROUTE_PREFIX.length + ASSETS_ROUTE.length + 1)
         return await assetRoute(rawPath, request, head)
@@ -392,7 +479,7 @@ export function createResource({
         ERROR_CODES.notFound,
         `Неизвестный маршрут: ${url.pathname}`,
         404,
-        { routes: [`${ROUTE_PREFIX}/health`, `${ROUTE_PREFIX}/state`, `${ROUTE_PREFIX}/browse`, `${ROUTE_PREFIX}${FORM_ROUTE}`, `${ROUTE_PREFIX}${ASSETS_ROUTE}/`] }
+        { routes: [`${ROUTE_PREFIX}/health`, `${ROUTE_PREFIX}/state`, `${ROUTE_PREFIX}/browse`, `${ROUTE_PREFIX}${FORM_ROUTE}`, `${ROUTE_PREFIX}${TEMPLATE_ROUTE}`, `${ROUTE_PREFIX}${ASSETS_ROUTE}/`] }
       )
     } catch (error) {
       return errorResponse(error)

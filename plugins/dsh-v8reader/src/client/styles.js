@@ -65,7 +65,7 @@ export const PANEL_CSS = `
 .v8r-viewhead-sub{color:var(--dsw-alias-label-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v8r-zoom{display:flex;align-items:center;gap:4px;margin-left:auto;font-size:12px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .v8r-select{height:26px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}
-.v8r-main[data-view="module"],.v8r-main[data-view="form"]{display:flex;flex-direction:column;overflow:hidden}
+.v8r-main[data-view="module"],.v8r-main[data-view="form"],.v8r-main[data-view="template"]{display:flex;flex-direction:column;overflow:hidden}
 .v8r-codeview{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1)}
 .v8r-codeview-bar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;flex:0 0 auto;padding:5px 6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .v8r-codeview-bar .v8r-button{height:24px;padding:0 8px;font-size:12px}
@@ -101,6 +101,11 @@ export const PANEL_CSS = `
 .v8r-form-status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-secondary);font-size:12.5px;pointer-events:none}
 .v8r-form-error{position:absolute;inset:0;padding:12px;overflow:auto;background:var(--dsw-alias-bg-base)}
 .v8r-form-error .v8r-banner{margin:0}
+.v8r-mxl{position:relative;flex:1 1 auto;min-height:280px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1)}
+.v8r-mxl-frame{display:block;width:100%;height:100%;border:0;background:var(--dsw-alias-bg-base)}
+.v8r-mxl[data-status="error"] .v8r-mxl-frame{visibility:hidden}
+.v8r--document .v8r-document-wait{padding:12px 16px}
+.v8r--document .v8r-tree{flex:0 0 min(260px,42%)}
 .v8r-empty{display:flex;flex-direction:column;gap:10px;align-items:flex-start;color:var(--dsw-alias-label-secondary);padding:16px 4px;max-width:520px}
 .v8r-empty-title{color:var(--dsw-alias-label-primary);font-weight:600}
 .v8r-picker{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;min-height:0;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);outline:none}

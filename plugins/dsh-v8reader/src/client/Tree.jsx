@@ -61,14 +61,16 @@ function groupNodeKey(object, kind) {
  *   categories: object[],
  *   selected: { name: string, guid?: string } | null,
  *   detail: object|null,
- *   viewMode: 'object'|'module'|'form',
+ *   viewMode: 'object'|'module'|'form'|'template',
  *   activeSection: string,
  *   moduleName: string,
  *   formName: string,
+ *   templateName: string,
  *   busy: boolean,
  *   onSelect: (object: object) => void,
  *   onSection: (kind: string) => void,
  *   onOpenForm: (name: string) => void,
+ *   onOpenTemplate: (name: string) => void,
  *   onOpenModule: (name: string) => void,
  *   translate: (key: string, params?: object) => string
  * }} props - the tree data, the current selection, and the actions.
@@ -83,10 +85,12 @@ export function Tree({
   activeSection,
   moduleName,
   formName,
+  templateName,
   busy,
   onSelect,
   onSection,
   onOpenForm,
+  onOpenTemplate,
   onOpenModule,
   translate: t
 }) {
@@ -161,11 +165,13 @@ export function Tree({
   const leafAction = (group, entry) => {
     if (entry.token === 'form') onOpenForm(entry.name)
     else if (entry.token === 'module') onOpenModule(entry.name)
+    else if (entry.token === 'template' && typeof onOpenTemplate === 'function') onOpenTemplate(entry.name)
     else if (group.kind !== MODULES_GROUP) onSection(group.kind)
   }
 
   const leafActive = (group, entry) => {
     if (entry.token === 'form') return viewMode === 'form' && entry.name === formName
+    if (entry.token === 'template') return viewMode === 'template' && entry.name === templateName
     if (entry.token === 'module') return viewMode === 'module' && entry.name === moduleName
     return false
   }

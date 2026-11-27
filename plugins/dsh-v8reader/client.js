@@ -35,6 +35,8 @@ window.__ModuleLoader__.load({
     // src/client/index.jsx
     var index_exports = {};
     __export(index_exports, {
+      DOCUMENT_EXTENSIONS: () => DOCUMENT_EXTENSIONS,
+      DOCUMENT_ID: () => DOCUMENT_ID,
       LOCALE_NAMESPACE: () => LOCALE_NAMESPACE,
       TYPE_ID: () => TYPE_ID,
       TYPE_KIND: () => TYPE_KIND,
@@ -42,10 +44,13 @@ window.__ModuleLoader__.load({
       inject: () => inject
     });
     module.exports = __toCommonJS(index_exports);
-    var import_react6 = __toESM(require("react"), 1);
+    var import_react8 = __toESM(require("react"), 1);
+    
+    // src/client/DocumentView.jsx
+    var import_react7 = __toESM(require("react"), 1);
     
     // src/client/PanelView.jsx
-    var import_react5 = __toESM(require("react"), 1);
+    var import_react6 = __toESM(require("react"), 1);
     
     // src/client/api.js
     var StateError = class extends Error {
@@ -97,6 +102,10 @@ window.__ModuleLoader__.load({
     function buildFormUrl(path, object, form) {
       const params = new URLSearchParams({ path, object, form });
       return `/v8reader/form?${params.toString()}`;
+    }
+    function buildTemplateUrl(path, object, template) {
+      const params = new URLSearchParams({ path, object, template });
+      return `/v8reader/mxl?${params.toString()}`;
     }
     async function fetchState({
       path,
@@ -988,6 +997,139 @@ window.__ModuleLoader__.load({
       } }, t("form.retry"))))));
     }
     
+    // src/client/MxlPreview.jsx
+    var import_react4 = __toESM(require("react"), 1);
+    
+    // src/client/mxl.js
+    var MXL_SETTINGS_KEY = "dsh.v8reader.mxl.v1";
+    var MXL_ZOOM_STEPS = Object.freeze([25, 50, 75, 100, 125, 150, 200, 300, 400]);
+    var DEFAULT_MXL_ZOOM = 100;
+    var MXL_MIN_ZOOM = 25;
+    var MXL_MAX_ZOOM = 400;
+    var FIT_FRAME_PX = 32;
+    var SHEET_PADDING_PX = 24;
+    function clampMxlZoom(value, fallback = DEFAULT_MXL_ZOOM) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.min(MXL_MAX_ZOOM, Math.max(MXL_MIN_ZOOM, Math.round(number)));
+    }
+    function fitWidthZoom(sheetWidth, frameWidth) {
+      if (!(sheetWidth > 0) || !(frameWidth > 0)) return DEFAULT_MXL_ZOOM;
+      const available = frameWidth - FIT_FRAME_PX;
+      if (!(available > 0)) return MXL_MIN_ZOOM;
+      return clampMxlZoom(available / (sheetWidth + SHEET_PADDING_PX) * 100);
+    }
+    function readMxlSettings(storage = globalThis.localStorage) {
+      let raw = "";
+      try {
+        raw = storage?.getItem(MXL_SETTINGS_KEY) ?? "";
+      } catch {
+        raw = "";
+      }
+      if (raw === "") return { zoom: DEFAULT_MXL_ZOOM, fit: false };
+      try {
+        const parsed = JSON.parse(raw);
+        return {
+          zoom: clampMxlZoom(parsed?.zoom),
+          fit: parsed?.fit === true
+        };
+      } catch {
+        return { zoom: DEFAULT_MXL_ZOOM, fit: false };
+      }
+    }
+    function writeMxlSettings(settings, storage = globalThis.localStorage) {
+      try {
+        storage?.setItem(MXL_SETTINGS_KEY, JSON.stringify({
+          zoom: clampMxlZoom(settings?.zoom),
+          fit: settings?.fit === true
+        }));
+      } catch {
+      }
+    }
+    
+    // src/client/MxlPreview.jsx
+    function MxlPreview({ src, title, zoom = 100, fit = false, nonce = 0, translate: t, onRetry }) {
+      const frame = (0, import_react4.useRef)(null);
+      const [status, setStatus] = (0, import_react4.useState)("loading");
+      const [error, setError] = (0, import_react4.useState)(null);
+      const applyZoom = (0, import_react4.useCallback)(() => {
+        const element = frame.current;
+        let doc = null;
+        try {
+          doc = element?.contentDocument ?? null;
+        } catch {
+          doc = null;
+        }
+        const root = doc?.documentElement;
+        if (root === void 0 || root === null) return false;
+        let percent = zoom;
+        if (fit) {
+          root.style.zoom = "1";
+          const sheet = doc.querySelector("table.mxl");
+          const tableWidth = sheet?.getBoundingClientRect().width ?? 0;
+          percent = fitWidthZoom(tableWidth, element?.clientWidth ?? 0);
+        }
+        root.style.zoom = String(percent / 100);
+        return true;
+      }, [fit, zoom]);
+      const inspect = (0, import_react4.useCallback)(() => {
+        const element = frame.current;
+        if (element === null) return;
+        let doc = null;
+        try {
+          doc = element.contentDocument;
+        } catch {
+          doc = null;
+        }
+        if (doc === null) {
+          setStatus("error");
+          setError({ code: "mxl-error", message: "" });
+          return;
+        }
+        const documentError = frameDocumentError(doc);
+        if (documentError !== null) {
+          setStatus("error");
+          setError(documentError);
+          return;
+        }
+        setStatus("ready");
+        applyZoom();
+      }, [applyZoom]);
+      (0, import_react4.useEffect)(() => {
+        setStatus("loading");
+        setError(null);
+      }, [src, nonce]);
+      (0, import_react4.useEffect)(() => {
+        if (status === "ready") applyZoom();
+      }, [applyZoom, status]);
+      (0, import_react4.useEffect)(() => {
+        if (!fit || status !== "ready") return void 0;
+        const element = frame.current;
+        if (element === null || typeof ResizeObserver !== "function") return void 0;
+        const observer = new ResizeObserver(() => {
+          applyZoom();
+        });
+        observer.observe(element);
+        return () => {
+          observer.disconnect();
+        };
+      }, [applyZoom, fit, status]);
+      return /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-mxl", "data-status": status }, /* @__PURE__ */ import_react4.default.createElement(
+        "iframe",
+        {
+          key: nonce,
+          ref: frame,
+          className: "v8r-mxl-frame",
+          src,
+          title,
+          sandbox: "allow-same-origin",
+          onLoad: inspect
+        }
+      ), status === "loading" && /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-form-status", role: "status" }, t("template.loading")), status === "error" && /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-form-error", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-banner" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-banner-title" }, t("template.error.title")), /* @__PURE__ */ import_react4.default.createElement("div", null, t(`error.${error?.code ?? "mxl-error"}`)), error?.message !== void 0 && error.message !== "" && /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-banner-detail" }, error.message), typeof onRetry === "function" && /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-banner-actions" }, /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", className: "v8r-button", onClick: () => {
+        onRetry();
+      } }, t("form.retry"))))));
+    }
+    
     // src/client/styles.js
     var PANEL_CSS = `
     .v8r{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;container-type:inline-size;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font-size:13px;line-height:1.45}
@@ -1049,7 +1191,7 @@ window.__ModuleLoader__.load({
     .v8r-viewhead-sub{color:var(--dsw-alias-label-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .v8r-zoom{display:flex;align-items:center;gap:4px;margin-left:auto;font-size:12px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
     .v8r-select{height:26px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}
-    .v8r-main[data-view="module"],.v8r-main[data-view="form"]{display:flex;flex-direction:column;overflow:hidden}
+    .v8r-main[data-view="module"],.v8r-main[data-view="form"],.v8r-main[data-view="template"]{display:flex;flex-direction:column;overflow:hidden}
     .v8r-codeview{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1)}
     .v8r-codeview-bar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;flex:0 0 auto;padding:5px 6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
     .v8r-codeview-bar .v8r-button{height:24px;padding:0 8px;font-size:12px}
@@ -1085,6 +1227,11 @@ window.__ModuleLoader__.load({
     .v8r-form-status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-secondary);font-size:12.5px;pointer-events:none}
     .v8r-form-error{position:absolute;inset:0;padding:12px;overflow:auto;background:var(--dsw-alias-bg-base)}
     .v8r-form-error .v8r-banner{margin:0}
+    .v8r-mxl{position:relative;flex:1 1 auto;min-height:280px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1)}
+    .v8r-mxl-frame{display:block;width:100%;height:100%;border:0;background:var(--dsw-alias-bg-base)}
+    .v8r-mxl[data-status="error"] .v8r-mxl-frame{visibility:hidden}
+    .v8r--document .v8r-document-wait{padding:12px 16px}
+    .v8r--document .v8r-tree{flex:0 0 min(260px,42%)}
     .v8r-empty{display:flex;flex-direction:column;gap:10px;align-items:flex-start;color:var(--dsw-alias-label-secondary);padding:16px 4px;max-width:520px}
     .v8r-empty-title{color:var(--dsw-alias-label-primary);font-weight:600}
     .v8r-picker{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;min-height:0;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);outline:none}
@@ -1217,7 +1364,7 @@ window.__ModuleLoader__.load({
     }
     
     // src/client/Tree.jsx
-    var import_react4 = __toESM(require("react"), 1);
+    var import_react5 = __toESM(require("react"), 1);
     var CATEGORY_PAGE = 200;
     var GROUP_PAGE = 100;
     function categoryKey(category) {
@@ -1239,35 +1386,37 @@ window.__ModuleLoader__.load({
       activeSection,
       moduleName,
       formName,
+      templateName,
       busy,
       onSelect,
       onSection,
       onOpenForm,
+      onOpenTemplate,
       onOpenModule,
       translate: t
     }) {
-      const [filter, setFilter] = (0, import_react4.useState)("");
-      const [expanded, setExpanded] = (0, import_react4.useState)(() => {
+      const [filter, setFilter] = (0, import_react5.useState)("");
+      const [expanded, setExpanded] = (0, import_react5.useState)(() => {
         const first = Array.isArray(categories) && categories.length > 0 ? categories[0] : void 0;
         return new Set(first === void 0 ? [] : [categoryKey(first)]);
       });
-      const [rootOpen, setRootOpen] = (0, import_react4.useState)(true);
-      const [limits, setLimits] = (0, import_react4.useState)({});
+      const [rootOpen, setRootOpen] = (0, import_react5.useState)(true);
+      const [limits, setLimits] = (0, import_react5.useState)({});
       const query = filter.trim().toLowerCase();
-      const groups = (0, import_react4.useMemo)(() => filterCategories(categories, query), [categories, query]);
-      const total = (0, import_react4.useMemo)(() => countObjects(categories), [categories]);
-      const matched = (0, import_react4.useMemo)(
+      const groups = (0, import_react5.useMemo)(() => filterCategories(categories, query), [categories, query]);
+      const total = (0, import_react5.useMemo)(() => countObjects(categories), [categories]);
+      const matched = (0, import_react5.useMemo)(
         () => groups.reduce((sum, group) => sum + group.total, 0),
         [groups]
       );
       const selectedKey = selected === null || selected === void 0 ? "" : objectKey(selected);
       const detailKey = detail?.object === void 0 || detail?.object === null ? "" : objectKey(detail.object);
       const detailMatches = selectedKey !== "" && detailKey === selectedKey;
-      const branches = (0, import_react4.useMemo)(
+      const branches = (0, import_react5.useMemo)(
         () => detailMatches ? filterObjectGroups(objectGroups(detail.object), query) : [],
         [detailMatches, detail, query]
       );
-      (0, import_react4.useEffect)(() => {
+      (0, import_react5.useEffect)(() => {
         if (selectedKey === "") return;
         const holder = (Array.isArray(categories) ? categories : []).find((category) => (Array.isArray(category.objects) ? category.objects : []).some((object) => sameObject(object, selected)));
         setExpanded((current) => {
@@ -1304,10 +1453,12 @@ window.__ModuleLoader__.load({
       const leafAction = (group, entry) => {
         if (entry.token === "form") onOpenForm(entry.name);
         else if (entry.token === "module") onOpenModule(entry.name);
+        else if (entry.token === "template" && typeof onOpenTemplate === "function") onOpenTemplate(entry.name);
         else if (group.kind !== MODULES_GROUP) onSection(group.kind);
       };
       const leafActive = (group, entry) => {
         if (entry.token === "form") return viewMode === "form" && entry.name === formName;
+        if (entry.token === "template") return viewMode === "template" && entry.name === templateName;
         if (entry.token === "module") return viewMode === "module" && entry.name === moduleName;
         return false;
       };
@@ -1315,7 +1466,7 @@ window.__ModuleLoader__.load({
         if (kind === MODULES_GROUP) return t("panel.modules");
         return sectionLabel(t, { kind, title: fallback });
       };
-      return /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-tree" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-filter" }, /* @__PURE__ */ import_react4.default.createElement(
+      return /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-tree" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-filter" }, /* @__PURE__ */ import_react5.default.createElement(
         "input",
         {
           className: "v8r-input",
@@ -1328,7 +1479,7 @@ window.__ModuleLoader__.load({
             setFilter(event.target.value);
           }
         }
-      )), /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-tree-list" }, /* @__PURE__ */ import_react4.default.createElement(
+      )), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-tree-list" }, /* @__PURE__ */ import_react5.default.createElement(
         "button",
         {
           type: "button",
@@ -1338,15 +1489,15 @@ window.__ModuleLoader__.load({
             setRootOpen((current) => !current);
           }
         },
-        /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, rootOpen ? "\u25BE" : "\u25B8"),
-        /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-label" }, t("tree.root")),
-        file?.name !== void 0 && file.name !== "" && /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-synonym" }, ` \xAB${file.name}\xBB`),
-        /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-count" }, query === "" ? `(${total})` : `(${matched})`)
-      ), rootOpen && groups.length === 0 && /* @__PURE__ */ import_react4.default.createElement("p", { className: "v8r-muted v8r-tree-empty" }, t("panel.noObjects")), rootOpen && groups.map(({ category, items, total: count }) => {
+        /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, rootOpen ? "\u25BE" : "\u25B8"),
+        /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-label" }, t("tree.root")),
+        file?.name !== void 0 && file.name !== "" && /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-synonym" }, ` \xAB${file.name}\xBB`),
+        /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-count" }, query === "" ? `(${total})` : `(${matched})`)
+      ), rootOpen && groups.length === 0 && /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted v8r-tree-empty" }, t("panel.noObjects")), rootOpen && groups.map(({ category, items, total: count }) => {
         const key = categoryKey(category);
         const open = query !== "" ? count > 0 : expanded.has(key);
         const limit = limits[key] ?? CATEGORY_PAGE;
-        return /* @__PURE__ */ import_react4.default.createElement("div", { key }, /* @__PURE__ */ import_react4.default.createElement(
+        return /* @__PURE__ */ import_react5.default.createElement("div", { key }, /* @__PURE__ */ import_react5.default.createElement(
           "button",
           {
             type: "button",
@@ -1356,14 +1507,14 @@ window.__ModuleLoader__.load({
               toggle(key);
             }
           },
-          /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, open ? "\u25BE" : "\u25B8"),
-          /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-label" }, category.title),
-          /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-count" }, `(${count})`)
+          /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, open ? "\u25BE" : "\u25B8"),
+          /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-label" }, category.title),
+          /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-count" }, `(${count})`)
         ), open && items.slice(0, limit).map((object) => {
           const nodeKey = objectNodeKey(object);
           const isOpen = expanded.has(nodeKey);
           const selectedHere = sameObject(object, selected);
-          return /* @__PURE__ */ import_react4.default.createElement("div", { key: `${nodeKey}:${object.name}` }, /* @__PURE__ */ import_react4.default.createElement(
+          return /* @__PURE__ */ import_react5.default.createElement("div", { key: `${nodeKey}:${object.name}` }, /* @__PURE__ */ import_react5.default.createElement(
             "button",
             {
               type: "button",
@@ -1375,14 +1526,14 @@ window.__ModuleLoader__.load({
                 openObjectNode(object);
               }
             },
-            /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, isOpen ? "\u25BE" : "\u25B8"),
-            /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-label v8r-node-label--mono" }, object.name),
-            object.synonym !== void 0 && object.synonym !== "" && /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-synonym" }, ` \u2014 ${object.synonym}`)
-          ), isOpen && selectedHere && busy && !detailMatches && /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-children v8r-muted" }, t("tree.loading")), isOpen && selectedHere && detailMatches && branches.map((branch) => {
+            /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, isOpen ? "\u25BE" : "\u25B8"),
+            /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-label v8r-node-label--mono" }, object.name),
+            object.synonym !== void 0 && object.synonym !== "" && /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-synonym" }, ` \u2014 ${object.synonym}`)
+          ), isOpen && selectedHere && busy && !detailMatches && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-children v8r-muted" }, t("tree.loading")), isOpen && selectedHere && detailMatches && branches.map((branch) => {
             const gkey = groupNodeKey(detail.object, branch.kind);
             const groupOpen = query !== "" ? branch.total > 0 : expanded.has(gkey);
             const groupLimit = limits[gkey] ?? GROUP_PAGE;
-            return /* @__PURE__ */ import_react4.default.createElement("div", { key: gkey, className: "v8r-children" }, /* @__PURE__ */ import_react4.default.createElement(
+            return /* @__PURE__ */ import_react5.default.createElement("div", { key: gkey, className: "v8r-children" }, /* @__PURE__ */ import_react5.default.createElement(
               "button",
               {
                 type: "button",
@@ -1393,10 +1544,10 @@ window.__ModuleLoader__.load({
                   openGroup(branch);
                 }
               },
-              /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, groupOpen ? "\u25BE" : "\u25B8"),
-              /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-label" }, groupTitle(branch.kind, branch.title)),
-              /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-node-count" }, `(${branch.total})`)
-            ), groupOpen && branch.total === 0 && /* @__PURE__ */ import_react4.default.createElement("div", { className: "v8r-leaf v8r-leaf--empty v8r-muted" }, t("panel.sectionEmpty")), groupOpen && branch.rows.slice(0, groupLimit).map(({ entry, depth }, index) => /* @__PURE__ */ import_react4.default.createElement(
+              /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-caret", "aria-hidden": "true" }, groupOpen ? "\u25BE" : "\u25B8"),
+              /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-label" }, groupTitle(branch.kind, branch.title)),
+              /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-node-count" }, `(${branch.total})`)
+            ), groupOpen && branch.total === 0 && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-leaf v8r-leaf--empty v8r-muted" }, t("panel.sectionEmpty")), groupOpen && branch.rows.slice(0, groupLimit).map(({ entry, depth }, index) => /* @__PURE__ */ import_react5.default.createElement(
               "button",
               {
                 key: `${entry.name}:${index}`,
@@ -1410,9 +1561,9 @@ window.__ModuleLoader__.load({
                   leafAction(branch, entry);
                 }
               },
-              /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-leaf-name" }, entry.name),
-              entry.typeText !== void 0 && entry.typeText !== "" && /* @__PURE__ */ import_react4.default.createElement("span", { className: "v8r-leaf-type" }, entry.typeText)
-            )), groupOpen && branch.total > groupLimit && /* @__PURE__ */ import_react4.default.createElement(
+              /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-leaf-name" }, entry.name),
+              entry.typeText !== void 0 && entry.typeText !== "" && /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-leaf-type" }, entry.typeText)
+            )), groupOpen && branch.total > groupLimit && /* @__PURE__ */ import_react5.default.createElement(
               "button",
               {
                 type: "button",
@@ -1427,7 +1578,7 @@ window.__ModuleLoader__.load({
               ")"
             ));
           }));
-        }), open && items.length > limit && /* @__PURE__ */ import_react4.default.createElement(
+        }), open && items.length > limit && /* @__PURE__ */ import_react5.default.createElement(
           "button",
           {
             type: "button",
@@ -1493,7 +1644,7 @@ window.__ModuleLoader__.load({
       onBack,
       onOpenModule
     }) {
-      return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react5.default.createElement("h3", { className: "v8r-viewhead-title" }, moduleName), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-modules" }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-muted" }, t("panel.modules"), ":"), modules.map((module2) => /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react6.default.createElement("h3", { className: "v8r-viewhead-title" }, moduleName), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-modules" }, /* @__PURE__ */ import_react6.default.createElement("span", { className: "v8r-muted" }, t("panel.modules"), ":"), modules.map((module2) => /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           key: module2.name,
@@ -1506,7 +1657,7 @@ window.__ModuleLoader__.load({
           }
         },
         module2.name
-      ))), !loaded && !busy && /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, t("panel.objectUnavailable")), loaded && text === "" && !busy && /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, t("panel.module.empty")), loaded && text !== "" && /* @__PURE__ */ import_react5.default.createElement(CodeView, { text, scheme, translate: t }));
+      ))), !loaded && !busy && /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, t("panel.objectUnavailable")), loaded && text === "" && !busy && /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, t("panel.module.empty")), loaded && text !== "" && /* @__PURE__ */ import_react6.default.createElement(CodeView, { text, scheme, translate: t }));
     }
     function FormView({
       object,
@@ -1519,7 +1670,7 @@ window.__ModuleLoader__.load({
       onZoom,
       onReload
     }) {
-      return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react5.default.createElement("h3", { className: "v8r-viewhead-title" }, formName), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name)), /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-zoom" }, /* @__PURE__ */ import_react5.default.createElement("span", null, t("form.zoom")), /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react6.default.createElement("h3", { className: "v8r-viewhead-title" }, formName), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name)), /* @__PURE__ */ import_react6.default.createElement("span", { className: "v8r-zoom" }, /* @__PURE__ */ import_react6.default.createElement("span", null, t("form.zoom")), /* @__PURE__ */ import_react6.default.createElement(
         "select",
         {
           className: "v8r-select",
@@ -1529,8 +1680,8 @@ window.__ModuleLoader__.load({
             onZoom(Number(event.target.value));
           }
         },
-        ZOOM_STEPS.map((step) => /* @__PURE__ */ import_react5.default.createElement("option", { key: step, value: String(step) }, `${step}%`))
-      ), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "v8r-button", onClick: onReload }, t("panel.reload")))), /* @__PURE__ */ import_react5.default.createElement(
+        ZOOM_STEPS.map((step) => /* @__PURE__ */ import_react6.default.createElement("option", { key: step, value: String(step) }, `${step}%`))
+      ), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "v8r-button", onClick: onReload }, t("panel.reload")))), /* @__PURE__ */ import_react6.default.createElement(
         FormPreview,
         {
           key: `${src}#${nonce}`,
@@ -1543,21 +1694,59 @@ window.__ModuleLoader__.load({
         }
       ));
     }
-    function SectionTable({ section, translate: t, onOpenForm }) {
+    function TemplateView({
+      object,
+      templateName,
+      src,
+      zoom,
+      fit,
+      nonce,
+      translate: t,
+      onBack,
+      onSelect,
+      onReload
+    }) {
+      return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react6.default.createElement("h3", { className: "v8r-viewhead-title" }, templateName), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name)), /* @__PURE__ */ import_react6.default.createElement("span", { className: "v8r-zoom" }, /* @__PURE__ */ import_react6.default.createElement("span", null, t("template.zoom")), /* @__PURE__ */ import_react6.default.createElement(
+        "select",
+        {
+          className: "v8r-select",
+          "aria-label": t("template.zoom"),
+          value: fit ? "fit" : String(zoom),
+          onChange: (event) => {
+            onSelect(event.target.value);
+          }
+        },
+        /* @__PURE__ */ import_react6.default.createElement("option", { value: "fit" }, t("template.fit")),
+        MXL_ZOOM_STEPS.map((step) => /* @__PURE__ */ import_react6.default.createElement("option", { key: step, value: String(step) }, `${step}%`))
+      ), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "v8r-button", onClick: onReload }, t("panel.reload")))), /* @__PURE__ */ import_react6.default.createElement(
+        MxlPreview,
+        {
+          key: `${src}#${nonce}`,
+          src,
+          title: templateName,
+          zoom,
+          fit,
+          nonce,
+          translate: t,
+          onRetry: onReload
+        }
+      ));
+    }
+    function SectionTable({ section, translate: t, onOpenForm, onOpenTemplate }) {
       const rows = flattenEntries(Array.isArray(section.entries) ? section.entries : []);
-      if (rows.length === 0) return /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, t("panel.sectionEmpty"));
-      const forms = section.kind === "forms" && typeof onOpenForm === "function";
-      return /* @__PURE__ */ import_react5.default.createElement("table", { className: "v8r-table" }, /* @__PURE__ */ import_react5.default.createElement("thead", null, /* @__PURE__ */ import_react5.default.createElement("tr", null, /* @__PURE__ */ import_react5.default.createElement("th", null, t("panel.column.name")), /* @__PURE__ */ import_react5.default.createElement("th", null, t("panel.column.synonym")), /* @__PURE__ */ import_react5.default.createElement("th", null, t("panel.column.type")), forms && /* @__PURE__ */ import_react5.default.createElement("th", null, t("panel.openForm")))), /* @__PURE__ */ import_react5.default.createElement("tbody", null, rows.map(({ entry, depth }, index) => /* @__PURE__ */ import_react5.default.createElement("tr", { key: `${entry.name}:${index}` }, /* @__PURE__ */ import_react5.default.createElement("td", null, /* @__PURE__ */ import_react5.default.createElement("span", { style: { paddingLeft: `${depth * 14}px` }, className: "v8r-name" }, entry.name), entry.comment !== void 0 && entry.comment !== "" && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-muted" }, entry.comment)), /* @__PURE__ */ import_react5.default.createElement("td", null, entry.synonym), /* @__PURE__ */ import_react5.default.createElement("td", { className: "v8r-muted" }, entry.typeText), forms && /* @__PURE__ */ import_react5.default.createElement("td", null, /* @__PURE__ */ import_react5.default.createElement(
+      if (rows.length === 0) return /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, t("panel.sectionEmpty"));
+      const action = section.kind === "forms" && typeof onOpenForm === "function" ? { label: t("panel.openForm"), run: onOpenForm } : section.kind === "templates" && typeof onOpenTemplate === "function" ? { label: t("panel.openTemplate"), run: onOpenTemplate } : null;
+      return /* @__PURE__ */ import_react6.default.createElement("table", { className: "v8r-table" }, /* @__PURE__ */ import_react6.default.createElement("thead", null, /* @__PURE__ */ import_react6.default.createElement("tr", null, /* @__PURE__ */ import_react6.default.createElement("th", null, t("panel.column.name")), /* @__PURE__ */ import_react6.default.createElement("th", null, t("panel.column.synonym")), /* @__PURE__ */ import_react6.default.createElement("th", null, t("panel.column.type")), action !== null && /* @__PURE__ */ import_react6.default.createElement("th", null, action.label))), /* @__PURE__ */ import_react6.default.createElement("tbody", null, rows.map(({ entry, depth }, index) => /* @__PURE__ */ import_react6.default.createElement("tr", { key: `${entry.name}:${index}` }, /* @__PURE__ */ import_react6.default.createElement("td", null, /* @__PURE__ */ import_react6.default.createElement("span", { style: { paddingLeft: `${depth * 14}px` }, className: "v8r-name" }, entry.name), entry.comment !== void 0 && entry.comment !== "" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-muted" }, entry.comment)), /* @__PURE__ */ import_react6.default.createElement("td", null, entry.synonym), /* @__PURE__ */ import_react6.default.createElement("td", { className: "v8r-muted" }, entry.typeText), action !== null && /* @__PURE__ */ import_react6.default.createElement("td", null, /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           type: "button",
           className: "v8r-button",
-          title: t("panel.openForm"),
+          title: action.label,
           onClick: () => {
-            onOpenForm(entry.name);
+            action.run(entry.name);
           }
         },
-        t("panel.openForm")
+        action.label
       ))))));
     }
     function ErrorBanner({ error, translate: t }) {
@@ -1567,29 +1756,45 @@ window.__ModuleLoader__.load({
       const title = localized === key ? t("error.unknown") : localized;
       const hint = code === "cli-missing" || code === "cli-old" ? t("error.hint.cli-missing") : "";
       const searched = error?.detail?.searched;
-      return /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-banner", role: "alert" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-banner-title" }, t("error.title"), ": ", title), hint !== "" && /* @__PURE__ */ import_react5.default.createElement("div", null, hint), Array.isArray(searched) && searched.length > 0 && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-banner-detail" }, searched.join("\n")), typeof error?.message === "string" && error.message !== "" && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-banner-detail" }, t("error.details"), ": ", error.message));
+      return /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-banner", role: "alert" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-banner-title" }, t("error.title"), ": ", title), hint !== "" && /* @__PURE__ */ import_react6.default.createElement("div", null, hint), Array.isArray(searched) && searched.length > 0 && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-banner-detail" }, searched.join("\n")), typeof error?.message === "string" && error.message !== "" && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-banner-detail" }, t("error.details"), ": ", error.message));
     }
-    function PanelView({ useTabInfo, t: provided, scheme = "light" }) {
+    function PanelView({
+      useTabInfo,
+      t: provided,
+      scheme = "light",
+      fixedPath = "",
+      documentVersion: documentVersion2 = "",
+      documentContent,
+      refreshToken
+    }) {
       const t = typeof provided === "function" ? provided : (key) => key;
       const tab = typeof useTabInfo === "function" ? useTabInfo().tab : void 0;
-      const [pathInput, setPathInput] = (0, import_react5.useState)(readLastPath);
-      const [lastDir, setLastDir] = (0, import_react5.useState)(() => readStored(LAST_DIR_KEY));
-      const [pickerOpen, setPickerOpen] = (0, import_react5.useState)(false);
-      const [document2, setDocument] = (0, import_react5.useState)(null);
-      const [detail, setDetail] = (0, import_react5.useState)(null);
-      const [selected, setSelected] = (0, import_react5.useState)(null);
-      const [viewMode, setViewMode] = (0, import_react5.useState)("object");
-      const [moduleName, setModuleName] = (0, import_react5.useState)("");
-      const [loadedModule, setLoadedModule] = (0, import_react5.useState)("");
-      const [formName, setFormName] = (0, import_react5.useState)("");
-      const [formNonce, setFormNonce] = (0, import_react5.useState)(0);
-      const [zoom, setZoom] = (0, import_react5.useState)(readZoom);
-      const [activeSection, setActiveSection] = (0, import_react5.useState)("");
-      const [busy, setBusy] = (0, import_react5.useState)(false);
-      const [error, setError] = (0, import_react5.useState)(null);
-      const controller = (0, import_react5.useRef)(null);
-      const browseButton = (0, import_react5.useRef)(null);
-      const run = (0, import_react5.useCallback)(async (params, onDone, noStore = false) => {
+      const documentMode = typeof fixedPath === "string" && fixedPath !== "";
+      const [pathInput, setPathInput] = (0, import_react6.useState)(documentMode ? fixedPath : readLastPath);
+      const [lastDir, setLastDir] = (0, import_react6.useState)(() => readStored(LAST_DIR_KEY));
+      const [pickerOpen, setPickerOpen] = (0, import_react6.useState)(false);
+      const [document2, setDocument] = (0, import_react6.useState)(null);
+      const [detail, setDetail] = (0, import_react6.useState)(null);
+      const [selected, setSelected] = (0, import_react6.useState)(null);
+      const [viewMode, setViewMode] = (0, import_react6.useState)("object");
+      const [moduleName, setModuleName] = (0, import_react6.useState)("");
+      const [loadedModule, setLoadedModule] = (0, import_react6.useState)("");
+      const [formName, setFormName] = (0, import_react6.useState)("");
+      const [formNonce, setFormNonce] = (0, import_react6.useState)(0);
+      const [templateName, setTemplateName] = (0, import_react6.useState)("");
+      const [templateNonce, setTemplateNonce] = (0, import_react6.useState)(0);
+      const [mxl, setMxl] = (0, import_react6.useState)(readMxlSettings);
+      const [zoom, setZoom] = (0, import_react6.useState)(readZoom);
+      const [activeSection, setActiveSection] = (0, import_react6.useState)("");
+      const [busy, setBusy] = (0, import_react6.useState)(false);
+      const [error, setError] = (0, import_react6.useState)(null);
+      const controller = (0, import_react6.useRef)(null);
+      const browseButton = (0, import_react6.useRef)(null);
+      const contentRef = (0, import_react6.useRef)(documentContent);
+      contentRef.current = documentContent;
+      const versionRef = (0, import_react6.useRef)(documentVersion2);
+      versionRef.current = documentVersion2;
+      const run = (0, import_react6.useCallback)(async (params, onDone, noStore = false) => {
         controller.current?.abort();
         const next = new AbortController();
         controller.current = next;
@@ -1599,16 +1804,21 @@ window.__ModuleLoader__.load({
           const body = await fetchState({ ...params, signal: next.signal, noStore });
           if (next.signal.aborted) return;
           onDone(body);
+          const version = versionRef.current;
+          if (typeof version === "string" && version !== "") contentRef.current?.loaded?.(version);
+          else contentRef.current?.failed?.();
         } catch (failure) {
           if (next.signal.aborted || failure?.name === "AbortError") return;
+          contentRef.current?.failed?.();
           setError(failure instanceof StateError ? failure : new StateError("unknown", String(failure?.message ?? failure), 0));
         } finally {
           if (!next.signal.aborted) setBusy(false);
         }
       }, []);
-      const openPath = (0, import_react5.useCallback)((raw) => {
+      const openPath = (0, import_react6.useCallback)((raw, options = {}) => {
         const value = String(raw ?? "").trim();
         if (value === "") return;
+        const remember = options.remember !== false;
         setPathInput(value);
         run({ path: value }, (body) => {
           setDocument(body);
@@ -1617,8 +1827,10 @@ window.__ModuleLoader__.load({
           setModuleName("");
           setLoadedModule("");
           setFormName("");
+          setTemplateName("");
           setViewMode("object");
           setActiveSection("");
+          if (!remember) return;
           writeStored(LAST_PATH_KEY, value);
           const dir = dirOf(value);
           if (dir !== "") {
@@ -1627,17 +1839,17 @@ window.__ModuleLoader__.load({
           }
         });
       }, [run]);
-      const openFromToolbar = (0, import_react5.useCallback)(() => {
+      const openFromToolbar = (0, import_react6.useCallback)(() => {
         if (String(pathInput ?? "").trim() === "") {
           setPickerOpen(true);
           return;
         }
         openPath(pathInput);
       }, [openPath, pathInput]);
-      const openChooser = (0, import_react5.useCallback)(() => {
+      const openChooser = (0, import_react6.useCallback)(() => {
         setPickerOpen(true);
       }, []);
-      const closeChooser = (0, import_react5.useCallback)((finalDir = "") => {
+      const closeChooser = (0, import_react6.useCallback)((finalDir = "") => {
         setPickerOpen(false);
         if (finalDir !== "") {
           setLastDir(finalDir);
@@ -1645,17 +1857,18 @@ window.__ModuleLoader__.load({
         }
         browseButton.current?.focus?.();
       }, []);
-      const pickFromChooser = (0, import_react5.useCallback)((picked) => {
+      const pickFromChooser = (0, import_react6.useCallback)((picked) => {
         setPickerOpen(false);
         openPath(picked);
       }, [openPath]);
-      const openObject = (0, import_react5.useCallback)((object2) => {
+      const openObject = (0, import_react6.useCallback)((object2) => {
         if (document2 === null || object2 === void 0 || object2 === null) return;
         const query = typeof object2.guid === "string" && object2.guid !== "" ? object2.guid : object2.name;
         setSelected({ name: object2.name, guid: object2.guid ?? "" });
         setModuleName("");
         setLoadedModule("");
         setFormName("");
+        setTemplateName("");
         setViewMode("object");
         run({ path: document2.file.path, object: query }, (body) => {
           setDetail(body);
@@ -1663,43 +1876,60 @@ window.__ModuleLoader__.load({
           setActiveSection(first);
         });
       }, [document2, run]);
-      const openModule = (0, import_react5.useCallback)((name) => {
+      const openModule = (0, import_react6.useCallback)((name) => {
         if (document2 === null || selected === null) return;
         const query = selected.guid !== "" ? selected.guid : selected.name;
         setModuleName(name);
         setLoadedModule("");
         setFormName("");
+        setTemplateName("");
         setViewMode("module");
         run({ path: document2.file.path, object: query, module: name }, (body) => {
           setDetail(body);
           setLoadedModule(name);
         });
       }, [document2, selected, run]);
-      const openForm = (0, import_react5.useCallback)((name) => {
+      const openForm = (0, import_react6.useCallback)((name) => {
         if (document2 === null || detail === null || detail.object === null) return;
         if (!sameObject(detail.object, selected)) return;
         setError(null);
         setFormName(name);
         setModuleName("");
         setLoadedModule("");
+        setTemplateName("");
         setViewMode("form");
       }, [document2, detail, selected]);
-      const showObject = (0, import_react5.useCallback)((kind) => {
+      const openTemplate = (0, import_react6.useCallback)((name) => {
+        if (document2 === null || detail === null || detail.object === null) return;
+        if (!sameObject(detail.object, selected)) return;
+        setError(null);
+        setTemplateName(name);
+        setModuleName("");
+        setLoadedModule("");
+        setFormName("");
+        setViewMode("template");
+      }, [document2, detail, selected]);
+      const showObject = (0, import_react6.useCallback)((kind) => {
         if (kind !== void 0 && kind !== "") setActiveSection(kind);
         setError(null);
         setModuleName("");
         setLoadedModule("");
         setFormName("");
+        setTemplateName("");
         setViewMode("object");
       }, []);
-      const reload = (0, import_react5.useCallback)(() => {
+      const reload = (0, import_react6.useCallback)(() => {
         if (document2 === null) {
           if (String(pathInput ?? "").trim() === "") return;
-          openPath(pathInput);
+          openPath(pathInput, { remember: !documentMode });
           return;
         }
         if (viewMode === "form") {
           setFormNonce((current) => current + 1);
+          return;
+        }
+        if (viewMode === "template") {
+          setTemplateNonce((current) => current + 1);
           return;
         }
         if (viewMode === "module") {
@@ -1707,22 +1937,51 @@ window.__ModuleLoader__.load({
           return;
         }
         if (selected === null) {
-          openPath(document2.file.path);
+          openPath(document2.file.path, { remember: !documentMode });
           return;
         }
         openObject(selected);
-      }, [document2, moduleName, openModule, openObject, openPath, pathInput, selected, viewMode]);
-      (0, import_react5.useEffect)(() => {
+      }, [document2, documentMode, moduleName, openModule, openObject, openPath, pathInput, selected, viewMode]);
+      const fixedPathRef = (0, import_react6.useRef)("");
+      (0, import_react6.useEffect)(() => {
+        if (!documentMode || fixedPathRef.current === fixedPath) return;
+        fixedPathRef.current = fixedPath;
+        openPath(fixedPath, { remember: false });
+      }, [documentMode, fixedPath, openPath]);
+      const reloadRef = (0, import_react6.useRef)(reload);
+      reloadRef.current = reload;
+      const tokenRef = (0, import_react6.useRef)(refreshToken);
+      (0, import_react6.useEffect)(() => {
+        if (refreshToken === void 0) return;
+        if (tokenRef.current === refreshToken) return;
+        tokenRef.current = refreshToken;
+        reloadRef.current();
+      }, [refreshToken]);
+      (0, import_react6.useEffect)(() => {
+        if (documentMode) return void 0;
         const actions = tab?.actions;
         if (actions === void 0 || typeof actions.bindCommands !== "function") return void 0;
         return actions.bindCommands({ refresh: reload });
-      }, [tab, reload]);
-      (0, import_react5.useEffect)(() => () => {
+      }, [documentMode, tab, reload]);
+      (0, import_react6.useEffect)(() => () => {
         controller.current?.abort();
       }, []);
-      const onZoom = (0, import_react5.useCallback)((value) => {
+      const onZoom = (0, import_react6.useCallback)((value) => {
         setZoom(value);
         writeZoom(value);
+      }, []);
+      const onMxlSelect = (0, import_react6.useCallback)((value) => {
+        if (value === "fit") {
+          setMxl((current) => {
+            const next2 = { zoom: current.zoom, fit: true };
+            writeMxlSettings(next2);
+            return next2;
+          });
+          return;
+        }
+        const next = { zoom: clampMxlZoom(value), fit: false };
+        setMxl(next);
+        writeMxlSettings(next);
       }, []);
       const object = detail?.object ?? null;
       const content = detail?.content ?? null;
@@ -1734,7 +1993,7 @@ window.__ModuleLoader__.load({
       const hasPath = String(pathInput ?? "").trim() !== "";
       const selectedQuery = selected === null ? "" : selected.guid !== "" ? selected.guid : selected.name;
       const modulesTab = activeSection === MODULES_GROUP && modules.length > 0;
-      return /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r", "data-scheme": scheme }, /* @__PURE__ */ import_react5.default.createElement("style", null, PANEL_CSS), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-toolbar" }, /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react6.default.createElement("div", { className: documentMode ? "v8r v8r--document" : "v8r", "data-scheme": scheme }, /* @__PURE__ */ import_react6.default.createElement("style", null, PANEL_CSS), !documentMode && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-toolbar" }, /* @__PURE__ */ import_react6.default.createElement(
         "input",
         {
           className: "v8r-input",
@@ -1750,7 +2009,7 @@ window.__ModuleLoader__.load({
             if (event.key === "Enter") openFromToolbar();
           }
         }
-      ), /* @__PURE__ */ import_react5.default.createElement(
+      ), /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           type: "button",
@@ -1760,7 +2019,7 @@ window.__ModuleLoader__.load({
           onClick: openFromToolbar
         },
         t("panel.open")
-      ), /* @__PURE__ */ import_react5.default.createElement(
+      ), /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           type: "button",
@@ -1770,7 +2029,7 @@ window.__ModuleLoader__.load({
           onClick: openChooser
         },
         t("panel.browse")
-      ), document2 !== null && /* @__PURE__ */ import_react5.default.createElement(
+      ), document2 !== null && /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           type: "button",
@@ -1779,7 +2038,7 @@ window.__ModuleLoader__.load({
           onClick: reload
         },
         t("panel.reload")
-      )), busy && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-loading", role: "status" }, document2 !== null ? t("panel.loading.object") : t("panel.loading")), error !== null && /* @__PURE__ */ import_react5.default.createElement(ErrorBanner, { error, translate: t }), document2 === null && !busy && error === null && !pickerOpen && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-empty" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-empty-title" }, t("panel.empty.title")), /* @__PURE__ */ import_react5.default.createElement("div", null, t("panel.empty.hint")), /* @__PURE__ */ import_react5.default.createElement(
+      )), busy && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-loading", role: "status" }, document2 !== null ? t("panel.loading.object") : t("panel.loading")), error !== null && /* @__PURE__ */ import_react6.default.createElement(ErrorBanner, { error, translate: t }), !documentMode && document2 === null && !busy && error === null && !pickerOpen && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-empty" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-empty-title" }, t("panel.empty.title")), /* @__PURE__ */ import_react6.default.createElement("div", null, t("panel.empty.hint")), /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           type: "button",
@@ -1787,7 +2046,7 @@ window.__ModuleLoader__.load({
           onClick: openChooser
         },
         t("panel.chooseFile")
-      )), document2 !== null && /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-body" }, /* @__PURE__ */ import_react5.default.createElement(
+      )), document2 !== null && /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-body" }, /* @__PURE__ */ import_react6.default.createElement(
         Tree,
         {
           key: document2.file?.path ?? "tree",
@@ -1799,18 +2058,20 @@ window.__ModuleLoader__.load({
           activeSection,
           moduleName,
           formName,
+          templateName,
           busy,
           onSelect: openObject,
           onSection: showObject,
           onOpenForm: openForm,
+          onOpenTemplate: openTemplate,
           onOpenModule: openModule,
           translate: t
         }
-      ), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-main", "data-view": viewMode }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-subtitle" }, t("panel.file.summary", {
+      ), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-main", "data-view": viewMode }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-subtitle" }, t("panel.file.summary", {
         kind: fileKindLabel(t, document2.file?.kind),
         size: formatBytes(document2.file?.size),
         count: document2.file?.objectCount ?? 0
-      }), document2.file?.formatVersion !== void 0 && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, " \xB7 ", t("panel.file.format", { version: document2.file.formatVersion })), Array.isArray(document2.file?.warnings) && document2.file.warnings.length > 0 && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, " \xB7 ", t("panel.warnings", { count: document2.file.warnings.length }))), viewMode === "object" && selected === null && /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, t("panel.selectObject")), viewMode === "object" && selected !== null && !detailMatches && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("h3", { className: "v8r-title" }, selected.name), /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable"))), viewMode === "object" && detailMatches && object !== null && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("h3", { className: "v8r-title" }, object.name), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-subtitle" }, object.typeTitle, object.synonym !== void 0 && object.synonym !== "" && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, " \xB7 ", object.synonym)), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-tabs", role: "tablist" }, sections.map((section) => /* @__PURE__ */ import_react5.default.createElement(
+      }), document2.file?.formatVersion !== void 0 && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, " \xB7 ", t("panel.file.format", { version: document2.file.formatVersion })), Array.isArray(document2.file?.warnings) && document2.file.warnings.length > 0 && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, " \xB7 ", t("panel.warnings", { count: document2.file.warnings.length }))), viewMode === "object" && selected === null && /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, t("panel.selectObject")), viewMode === "object" && selected !== null && !detailMatches && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("h3", { className: "v8r-title" }, selected.name), /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable"))), viewMode === "object" && detailMatches && object !== null && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("h3", { className: "v8r-title" }, object.name), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-subtitle" }, object.typeTitle, object.synonym !== void 0 && object.synonym !== "" && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, " \xB7 ", object.synonym)), /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-tabs", role: "tablist" }, sections.map((section) => /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           key: section.kind,
@@ -1826,7 +2087,7 @@ window.__ModuleLoader__.load({
         " (",
         Array.isArray(section.entries) ? section.entries.length : 0,
         ")"
-      )), modules.length > 0 && /* @__PURE__ */ import_react5.default.createElement(
+      )), modules.length > 0 && /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           type: "button",
@@ -1841,7 +2102,7 @@ window.__ModuleLoader__.load({
         " (",
         modules.length,
         ")"
-      )), modulesTab ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-modules" }, modules.map((module2) => /* @__PURE__ */ import_react5.default.createElement(
+      )), modulesTab ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "v8r-modules" }, modules.map((module2) => /* @__PURE__ */ import_react6.default.createElement(
         "button",
         {
           key: module2.name,
@@ -1853,14 +2114,15 @@ window.__ModuleLoader__.load({
           }
         },
         module2.name
-      ))) : active !== void 0 ? /* @__PURE__ */ import_react5.default.createElement(
+      ))) : active !== void 0 ? /* @__PURE__ */ import_react6.default.createElement(
         SectionTable,
         {
           section: active,
           translate: t,
-          onOpenForm: openForm
+          onOpenForm: openForm,
+          onOpenTemplate: openTemplate
         }
-      ) : null), viewMode === "module" && detailMatches && object !== null && /* @__PURE__ */ import_react5.default.createElement(
+      ) : null), viewMode === "module" && detailMatches && object !== null && /* @__PURE__ */ import_react6.default.createElement(
         ModuleView,
         {
           object,
@@ -1876,7 +2138,7 @@ window.__ModuleLoader__.load({
           },
           onOpenModule: openModule
         }
-      ), viewMode === "module" && !detailMatches && /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable")), viewMode === "form" && detailMatches && object !== null && /* @__PURE__ */ import_react5.default.createElement(
+      ), viewMode === "module" && !detailMatches && /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable")), viewMode === "form" && detailMatches && object !== null && /* @__PURE__ */ import_react6.default.createElement(
         FormView,
         {
           object,
@@ -1891,7 +2153,23 @@ window.__ModuleLoader__.load({
           onZoom,
           onReload: reload
         }
-      ), viewMode === "form" && !detailMatches && /* @__PURE__ */ import_react5.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable")))), pickerOpen && /* @__PURE__ */ import_react5.default.createElement(
+      ), viewMode === "form" && !detailMatches && /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable")), viewMode === "template" && detailMatches && object !== null && /* @__PURE__ */ import_react6.default.createElement(
+        TemplateView,
+        {
+          object,
+          templateName,
+          src: buildTemplateUrl(document2.file.path, selectedQuery, templateName),
+          zoom: mxl.zoom,
+          fit: mxl.fit,
+          nonce: templateNonce,
+          translate: t,
+          onBack: () => {
+            showObject();
+          },
+          onSelect: onMxlSelect,
+          onReload: reload
+        }
+      ), viewMode === "template" && !detailMatches && /* @__PURE__ */ import_react6.default.createElement("p", { className: "v8r-muted" }, busy ? t("panel.loading.object") : t("panel.objectUnavailable")))), pickerOpen && !documentMode && /* @__PURE__ */ import_react6.default.createElement(
         FilePicker,
         {
           initialDir: lastDir,
@@ -1900,6 +2178,42 @@ window.__ModuleLoader__.load({
           onClose: closeChooser
         }
       ));
+    }
+    
+    // src/client/document.js
+    var DOCUMENT_ID = "@fishca/dsh-v8reader/config";
+    var DOCUMENT_EXTENSIONS = Object.freeze(["cf", "cfe", "epf", "erf"]);
+    function documentPath(meta) {
+      const value = meta?.value;
+      const absolutePath = value?.absolutePath;
+      return typeof absolutePath === "string" ? absolutePath : "";
+    }
+    function documentVersion(meta) {
+      const value = meta?.value;
+      return typeof value?.version === "string" ? value.version : "";
+    }
+    
+    // src/client/DocumentView.jsx
+    function DocumentView({ useTabInfo, useResource, content, t: provided, scheme = "light" }) {
+      const t = typeof provided === "function" ? provided : (key) => key;
+      const tab = useTabInfo().tab;
+      const meta = useResource("file", tab.contentId);
+      const path = documentPath(meta);
+      if (path === "") {
+        return /* @__PURE__ */ import_react7.default.createElement("div", { className: "v8r v8r--document", "data-scheme": scheme }, /* @__PURE__ */ import_react7.default.createElement("style", null, PANEL_CSS), /* @__PURE__ */ import_react7.default.createElement("p", { className: "v8r-muted v8r-document-wait" }, t("document.waiting")));
+      }
+      return /* @__PURE__ */ import_react7.default.createElement(
+        PanelView,
+        {
+          t,
+          scheme,
+          useTabInfo,
+          fixedPath: path,
+          documentVersion: documentVersion(meta),
+          documentContent: content,
+          refreshToken: typeof content?.revision === "number" ? content.revision : void 0
+        }
+      );
     }
     
     // src/client/messages.js
@@ -1934,6 +2248,7 @@ window.__ModuleLoader__.load({
       "panel.objectUnavailable": "\u0421\u043E\u0441\u0442\u0430\u0432 \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u043D\u0435 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D. \u041F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438 \u2014 \u0432 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0438 \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435.",
       "panel.back": "\u041A \u043E\u0431\u044A\u0435\u043A\u0442\u0443",
       "panel.openForm": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0444\u043E\u0440\u043C\u0443",
+      "panel.openTemplate": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043C\u0430\u043A\u0435\u0442",
       "panel.column.name": "\u0418\u043C\u044F",
       "panel.column.synonym": "\u0421\u0438\u043D\u043E\u043D\u0438\u043C",
       "panel.column.type": "\u0422\u0438\u043F",
@@ -1955,6 +2270,12 @@ window.__ModuleLoader__.load({
       "form.error.title": "\u0424\u043E\u0440\u043C\u0430 \u043D\u0435 \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u0430\u043D\u0430",
       "form.retry": "\u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u044C",
       "form.zoom": "\u041C\u0430\u0441\u0448\u0442\u0430\u0431",
+      "template.loading": "\u041E\u0442\u0440\u0438\u0441\u043E\u0432\u043A\u0430 \u043C\u0430\u043A\u0435\u0442\u0430\u2026",
+      "template.error.title": "\u041C\u0430\u043A\u0435\u0442 \u043D\u0435 \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u0430\u043D",
+      "template.zoom": "\u041C\u0430\u0441\u0448\u0442\u0430\u0431",
+      "template.fit": "\u041F\u043E \u0448\u0438\u0440\u0438\u043D\u0435",
+      "document.title": "\u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044F 1\u0421",
+      "document.waiting": "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435 \u043F\u0443\u0442\u0438 \u043A \u0444\u0430\u0439\u043B\u0443\u2026",
       "picker.title": "\u0412\u044B\u0431\u043E\u0440 \u0444\u0430\u0439\u043B\u0430 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438",
       "picker.close": "\u0417\u0430\u043A\u0440\u044B\u0442\u044C \u043E\u0431\u0437\u043E\u0440",
       "picker.up": "\u0420\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u0441\u043A\u0430\u044F \u043F\u0430\u043F\u043A\u0430",
@@ -2008,6 +2329,7 @@ window.__ModuleLoader__.load({
       "error.assets-missing": "\u0420\u0435\u0441\u0443\u0440\u0441\u044B \u0440\u0435\u043D\u0434\u0435\u0440\u0435\u0440\u0430 \u0444\u043E\u0440\u043C\u044B \u043D\u0435 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u044B: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 npm run assets \u0432 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0435 \u043F\u043B\u0430\u0433\u0438\u043D\u0430.",
       "error.form-error": "\u0420\u0435\u043D\u0434\u0435\u0440\u0435\u0440 \u0444\u043E\u0440\u043C\u044B \u0441\u043E\u043E\u0431\u0449\u0438\u043B \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435.",
       "error.form-timeout": "\u0420\u0435\u043D\u0434\u0435\u0440\u0435\u0440 \u0444\u043E\u0440\u043C\u044B \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B \u0437\u0430 \u043E\u0442\u0432\u0435\u0434\u0451\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F.",
+      "error.mxl-error": "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u044B\u0439 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442.",
       "error.unknown": "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430.",
       "error.hint.cli-missing": "\u0421\u043E\u0431\u0435\u0440\u0438\u0442\u0435 v8reader_cli (cmake --build out/mingw) \u0438 \u0440\u0430\u0437\u043B\u043E\u0436\u0438\u0442\u0435 \u0435\u0433\u043E windeployqt \u0432 out/cli-deploy, \u043B\u0438\u0431\u043E \u0437\u0430\u0434\u0430\u0439\u0442\u0435 config.cliPath \u0432 \u0441\u0442\u0440\u043E\u043A\u0435 \u043F\u043B\u0430\u0433\u0438\u043D\u0430 \u0438\u043B\u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u043D\u043D\u0443\u044E V8READER_CLI.",
       "error.details": "\u041E\u0442\u0432\u0435\u0442 \u0443\u0442\u0438\u043B\u0438\u0442\u044B"
@@ -2043,6 +2365,7 @@ window.__ModuleLoader__.load({
       "panel.objectUnavailable": "The object composition was not read. See the error message.",
       "panel.back": "Back to object",
       "panel.openForm": "Open form",
+      "panel.openTemplate": "Open template",
       "panel.column.name": "Name",
       "panel.column.synonym": "Synonym",
       "panel.column.type": "Type",
@@ -2064,6 +2387,12 @@ window.__ModuleLoader__.load({
       "form.error.title": "The form did not render",
       "form.retry": "Retry",
       "form.zoom": "Zoom",
+      "template.loading": "Rendering the template\u2026",
+      "template.error.title": "The template did not render",
+      "template.zoom": "Zoom",
+      "template.fit": "Fit width",
+      "document.title": "1C configuration",
+      "document.waiting": "Waiting for the file path\u2026",
       "picker.title": "Choose a configuration file",
       "picker.close": "Close the chooser",
       "picker.up": "Parent folder",
@@ -2117,6 +2446,7 @@ window.__ModuleLoader__.load({
       "error.assets-missing": "The form renderer assets are not installed: run npm run assets in the plugin directory.",
       "error.form-error": "The form renderer reported an error.",
       "error.form-timeout": "The form renderer did not answer in time.",
+      "error.mxl-error": "The table document could not be shown.",
       "error.unknown": "Unknown error.",
       "error.hint.cli-missing": "Build v8reader_cli (cmake --build out/mingw) and deploy it with windeployqt into out/cli-deploy, or set config.cliPath on the plugin row or the V8READER_CLI environment variable.",
       "error.details": "Tool output"
@@ -2170,16 +2500,19 @@ window.__ModuleLoader__.load({
         }),
         "dsh-v8reader: theme scheme"
       );
-      function PanelBody(props) {
-        const [current, setCurrent] = (0, import_react6.useState)(scheme);
-        (0, import_react6.useEffect)(() => {
+      function useScheme() {
+        const [current, setCurrent] = (0, import_react8.useState)(scheme);
+        (0, import_react8.useEffect)(() => {
           listeners.add(setCurrent);
           setCurrent(scheme);
           return () => {
             listeners.delete(setCurrent);
           };
         }, []);
-        return import_react6.default.createElement(PanelView, { ...props, scheme: current });
+        return current;
+      }
+      function PanelBody(props) {
+        return import_react8.default.createElement(PanelView, { ...props, scheme: useScheme() });
       }
       ctx.effect(
         () => ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register(
@@ -2188,6 +2521,31 @@ window.__ModuleLoader__.load({
         )),
         "dsh-v8reader: tab body"
       );
+      function DocumentBody(props) {
+        return import_react8.default.createElement(DocumentView, { ...props, scheme: useScheme() });
+      }
+      ctx.inject(["documentPreviews", "slots"], (documentCtx) => {
+        documentCtx.effect(
+          () => documentCtx.documentPreviews.register({
+            id: DOCUMENT_ID,
+            extensions: [...DOCUMENT_EXTENSIONS],
+            // Every claimed suffix is a container, never text: without this the
+            // preview would also offer its plain-text fallback for the file.
+            binaryExtensions: [...DOCUMENT_EXTENSIONS],
+            priority: "extension",
+            title: () => t("document.title"),
+            loading: "renderer"
+          }),
+          "dsh-v8reader: document preview"
+        );
+        documentCtx.effect(
+          () => documentCtx.slots.inject("sidebar.right.tab.document", () => documentCtx.slots.register(
+            { name: "sidebar.right.tab.document", key: DOCUMENT_ID, locale: LOCALE_NAMESPACE },
+            DocumentBody
+          )),
+          "dsh-v8reader: document body"
+        );
+      });
     }
     
     return module.exports;

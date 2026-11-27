@@ -94,6 +94,21 @@ export function buildFormUrl(path, object, form) {
 }
 
 /**
+ * Build the exported table document (MXL) page URL.
+ *
+ * Like the form page, the Host answers with one complete self-contained page;
+ * the panel scales the loaded document itself, so zoom is not a query value.
+ * @param {string} path - absolute container path.
+ * @param {string} object - object query (GUID, name, or synonym).
+ * @param {string} template - template name or synonym.
+ * @returns {string} a same-origin URL with every value encoded once.
+ */
+export function buildTemplateUrl(path, object, template) {
+  const params = new URLSearchParams({ path, object, template })
+  return `/v8reader/mxl?${params.toString()}`
+}
+
+/**
  * Fetch one panel document.
  * @param {{
  *   path: string,

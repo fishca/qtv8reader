@@ -40,6 +40,7 @@ import {
   inspectPathValue,
   inspectTarget,
   isAbsolutePath,
+  mxlCacheKey,
   stateCacheKey,
   fileVersion
 } from '../src/host/paths.js'
@@ -689,6 +690,16 @@ test('form cache key separates the generation, the object and the form', () => {
   assert.equal(formCacheKey(file, 'A', 'Форма1'), formCacheKey({ ...file }, 'A', 'Форма1'))
 })
 
+test('mxl cache key separates the generation, the object and the template', () => {
+  const file = { path: FILE, size: 10, mtimeMs: 20 }
+  assert.notEqual(mxlCacheKey(file, 'A', 'Макет1'), mxlCacheKey({ ...file, size: 11 }, 'A', 'Макет1'))
+  assert.notEqual(mxlCacheKey(file, 'A', 'Макет1'), mxlCacheKey(file, 'B', 'Макет1'))
+  assert.notEqual(mxlCacheKey(file, 'A', 'Макет1'), mxlCacheKey(file, 'A', 'Макет2'))
+  assert.equal(mxlCacheKey(file, 'A', 'Макет1'), mxlCacheKey({ ...file }, 'A', 'Макет1'))
+  // The form and table-document keys never collide, even for one selection.
+  assert.notEqual(mxlCacheKey(file, 'A', 'Форма1'), formCacheKey(file, 'A', 'Форма1'))
+})
+
 test('model page injects the base and the model before the renderer script', () => {
   const template = '<!doctype html><html><head><meta charset="utf-8">'
     + '<link rel="stylesheet" href="css/viewer.css"></head><body>'
@@ -892,6 +903,103 @@ test('form route inlines the model, caches it, and maps failures', async () => {
     assert.equal((await malformedPage.json()).error.code, ERROR_CODES.cliFailed)
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('mxl route serves the exported page, caches it, and maps failures', async () => {
+  const page = '<!DOCTYPE html>\n<html lang="ru"><head><meta charset="utf-8">'
+    + '<style>.mxl{width:200px}</style></head><body><div class="sheet">'
+    + '<table class="mxl"><tr><td>Итого</td></tr></table></div></body></html>'
+  const cli = fakeCli({
+    stdout: (args) => (args[0] === 'mxl' ? page : JSON.stringify(viewDocument()))
+  })
+  const resource = createResource({
+    cli,
+    cache: createLruCache(),
+    settings: DEFAULT_SETTINGS,
+    stat: fakeStat(),
+    platform: process.platform
+  })
+  const object = 'e3489bca-d691-53a8-8feb-890730540f20'
+  const url = `http://127.0.0.1:1/v8reader/mxl?path=${encodeURIComponent(FILE)}`
+    + `&object=${encodeURIComponent(object)}&template=${encodeURIComponent('Макет1')}`
+
+  const response = await resource(request(url))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /text\/html/)
+  assert.equal(await response.text(), page)
+  assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(cli.calls.length, 1)
+  assert.deepEqual(cli.calls[0].args, [
+    'mxl', path.normalize(FILE), object, '--template', 'Макет1', '--html', '-'
+  ])
+  assert.equal(typeof cli.calls[0].options.cwd, 'string')
+  assert.equal(cli.calls[0].options.maxBytes, DEFAULT_SETTINGS.maxJsonBytes)
+
+  const again = await resource(request(url))
+  assert.equal(await again.text(), page)
+  assert.equal(cli.calls.length, 1, 'the page must be served from the cache')
+
+  const head = await resource(request(url, { method: 'HEAD' }))
+  assert.equal(head.status, 200)
+  assert.equal(await head.text(), '')
+
+  const noTemplate = await resource(request(
+    `http://127.0.0.1:1/v8reader/mxl?path=${encodeURIComponent(FILE)}&object=${encodeURIComponent(object)}`
+  ))
+  assert.equal(noTemplate.status, 400)
+  assert.equal((await noTemplate.json()).error.code, ERROR_CODES.badRequest)
+
+  const noObject = await resource(request(
+    `http://127.0.0.1:1/v8reader/mxl?path=${encodeURIComponent(FILE)}&template=${encodeURIComponent('Макет1')}`
+  ))
+  assert.equal(noObject.status, 400)
+
+  const failed = createResource({
+    cli: fakeCli({ code: 1 }),
+    cache: createLruCache(),
+    settings: DEFAULT_SETTINGS,
+    stat: fakeStat(),
+    platform: process.platform
+  })
+  const failedPage = await failed(request(url))
+  assert.equal(failedPage.status, 500)
+  assert.equal((await failedPage.json()).error.code, ERROR_CODES.cliFailed)
+
+  const malformed = createResource({
+    cli: fakeCli({ stdout: () => '{"not":"a page"}' }),
+    cache: createLruCache(),
+    settings: DEFAULT_SETTINGS,
+    stat: fakeStat(),
+    platform: process.platform
+  })
+  const malformedPage = await malformed(request(url))
+  assert.equal(malformedPage.status, 502)
+  assert.equal((await malformedPage.json()).error.code, ERROR_CODES.cliFailed)
+})
+
+test('real CLI: mxl route reports a container without templates', async (t) => {
+  const fixture = path.resolve(packageDir, '..', '..', 'tests', 'fixtures', 'controlbase', '1Cv8_controls.cf')
+  const plugin = createPlugin({ config: {}, packageDir })
+  const resolved = await plugin.cli.resolve().catch((error) => error)
+  if (resolved instanceof RouteError || !existsSync(fixture)) {
+    plugin.dispose()
+    t.skip(`нет v8reader_cli или фикстуры: ${fixture}`)
+    return
+  }
+
+  try {
+    const response = await plugin.resource(request(
+      `http://127.0.0.1:1/v8reader/mxl?path=${encodeURIComponent(fixture)}`
+      + `&object=${encodeURIComponent('Контролы')}&template=${encodeURIComponent('НетТакого')}`
+    ))
+    assert.equal(response.status, 500)
+    const body = await response.json()
+    assert.equal(body.error.code, ERROR_CODES.cliFailed)
+    assert.match(body.error.message, /макет/i)
+  } finally {
+    plugin.dispose()
   }
 })
 
