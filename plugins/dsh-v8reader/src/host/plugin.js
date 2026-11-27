@@ -3,6 +3,7 @@
  * cache, and the one prefix route. Kept free of DSH imports so the tests can
  * exercise it under plain Node.
  */
+import path from 'node:path'
 import { MIN_CLI_VERSION, createCli } from './cli.js'
 import { createLruCache } from './cache.js'
 import { ROUTE_PREFIX, createResource } from './routes.js'
@@ -68,7 +69,8 @@ export function resolveSettings(raw = {}) {
  *   platform?: NodeJS.Platform,
  *   spawn?: typeof import('node:child_process').spawn,
  *   stat?: typeof import('node:fs').statSync,
- *   cache?: object
+ *   cache?: object,
+ *   assetsDir?: string
  * }} [options] - row config and test seams.
  * @returns {{
  *   settings: typeof DEFAULT_SETTINGS,
@@ -88,7 +90,8 @@ export function createPlugin({
   stat,
   readdir,
   home,
-  cache: providedCache
+  cache: providedCache,
+  assetsDir
 } = {}) {
   const settings = resolveSettings(config)
   const cli = createCli({
@@ -103,10 +106,12 @@ export function createPlugin({
     maxEntries: settings.cacheEntries,
     maxBytes: settings.cacheBytes
   })
+  const resolvedAssets = assetsDir ?? (packageDir === '' ? '' : path.join(packageDir, 'assets', 'formpreview'))
   const resource = createResource({
     cli,
     cache,
     settings,
+    assetsDir: resolvedAssets,
     ...(stat === undefined ? {} : { stat }),
     ...(readdir === undefined ? {} : { readdir }),
     ...(home === undefined ? {} : { home }),
@@ -117,6 +122,7 @@ export function createPlugin({
     settings,
     cli,
     cache,
+    assetsDir: resolvedAssets,
     resource,
     route: { kind: 'prefix', path: ROUTE_PREFIX, resource },
     dispose() {

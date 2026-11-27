@@ -71,6 +71,14 @@ export function inspectTarget(value, { stat = statSync, platform = process.platf
     info = stat(value)
   } catch (error) {
     const missing = error && typeof error === 'object' && error.code === 'ENOENT'
+    const denied = error && typeof error === 'object'
+      && (error.code === 'EACCES' || error.code === 'EPERM')
+    if (denied) {
+      throw new RouteError(ERROR_CODES.denied, `Нет доступа к файлу: ${value}`, 403, {
+        path: value,
+        reason: error.code
+      })
+    }
     throw new RouteError(
       ERROR_CODES.badPath,
       missing ? `Файл не найден: ${value}` : `Не удалось прочитать путь: ${value}`,
@@ -121,6 +129,19 @@ export function stateCacheKey(file, object, module) {
  */
 export function fileVersion(file) {
   return `${file.mtimeMs.toString(36)}-${file.size.toString(36)}`
+}
+
+/**
+ * Locked selection of the `form` route: the file generation, the object and the
+ * form. Models are big enough to be worth caching but must never outlive the
+ * file they describe.
+ * @param {{ path: string, size: number, mtimeMs: number }} file - inspected file facts.
+ * @param {string} object - object query or an empty string.
+ * @param {string} form - form name or synonym.
+ * @returns {string} a cache key for one form model.
+ */
+export function formCacheKey(file, object, form) {
+  return ['form', file.path, file.size, file.mtimeMs, object, form].join('\u0000')
 }
 
 /**

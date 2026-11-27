@@ -145,10 +145,8 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 |---|---|
 | `/v8reader/state?path=[&object=&module=]` | JSON из `view` |
 | `/v8reader/browse?path=[&all=1]` | один уровень каталога для обзора файлов: `dir`, `parent`, `breadcrumbs`, `entries[{name,path,kind,size?}]`, `truncated`, `hiddenCount`; без `path` — домашний каталог, путь к файлу сводится к его каталогу |
-| `/v8reader/form?path=&object=&form=` | редирект 302 на `/v8reader/assets/model.html?model=<model.json URL>&title=<…>` |
-| `/v8reader/model.json?path=&object=&form=` | JSON из `form-model` |
-| `/v8reader/mxl?path=&object=&template=&zoom=` | HTML-страница макета (`mxl --html -`), `zoom` — CSS `zoom` |
-| `/v8reader/assets/<rel>` | файлы `assets/formpreview`, `Cache-Control: public, max-age=31536000, immutable` |
+| `/v8reader/form?path=&object=&form=` | HTML-страница формы: модель `form-model` вставлена в `model.html`, ассеты подключены через `<base href="/v8reader/assets/">` |
+| `/v8reader/assets/<путь>` | файлы `assets/formpreview`, `Cache-Control: no-cache` + ETag |
 | `/v8reader/health` | `{ ok, cli: { path, version }, schema }` |
 
 Правила исполнения:
@@ -210,13 +208,19 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 Отдельный рендерер не пишем. Используется существующая веб-страница точного вида
 (`resources/formpreview/model.html`, `form-preview.js`, `viewer.css`,
 `form-preview-85.css`, `icons.svg`, `platform-*.png`, `std-pictures/*`), которая
-читает модель из `?model=` или `model.json`. Отличия от GUI:
+читает модель из `window.__QV8_MODEL__` или `?model=`. Отличия от GUI:
 
-- страница отдаётся маршрутом `/v8reader/assets/model.html?model=…`, поэтому
-  относительные URL ресурсов разрешаются под `/v8reader/assets/`;
-- модель — `form-model` через `/v8reader/model.json`;
-- `iframe sandbox="allow-scripts allow-same-origin"` внутри вкладки;
-- кэш моделей по `(path, mtime, object, form)` на клиенте.
+- `scripts/sync-assets.mjs` копирует `resources/formpreview/**` в
+  `assets/formpreview` (429 файлов, ≈2,4 МБ, копия закоммичена);
+- `/v8reader/form` отдаёт `model.html` с вставленной моделью и
+  `<base href="/v8reader/assets/">`, поэтому относительные URL страницы
+  разрешаются под `/v8reader/assets/`, а ошибка CLI приходит JSON-ответом до
+  загрузки страницы;
+- модель кэшируется на хосте по `(path, size, mtime, object, form)`;
+- `iframe sandbox="allow-scripts allow-same-origin"` внутри вкладки; панель
+  следит за `window.__QV8_STATE` и показывает баннер при ошибке рендерера;
+- масштаб (50–150 %) пишется в `documentElement.style.zoom` кадра, поэтому
+  перерисовка не перезагружает форму.
 
 Ограничение: формы 8.2 с короткой записью макета показываются с известными
 упрощениями (см. ограничения в `docs/research/forms-format.md`).
@@ -257,7 +261,7 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 - юнит: парсинг и валидация пути, коды ошибок, ключ кэша, экранирование,
   проверка `schema`/`--version`;
 - интеграция: `V8READER_CLI` + `tests/fixtures/controlbase/1Cv8_controls.cf` —
-  `state` без объекта и с объектом, `model.json` для формы, `mxl --html` на макет;
+  `state` без объекта и с объектом, `/v8reader/form` и HTML формы, `mxl --html` на макет;
 - сборка: `client.js` содержит `__ModuleLoader__` и не содержит `import React`.
 
 **Ручная проверка в GUI**: установка бандла, открытие фикстуры из дерева Files,
@@ -301,10 +305,36 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
       Готово: `node --test` — 29 кейсов (host 19, client 10), живой
       `/v8reader/browse?path=…controlbase` — 200, 7 крошек, `1Cv8_controls.cf`
       в списке; в GUI руками не проверено (см. выше).
-- [ ] **M3** Код: `CodeView`, порт BSL-правил, настройки, лимит строк, копирование.
+- [x] **M2.2** Дерево как в 1С: корень «Конфигурация» → категории → объекты →
+      разделы объекта (реквизиты, табличные части, формы, команды, макеты,
+      модули) → листья; формы и модули открываются из дерева, листья разделов
+      переключают вкладку; фильтр по имени/синониму с сохранением родителей
+      совпавших вложенных реквизитов; порции по 200 объектов и 100 листьев.
+      Готово: `test/client.test.js` — группы, вложенность, фильтрация, счётчики;
+      живой `/v8reader/state` на фикстуре отдаёт 2 категории и 2 объекта.
+- [x] **M3** Код: `CodeView`, порт BSL-правил, настройки, лимит строк, копирование.
+      Готово: `src/client/bsl.js` повторяет правила `BslHighlighter.cpp`
+      (ключевые слова ru/en, `#…` в начале строки, `&…`, числа, строки с
+      `""`, `//`); палитра light/dark из `BslHighlightSettings`, схема берётся
+      из сервиса `theme` и обновляется по `theme/change`; номера строк,
+      перенос, размер шрифта, отключение подсветки, копирование, порции по
+      1500 строк; настройки в
+      `localStorage['dsh.v8reader.code.v1']`; `test/bsl.test.js` — 6 кейсов,
+      клиентские тесты настроек; `node --test` — 47 кейсов.
 - [ ] **M4** Документ-рендерер: `documentPreviews.register` + тело по `absolutePath`,
       Reload, баннер изменения файла.
-- [ ] **M5** Формы: `sync-assets`, маршруты `form`/`model.json`, iframe, кэш.
+- [x] **M5** Формы: `sync-assets`, маршрут `form`, ассеты, iframe, кэш.
+      Готово: `scripts/sync-assets.mjs` (429 файлов, 2,45 МБ, копия
+      закоммичена); `/v8reader/form` вставляет модель в `model.html` и отдаёт
+      HTML одним запросом, ошибки — JSON до страницы; `/v8reader/assets/…` с
+      `no-cache` и ETag, защитой от выхода из каталога; панель следит за
+      `__QV8_STATE`, показывает баннер при ошибке, даёт масштаб 50–150 % и
+      «Обновить»; модель кэшируется по `(путь, размер, mtime, объект, форма)`.
+      Проверено: `node --test` — 26 host-кейсов, включая реальный
+      `form-model` на фикстуре; живой `/v8reader/form` (объект по GUID и по
+      имени) — 200 с вставленной моделью, `/v8reader/assets/css/viewer.css` —
+      200. Отрисовка панели глазами не проверена: браузерного канала к
+      loopback-GUI в этой сессии нет.
 - [ ] **M6** Макеты и полировка: iframe макета, масштаб, объявленный `Config`,
       i18n en, job CI, релиз плагина 0.1.0.
 

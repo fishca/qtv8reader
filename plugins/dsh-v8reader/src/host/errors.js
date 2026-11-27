@@ -18,7 +18,9 @@ export const ERROR_CODES = Object.freeze({
   denied: 'denied',
   forbidden: 'forbidden',
   notFound: 'not-found',
-  methodNotAllowed: 'method-not-allowed'
+  methodNotAllowed: 'method-not-allowed',
+  badRequest: 'bad-request',
+  assetsMissing: 'assets-missing'
 })
 
 /** An HTTP answer with a stable code, the status it maps to, and optional detail. */

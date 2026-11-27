@@ -79,6 +79,21 @@ export function buildBrowseUrl(dir = '', all = false) {
 }
 
 /**
+ * Build the form page URL.
+ *
+ * The Host answers with a complete page (renderer assets plus the inlined
+ * model), so the panel can point an iframe at it and needs no second request.
+ * @param {string} path - absolute container path.
+ * @param {string} object - object query (GUID, name, or synonym).
+ * @param {string} form - form name or synonym.
+ * @returns {string} a same-origin URL with every value encoded once.
+ */
+export function buildFormUrl(path, object, form) {
+  const params = new URLSearchParams({ path, object, form })
+  return `/v8reader/form?${params.toString()}`
+}
+
+/**
  * Fetch one panel document.
  * @param {{
  *   path: string,

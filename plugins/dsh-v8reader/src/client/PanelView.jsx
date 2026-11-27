@@ -1,16 +1,21 @@
 /**
  * The right-Sidebar page that reads one 1C:Enterprise container.
  *
- * The panel owns no data of its own: every screen is one `state` request whose
- * answer the Host serves from its cache. Modules are shown as plain text here;
- * the syntax-aware CodeView arrives with its own stage.
+ * The panel owns no data of its own: every object screen is one `state` request
+ * the Host serves from its cache, modules are code with BSL highlighting, and a
+ * form is the application's own exact-view renderer served as a page and shown
+ * in an iframe. The metadata tree is hierarchical: configuration → category →
+ * object → section → entry, filled from the same documents.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { StateError, fetchState } from './api.js'
+import { StateError, buildFormUrl, fetchState } from './api.js'
+import { CodeView } from './CodeView.jsx'
 import { FilePicker } from './FilePicker.jsx'
+import { FormPreview } from './FormPreview.jsx'
 import { fileKindLabel, flattenEntries, formatBytes, sectionLabel } from './labels.js'
 import { dirOf } from './paths.js'
 import { PANEL_CSS } from './styles.js'
+import { MODULES_GROUP, sameObject } from './tree.js'
 import { Tree } from './Tree.jsx'
 
 /** Key of the last opened path; only the path is remembered, never file contents. */
@@ -19,8 +24,15 @@ export const LAST_PATH_KEY = 'dsh.v8reader.path.v1'
 /** Key of the directory the file chooser starts in. */
 export const LAST_DIR_KEY = 'dsh.v8reader.dir.v1'
 
-/** Module characters rendered before the "truncated" note. */
-const MODULE_LIMIT = 300000
+/** Key of the form-view preferences (zoom). */
+export const FORM_SETTINGS_KEY = 'dsh.v8reader.form.v1'
+
+
+/** Zoom steps of the form view, in percent. */
+export const ZOOM_STEPS = Object.freeze([50, 75, 100, 125, 150])
+
+/** Zoom used when nothing was stored. */
+export const DEFAULT_ZOOM = 100
 
 /**
  * Read a remembered value.
@@ -57,13 +69,171 @@ function readLastPath() {
 }
 
 /**
+ * Read the remembered form zoom, clamped to a known step.
+ * @returns {number} the zoom in percent.
+ */
+function readZoom() {
+  const raw = readStored(FORM_SETTINGS_KEY)
+  if (raw === '') return DEFAULT_ZOOM
+  try {
+    const parsed = JSON.parse(raw)
+    const zoom = Number(parsed?.zoom)
+    if (!Number.isFinite(zoom) || !ZOOM_STEPS.includes(zoom)) return DEFAULT_ZOOM
+    return zoom
+  } catch {
+    return DEFAULT_ZOOM
+  }
+}
+
+/**
+ * Remember the form zoom.
+ * @param {number} zoom - zoom in percent.
+ */
+function writeZoom(zoom) {
+  writeStored(FORM_SETTINGS_KEY, JSON.stringify({ zoom }))
+}
+
+/**
+ * The module view: object context, the module switcher, and the highlighted code.
+ * @param {{
+ *   object: object,
+ *   modules: object[],
+ *   moduleName: string,
+ *   text: string,
+ *   loaded: boolean,
+ *   busy: boolean,
+ *   scheme: 'light'|'dark',
+ *   translate: (key: string, params?: object) => string,
+ *   onBack: () => void,
+ *   onOpenModule: (name: string) => void
+ * }} props - the module and its context.
+ * @returns {React.ReactNode} the module screen.
+ */
+function ModuleView({
+  object,
+  modules,
+  moduleName,
+  text,
+  loaded,
+  busy,
+  scheme,
+  translate: t,
+  onBack,
+  onOpenModule
+}) {
+  return (
+    <>
+      <div className="v8r-viewhead">
+        <button type="button" className="v8r-button" onClick={onBack}>{`← ${t('panel.back')}`}</button>
+        <div className="v8r-viewhead-text">
+          <h3 className="v8r-viewhead-title">{moduleName}</h3>
+          <div className="v8r-viewhead-sub">{object.name}</div>
+        </div>
+      </div>
+
+      <div className="v8r-modules">
+        <span className="v8r-muted">{t('panel.modules')}:</span>
+        {modules.map((module) => (
+          <button
+            key={module.name}
+            type="button"
+            className="v8r-button"
+            aria-pressed={module.name === moduleName ? 'true' : 'false'}
+            disabled={busy}
+            onClick={() => { onOpenModule(module.name) }}
+          >
+            {module.name}
+          </button>
+        ))}
+      </div>
+
+      {!loaded && !busy && <p className="v8r-muted">{t('panel.objectUnavailable')}</p>}
+      {loaded && text === '' && !busy && <p className="v8r-muted">{t('panel.module.empty')}</p>}
+      {loaded && text !== '' && <CodeView text={text} scheme={scheme} translate={t} />}
+    </>
+  )
+}
+
+/**
+ * The exact-form screen: header with zoom, then the renderer page.
+ * @param {{
+ *   object: object,
+ *   formName: string,
+ *   src: string,
+ *   zoom: number,
+ *   nonce: number,
+ *   translate: (key: string, params?: object) => string,
+ *   onBack: () => void,
+ *   onZoom: (zoom: number) => void,
+ *   onReload: () => void
+ * }} props - the form page and its controls.
+ * @returns {React.ReactNode} the form screen.
+ */
+function FormView({
+  object,
+  formName,
+  src,
+  zoom,
+  nonce,
+  translate: t,
+  onBack,
+  onZoom,
+  onReload
+}) {
+  return (
+    <>
+      <div className="v8r-viewhead">
+        <button type="button" className="v8r-button" onClick={onBack}>{`← ${t('panel.back')}`}</button>
+        <div className="v8r-viewhead-text">
+          <h3 className="v8r-viewhead-title">{formName}</h3>
+          <div className="v8r-viewhead-sub">{object.name}</div>
+        </div>
+        <span className="v8r-zoom">
+          <label htmlFor="v8r-form-zoom">{t('form.zoom')}</label>
+          <select
+            id="v8r-form-zoom"
+            className="v8r-select"
+            value={String(zoom)}
+            onChange={(event) => { onZoom(Number(event.target.value)) }}
+          >
+            {ZOOM_STEPS.map((step) => (
+              <option key={step} value={String(step)}>{`${step}%`}</option>
+            ))}
+          </select>
+          <button type="button" className="v8r-button" onClick={onReload}>{t('panel.reload')}</button>
+        </span>
+      </div>
+
+      <FormPreview
+        key={`${src}#${nonce}`}
+        src={src}
+        title={formName}
+        zoom={zoom}
+        nonce={nonce}
+        translate={t}
+        onRetry={onReload}
+      />
+    </>
+  )
+}
+
+/**
  * One section as a table of name, synonym, and type.
- * @param {{ section: object, translate: (key: string) => string }} props - the section.
+ *
+ * The Forms branch is the one place where a row is actionable: a form name
+ * opens the exact-view screen, which is where the composition and the renderer
+ * meet. Other rows stay read-only.
+ * @param {{
+ *   section: object,
+ *   translate: (key: string, params?: object) => string,
+ *   onOpenForm?: (name: string) => void
+ * }} props - the section.
  * @returns {React.ReactNode} the table.
  */
-function SectionTable({ section, translate: t }) {
+function SectionTable({ section, translate: t, onOpenForm }) {
   const rows = flattenEntries(Array.isArray(section.entries) ? section.entries : [])
   if (rows.length === 0) return <p className="v8r-muted">{t('panel.sectionEmpty')}</p>
+  const forms = section.kind === 'forms' && typeof onOpenForm === 'function'
 
   return (
     <table className="v8r-table">
@@ -72,6 +242,7 @@ function SectionTable({ section, translate: t }) {
           <th>{t('panel.column.name')}</th>
           <th>{t('panel.column.synonym')}</th>
           <th>{t('panel.column.type')}</th>
+          {forms && <th>{t('panel.openForm')}</th>}
         </tr>
       </thead>
       <tbody>
@@ -85,6 +256,18 @@ function SectionTable({ section, translate: t }) {
             </td>
             <td>{entry.synonym}</td>
             <td className="v8r-muted">{entry.typeText}</td>
+            {forms && (
+              <td>
+                <button
+                  type="button"
+                  className="v8r-button"
+                  title={t('panel.openForm')}
+                  onClick={() => { onOpenForm(entry.name) }}
+                >
+                  {t('panel.openForm')}
+                </button>
+              </td>
+            )}
           </tr>
         ))}
       </tbody>
@@ -121,10 +304,14 @@ function ErrorBanner({ error, translate: t }) {
 
 /**
  * The panel page.
- * @param {{ useTabInfo?: () => { tab?: object }, t?: (key: string, params?: object) => string }} props - slot props.
+ * @param {{
+ *   useTabInfo?: () => { tab?: object },
+ *   t?: (key: string, params?: object) => string,
+ *   scheme?: 'light'|'dark'
+ * }} props - slot props and the current theme scheme.
  * @returns {React.ReactNode} the page.
  */
-export function PanelView({ useTabInfo, t: provided }) {
+export function PanelView({ useTabInfo, t: provided, scheme = 'light' }) {
   const t = typeof provided === 'function' ? provided : (key) => key
   const tab = typeof useTabInfo === 'function' ? useTabInfo().tab : undefined
 
@@ -134,7 +321,12 @@ export function PanelView({ useTabInfo, t: provided }) {
   const [document, setDocument] = useState(null)
   const [detail, setDetail] = useState(null)
   const [selected, setSelected] = useState(null)
+  const [viewMode, setViewMode] = useState('object')
   const [moduleName, setModuleName] = useState('')
+  const [loadedModule, setLoadedModule] = useState('')
+  const [formName, setFormName] = useState('')
+  const [formNonce, setFormNonce] = useState(0)
+  const [zoom, setZoom] = useState(readZoom)
   const [activeSection, setActiveSection] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -178,6 +370,9 @@ export function PanelView({ useTabInfo, t: provided }) {
       setDetail(null)
       setSelected(null)
       setModuleName('')
+      setLoadedModule('')
+      setFormName('')
+      setViewMode('object')
       setActiveSection('')
       writeStored(LAST_PATH_KEY, value)
       const dir = dirOf(value)
@@ -226,10 +421,13 @@ export function PanelView({ useTabInfo, t: provided }) {
     // GUID is the only unambiguous query: the same name may exist in two
     // categories of a large configuration.
     const query = typeof object.guid === 'string' && object.guid !== '' ? object.guid : object.name
+    setSelected({ name: object.name, guid: object.guid ?? '' })
+    setModuleName('')
+    setLoadedModule('')
+    setFormName('')
+    setViewMode('object')
     run({ path: document.file.path, object: query }, (body) => {
       setDetail(body)
-      setSelected({ name: object.name, guid: object.guid ?? '' })
-      setModuleName('')
       const first = Array.isArray(body.object?.sections) && body.object.sections.length > 0
         ? body.object.sections[0].kind
         : ''
@@ -240,11 +438,34 @@ export function PanelView({ useTabInfo, t: provided }) {
   const openModule = useCallback((name) => {
     if (document === null || selected === null) return
     const query = selected.guid !== '' ? selected.guid : selected.name
+    setModuleName(name)
+    setLoadedModule('')
+    setFormName('')
+    setViewMode('module')
     run({ path: document.file.path, object: query, module: name }, (body) => {
       setDetail(body)
-      setModuleName(name)
+      setLoadedModule(name)
     })
   }, [document, selected, run])
+
+  const openForm = useCallback((name) => {
+    if (document === null || detail === null || detail.object === null) return
+    if (!sameObject(detail.object, selected)) return
+    setError(null)
+    setFormName(name)
+    setModuleName('')
+    setLoadedModule('')
+    setViewMode('form')
+  }, [document, detail, selected])
+
+  const showObject = useCallback((kind) => {
+    if (kind !== undefined && kind !== '') setActiveSection(kind)
+    setError(null)
+    setModuleName('')
+    setLoadedModule('')
+    setFormName('')
+    setViewMode('object')
+  }, [])
 
   const reload = useCallback(() => {
     if (document === null) {
@@ -252,16 +473,20 @@ export function PanelView({ useTabInfo, t: provided }) {
       openPath(pathInput)
       return
     }
+    if (viewMode === 'form') {
+      setFormNonce((current) => current + 1)
+      return
+    }
+    if (viewMode === 'module') {
+      if (moduleName !== '') openModule(moduleName)
+      return
+    }
     if (selected === null) {
       openPath(document.file.path)
       return
     }
-    if (moduleName !== '') {
-      openModule(moduleName)
-      return
-    }
     openObject(selected)
-  }, [document, moduleName, openModule, openObject, openPath, pathInput, selected])
+  }, [document, moduleName, openModule, openObject, openPath, pathInput, selected, viewMode])
 
   useEffect(() => {
     const actions = tab?.actions
@@ -271,18 +496,30 @@ export function PanelView({ useTabInfo, t: provided }) {
 
   useEffect(() => () => { controller.current?.abort() }, [])
 
+  const onZoom = useCallback((value) => {
+    setZoom(value)
+    writeZoom(value)
+  }, [])
+
   const object = detail?.object ?? null
   const content = detail?.content ?? null
   const modules = Array.isArray(object?.modules) ? object.modules : []
   const sections = Array.isArray(object?.sections) ? object.sections : []
   const active = sections.find((section) => section.kind === activeSection) ?? sections[0]
 
-  const moduleText = typeof content?.text === 'string' ? content.text : ''
-  const moduleShown = moduleText.length > MODULE_LIMIT ? moduleText.slice(0, MODULE_LIMIT) : moduleText
+  // `detail` can still describe the previous object while the request for the
+  // new one is in flight or failed. Rendering it under the new selection would
+  // show A's sections for B, so every detail view is gated by this check.
+  const detailMatches = sameObject(object, selected)
+  const moduleText = detailMatches && loadedModule === moduleName && typeof content?.text === 'string'
+    ? content.text
+    : ''
   const hasPath = String(pathInput ?? '').trim() !== ''
+  const selectedQuery = selected === null ? '' : (selected.guid !== '' ? selected.guid : selected.name)
+  const modulesTab = activeSection === MODULES_GROUP && modules.length > 0
 
   return (
-    <div className="v8r">
+    <div className="v8r" data-scheme={scheme}>
       <style>{PANEL_CSS}</style>
 
       <div className="v8r-toolbar">
@@ -301,7 +538,7 @@ export function PanelView({ useTabInfo, t: provided }) {
         <button
           type="button"
           className={hasPath ? 'v8r-button v8r-button--primary' : 'v8r-button'}
-          disabled={busy || !hasPath}
+          disabled={busy}
           title={t('panel.open.title')}
           onClick={openFromToolbar}
         >
@@ -328,7 +565,11 @@ export function PanelView({ useTabInfo, t: provided }) {
         )}
       </div>
 
-      {busy && <div className="v8r-loading">{t('panel.loading')}</div>}
+      {busy && (
+        <div className="v8r-loading" role="status">
+          {document !== null ? t('panel.loading.object') : t('panel.loading')}
+        </div>
+      )}
       {error !== null && <ErrorBanner error={error} translate={t} />}
 
       {document === null && !busy && error === null && !pickerOpen && (
@@ -348,12 +589,23 @@ export function PanelView({ useTabInfo, t: provided }) {
       {document !== null && (
         <div className="v8r-body">
           <Tree
+            key={document.file?.path ?? 'tree'}
+            file={document.file}
             categories={document.categories}
             selected={selected}
+            detail={detail}
+            viewMode={viewMode}
+            activeSection={activeSection}
+            moduleName={moduleName}
+            formName={formName}
+            busy={busy}
             onSelect={openObject}
+            onSection={showObject}
+            onOpenForm={openForm}
+            onOpenModule={openModule}
             translate={t}
           />
-          <div className="v8r-main">
+          <div className="v8r-main" data-view={viewMode}>
             <div className="v8r-subtitle">
               {t('panel.file.summary', {
                 kind: fileKindLabel(t, document.file?.kind),
@@ -368,9 +620,20 @@ export function PanelView({ useTabInfo, t: provided }) {
               )}
             </div>
 
-            {object === null && <p className="v8r-muted">{t('panel.selectObject')}</p>}
+            {viewMode === 'object' && selected === null && (
+              <p className="v8r-muted">{t('panel.selectObject')}</p>
+            )}
 
-            {object !== null && (
+            {viewMode === 'object' && selected !== null && !detailMatches && (
+              <>
+                <h3 className="v8r-title">{selected.name}</h3>
+                <p className="v8r-muted">
+                  {busy ? t('panel.loading.object') : t('panel.objectUnavailable')}
+                </p>
+              </>
+            )}
+
+            {viewMode === 'object' && detailMatches && object !== null && (
               <>
                 <h3 className="v8r-title">{object.name}</h3>
                 <div className="v8r-subtitle">
@@ -385,49 +648,88 @@ export function PanelView({ useTabInfo, t: provided }) {
                       type="button"
                       role="tab"
                       className="v8r-tab"
-                      aria-selected={active !== undefined && section.kind === active.kind ? 'true' : 'false'}
+                      aria-selected={!modulesTab && active !== undefined && section.kind === active.kind ? 'true' : 'false'}
                       onClick={() => { setActiveSection(section.kind) }}
                     >
                       {sectionLabel(t, section)} ({Array.isArray(section.entries) ? section.entries.length : 0})
                     </button>
                   ))}
+                  {modules.length > 0 && (
+                    <button
+                      type="button"
+                      role="tab"
+                      className="v8r-tab"
+                      aria-selected={modulesTab ? 'true' : 'false'}
+                      onClick={() => { setActiveSection(MODULES_GROUP) }}
+                    >
+                      {t('panel.modules')} ({modules.length})
+                    </button>
+                  )}
                 </div>
 
-                {active !== undefined && <SectionTable section={active} translate={t} />}
-
-                {modules.length > 0 && (
-                  <>
-                    <div className="v8r-modules">
-                      <span className="v8r-muted">{t('panel.modules')}:</span>
-                      {modules.map((module) => (
-                        <button
-                          key={module.name}
-                          type="button"
-                          className="v8r-button"
-                          aria-pressed={module.name === moduleName ? 'true' : 'false'}
-                          disabled={busy}
-                          onClick={() => { openModule(module.name) }}
-                        >
-                          {module.name}
-                        </button>
-                      ))}
-                    </div>
-                    {moduleName !== '' && moduleText !== '' && (
-                      <>
-                        <pre className="v8r-code">{moduleShown}</pre>
-                        {moduleText.length > MODULE_LIMIT && (
-                          <p className="v8r-muted">
-                            {t('panel.module.truncated', {
-                              size: MODULE_LIMIT,
-                              total: moduleText.length
-                            })}
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
+                {modulesTab ? (
+                  <div className="v8r-modules">
+                    {modules.map((module) => (
+                      <button
+                        key={module.name}
+                        type="button"
+                        className="v8r-button"
+                        disabled={busy}
+                        onClick={() => { openModule(module.name) }}
+                      >
+                        {module.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : active !== undefined ? (
+                  <SectionTable
+                    section={active}
+                    translate={t}
+                    onOpenForm={openForm}
+                  />
+                ) : null}
               </>
+            )}
+
+            {viewMode === 'module' && detailMatches && object !== null && (
+              <ModuleView
+                object={object}
+                modules={modules}
+                moduleName={moduleName}
+                text={moduleText}
+                loaded={detailMatches && loadedModule === moduleName}
+                busy={busy}
+                scheme={scheme}
+                translate={t}
+                onBack={() => { showObject() }}
+                onOpenModule={openModule}
+              />
+            )}
+
+            {viewMode === 'module' && !detailMatches && (
+              <p className="v8r-muted">
+                {busy ? t('panel.loading.object') : t('panel.objectUnavailable')}
+              </p>
+            )}
+
+            {viewMode === 'form' && detailMatches && object !== null && (
+              <FormView
+                object={object}
+                formName={formName}
+                src={buildFormUrl(document.file.path, selectedQuery, formName)}
+                zoom={zoom}
+                nonce={formNonce}
+                translate={t}
+                onBack={() => { showObject() }}
+                onZoom={onZoom}
+                onReload={reload}
+              />
+            )}
+
+            {viewMode === 'form' && !detailMatches && (
+              <p className="v8r-muted">
+                {busy ? t('panel.loading.object') : t('panel.objectUnavailable')}
+              </p>
             )}
           </div>
         </div>

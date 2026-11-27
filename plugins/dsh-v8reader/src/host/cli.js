@@ -303,14 +303,20 @@ export function createCli({
   }
 
   /**
-   * Find and probe the executable once per plugin lifetime.
+   * Find and probe the executable once per successful plugin lifetime.
+   *
+   * A failed resolution is not cached: the panel's own hint tells the user to
+   * build and deploy the binary, and Retry or `/health` must see it afterwards.
    * @returns {Promise<{ path: string, version: string, searched: string[] }>} the CLI facts.
    * @throws {RouteError} `cli-missing` or `cli-old`.
    */
   function resolve() {
     if (resolving === undefined) {
-      resolving = resolveOnce()
-      resolving.catch(() => {})
+      const attempt = resolveOnce()
+      resolving = attempt
+      attempt.catch(() => {
+        if (resolving === attempt) resolving = undefined
+      })
     }
     return resolving
   }
@@ -337,7 +343,7 @@ export function createCli({
     }
     throw new RouteError(
       ERROR_CODES.cliMissing,
-      'v8reader_cli не найден; задайте cliPath в настройках плагина или V8READER_CLI',
+      'v8reader_cli не найден; задайте config.cliPath в строке плагина или V8READER_CLI',
       503,
       { searched, min: minCliVersion }
     )

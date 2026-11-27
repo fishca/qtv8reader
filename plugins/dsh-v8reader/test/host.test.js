@@ -30,6 +30,13 @@ import {
   resolveDirectory
 } from '../src/host/browse.js'
 import {
+  assetMimeType,
+  buildFormPage,
+  inlineJson,
+  resolveAssetPath
+} from '../src/host/assets.js'
+import {
+  formCacheKey,
   inspectPathValue,
   inspectTarget,
   isAbsolutePath,
@@ -235,6 +242,15 @@ test('target: regular supported file only', () => {
     () => inspectTarget(OTHER_FILE + '.txt', { stat: fakeStat(), platform: process.platform }),
     (error) => error instanceof RouteError && error.code === ERROR_CODES.unsupportedFormat
   )
+  assert.throws(
+    () => inspectTarget(OTHER_FILE, {
+      stat: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }) },
+      platform: process.platform
+    }),
+    (error) => error instanceof RouteError
+      && error.code === ERROR_CODES.denied
+      && error.status === 403
+  )
 })
 
 test('cache key changes with the file generation and the selection', () => {
@@ -356,6 +372,29 @@ test('resolver skips a file that is not our CLI and refuses an old one', async (
   )
 })
 
+test('resolver retries after a failure instead of caching it', async () => {
+  const executable = 'C:\\bin\\v8reader_cli.exe'
+  let deployed = false
+  const cli = createCli({
+    settings: { cliPath: executable },
+    env: {},
+    platform: 'win32',
+    spawn: fakeSpawn({ [executable]: { stdout: 'v8reader_cli 0.14.0' } }),
+    stat: () => {
+      if (!deployed) throw missingError()
+      return fileStat()
+    }
+  })
+  await assert.rejects(
+    () => cli.resolve(),
+    (error) => error instanceof RouteError && error.code === ERROR_CODES.cliMissing
+  )
+  deployed = true
+  const resolved = await cli.resolve()
+  assert.equal(resolved.path, executable)
+  assert.equal(resolved.version, '0.14.0')
+})
+
 test('state route returns the CLI document and caches by file generation', async () => {
   const cli = fakeCli()
   const resource = createResource({ cli, cache: createLruCache(), settings: DEFAULT_SETTINGS, stat: fakeStat() })
@@ -366,6 +405,8 @@ test('state route returns the CLI document and caches by file generation', async
   assert.deepEqual(await response.json(), viewDocument())
   assert.equal(cli.calls.length, 1)
   assert.deepEqual(cli.calls[0].args, ['view', path.normalize(FILE), '--json'])
+  assert.ok(cli.calls[0].options.signal !== undefined, 'the CLI run must follow the request signal')
+  assert.equal(typeof cli.calls[0].options.signal.aborted, 'boolean')
 
   const again = await resource(request(stateUrl()))
   assert.equal(again.status, 200)
@@ -638,6 +679,250 @@ test('plugin wires one prefix route and disposes the runner', async () => {
   assert.equal(typeof plugin.route.resource, 'function')
   plugin.dispose()
   assert.equal(plugin.cache.size, 0)
+})
+
+test('form cache key separates the generation, the object and the form', () => {
+  const file = { path: FILE, size: 10, mtimeMs: 20 }
+  assert.notEqual(formCacheKey(file, 'A', 'Форма1'), formCacheKey({ ...file, mtimeMs: 21 }, 'A', 'Форма1'))
+  assert.notEqual(formCacheKey(file, 'A', 'Форма1'), formCacheKey(file, 'B', 'Форма1'))
+  assert.notEqual(formCacheKey(file, 'A', 'Форма1'), formCacheKey(file, 'A', 'Форма2'))
+  assert.equal(formCacheKey(file, 'A', 'Форма1'), formCacheKey({ ...file }, 'A', 'Форма1'))
+})
+
+test('model page injects the base and the model before the renderer script', () => {
+  const template = '<!doctype html><html><head><meta charset="utf-8">'
+    + '<link rel="stylesheet" href="css/viewer.css"></head><body>'
+    + '<div id="host"></div><script src="js/model-app.js"></script></body></html>'
+  const model = { tag: 'Form', name: 'Кнопки', caption: '<script>alert(1)</script>' }
+  const page = buildFormPage(template, model, { baseHref: '/v8reader/assets/' })
+
+  assert.match(page, /<base href="\/v8reader\/assets\/">/)
+  // The template's stylesheet links are relative; a <base> placed after them
+  // does not apply retroactively and the form would load without CSS.
+  const baseAt = page.indexOf('<base')
+  const stylesheetAt = page.indexOf('rel="stylesheet"')
+  assert.ok(baseAt > 0, 'the base element is missing')
+  assert.ok(baseAt < stylesheetAt, 'the base must precede the stylesheet links')
+
+  const modelAt = page.indexOf('window.__QV8_MODEL__')
+  const scriptAt = page.indexOf('<script src="js/model-app.js">')
+  assert.ok(modelAt > 0, 'the model script is missing')
+  assert.ok(modelAt < scriptAt, 'the model must be defined before model-app.js runs')
+  assert.ok(!inlineJson(model).includes('</script>'), 'inline JSON must not close the script element')
+  assert.match(page, /\\u003cscript>alert/)
+
+  assert.throws(
+    () => buildFormPage('<html><body></body></html>', model, { baseHref: '/x/' }),
+    (error) => error instanceof RouteError && error.code === ERROR_CODES.assetsMissing
+  )
+  assert.throws(
+    () => buildFormPage('<html><head></head><body></body></html>', model, { baseHref: '/x/' }),
+    (error) => error instanceof RouteError && error.code === ERROR_CODES.assetsMissing
+  )
+})
+
+test('asset paths stay inside the renderer directory', () => {
+  const root = process.platform === 'win32'
+    ? 'C:\\plugin\\assets'
+    : '/plugin/assets'
+  assert.equal(
+    resolveAssetPath('css/viewer.css', root),
+    path.join(path.resolve(root), 'css', 'viewer.css')
+  )
+  assert.equal(assetMimeType('js/model-app.js'), 'text/javascript; charset=utf-8')
+  assert.equal(assetMimeType('icons.svg'), 'image/svg+xml')
+  assert.equal(assetMimeType('std-pictures/a.PNG'), 'image/png')
+  assert.equal(assetMimeType('unknown.bin'), 'application/octet-stream')
+
+  for (const bad of ['', '..%2Fpackage.json', '../package.json', '%00x', 'C:%5Cwindows', 'css%5Cviewer.css']) {
+    assert.throws(
+      () => resolveAssetPath(bad, root),
+      (error) => error instanceof RouteError && error.code === ERROR_CODES.badRequest,
+      `expected ${bad} to be refused`
+    )
+  }
+})
+
+test('assets route serves files with revalidating cache headers and guards traversal', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'v8r-assets-'))
+  try {
+    mkdirSync(path.join(dir, 'css'))
+    writeFileSync(path.join(dir, 'css', 'viewer.css'), '.a{color:red}')
+    writeFileSync(path.join(dir, 'icons.svg'), '<svg/>')
+    const resource = createResource({
+      cli: fakeCli(),
+      cache: createLruCache(),
+      settings: DEFAULT_SETTINGS,
+      stat: statSync,
+      assetsDir: dir,
+      platform: process.platform
+    })
+
+    const css = await resource(request('http://127.0.0.1:1/v8reader/assets/css/viewer.css'))
+    assert.equal(css.status, 200)
+    assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8')
+    assert.equal(css.headers.get('cache-control'), 'no-cache')
+    assert.equal(await css.text(), '.a{color:red}')
+    const etag = css.headers.get('etag')
+    assert.ok(etag !== null)
+
+    const cached = await resource(request(
+      'http://127.0.0.1:1/v8reader/assets/css/viewer.css',
+      { headers: { 'if-none-match': etag } }
+    ))
+    assert.equal(cached.status, 304)
+    assert.equal(await cached.text(), '')
+
+    const head = await resource(request('http://127.0.0.1:1/v8reader/assets/icons.svg', { method: 'HEAD' }))
+    assert.equal(head.status, 200)
+    assert.equal(head.headers.get('content-type'), 'image/svg+xml')
+    assert.equal(await head.text(), '')
+
+    const missing = await resource(request('http://127.0.0.1:1/v8reader/assets/nope.js'))
+    assert.equal(missing.status, 404)
+    assert.equal((await missing.json()).error.code, ERROR_CODES.notFound)
+
+    const traversal = await resource(request('http://127.0.0.1:1/v8reader/assets/..%2fpackage.json'))
+    assert.equal(traversal.status, 400)
+    assert.equal((await traversal.json()).error.code, ERROR_CODES.badRequest)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('assets route explains a missing renderer copy', async () => {
+  const resource = createResource({
+    cli: fakeCli(),
+    cache: createLruCache(),
+    settings: DEFAULT_SETTINGS,
+    stat: statSync,
+    assetsDir: path.join(tmpdir(), `v8r-no-assets-${Date.now()}`),
+    platform: process.platform
+  })
+  const response = await resource(request('http://127.0.0.1:1/v8reader/assets/model.html'))
+  assert.equal(response.status, 503)
+  assert.equal((await response.json()).error.code, ERROR_CODES.assetsMissing)
+})
+
+test('form route inlines the model, caches it, and maps failures', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'v8r-form-'))
+  try {
+    writeFileSync(
+      path.join(dir, 'model.html'),
+      '<!doctype html><html><head><meta charset="utf-8"></head><body>'
+      + '<script src="js/model-app.js"></script></body></html>'
+    )
+    const formModel = {
+      tag: 'Form',
+      version: '2.20',
+      name: 'Кнопки',
+      childItemsRoot: [],
+      properties: {}
+    }
+    const cli = fakeCli({
+      stdout: (args) => (args[0] === 'form-model'
+        ? JSON.stringify(formModel)
+        : JSON.stringify(viewDocument()))
+    })
+    const resource = createResource({
+      cli,
+      cache: createLruCache(),
+      settings: DEFAULT_SETTINGS,
+      stat: fakeStat(),
+      assetsDir: dir,
+      platform: process.platform
+    })
+    const object = 'e3489bca-d691-53a8-8feb-890730540f20'
+    const url = `http://127.0.0.1:1/v8reader/form?path=${encodeURIComponent(FILE)}`
+      + `&object=${encodeURIComponent(object)}&form=${encodeURIComponent('Кнопки')}`
+
+    const page = await resource(request(url))
+    assert.equal(page.status, 200)
+    assert.match(page.headers.get('content-type'), /text\/html/)
+    const html = await page.text()
+    assert.ok(html.includes('window.__QV8_MODEL__ = {"tag":"Form"'))
+    assert.ok(html.includes('<base href="/v8reader/assets/">'))
+    assert.equal(cli.calls.length, 1)
+    assert.deepEqual(cli.calls[0].args, [
+      'form-model', path.normalize(FILE), object, '--form', 'Кнопки'
+    ])
+    assert.equal(typeof cli.calls[0].options.cwd, 'string')
+
+    const again = await (await resource(request(url))).text()
+    assert.equal(cli.calls.length, 1, 'the model must be served from the cache')
+    assert.equal(again, html)
+
+    const head = await resource(request(url, { method: 'HEAD' }))
+    assert.equal(head.status, 200)
+    assert.equal(await head.text(), '')
+
+    const noForm = await resource(request(
+      `http://127.0.0.1:1/v8reader/form?path=${encodeURIComponent(FILE)}&object=${encodeURIComponent(object)}`
+    ))
+    assert.equal(noForm.status, 400)
+    assert.equal((await noForm.json()).error.code, ERROR_CODES.badRequest)
+
+    const noObject = await resource(request(
+      `http://127.0.0.1:1/v8reader/form?path=${encodeURIComponent(FILE)}&form=${encodeURIComponent('Кнопки')}`
+    ))
+    assert.equal(noObject.status, 400)
+
+    const failed = createResource({
+      cli: fakeCli({ code: 1 }),
+      cache: createLruCache(),
+      settings: DEFAULT_SETTINGS,
+      stat: fakeStat(),
+      assetsDir: dir,
+      platform: process.platform
+    })
+    const failedPage = await failed(request(url))
+    assert.equal(failedPage.status, 500)
+    assert.equal((await failedPage.json()).error.code, ERROR_CODES.cliFailed)
+
+    const malformed = createResource({
+      cli: fakeCli({ stdout: () => '{"not":"a model"}' }),
+      cache: createLruCache(),
+      settings: DEFAULT_SETTINGS,
+      stat: fakeStat(),
+      assetsDir: dir,
+      platform: process.platform
+    })
+    const malformedPage = await malformed(request(url))
+    assert.equal(malformedPage.status, 502)
+    assert.equal((await malformedPage.json()).error.code, ERROR_CODES.cliFailed)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('real CLI: form page and renderer assets of the control fixture', async (t) => {
+  const fixture = path.resolve(packageDir, '..', '..', 'tests', 'fixtures', 'controlbase', '1Cv8_controls.cf')
+  const assets = path.join(packageDir, 'assets', 'formpreview', 'model.html')
+  const plugin = createPlugin({ config: {}, packageDir })
+  const resolved = await plugin.cli.resolve().catch((error) => error)
+  if (resolved instanceof RouteError || !existsSync(fixture) || !existsSync(assets)) {
+    plugin.dispose()
+    t.skip(`нет v8reader_cli, фикстуры или ресурсов рендерера: ${fixture}`)
+    return
+  }
+
+  try {
+    const url = `http://127.0.0.1:1/v8reader/form?path=${encodeURIComponent(fixture)}`
+      + `&object=${encodeURIComponent('Контролы')}&form=${encodeURIComponent('Кнопки')}`
+    const page = await plugin.resource(request(url))
+    assert.equal(page.status, 200)
+    const html = await page.text()
+    assert.match(html, /window\.__QV8_MODEL__ = \{/)
+    assert.match(html, /"tag":"Form"/)
+    assert.match(html, /<base href="\/v8reader\/assets\/">/)
+
+    const css = await plugin.resource(request('http://127.0.0.1:1/v8reader/assets/css/viewer.css'))
+    assert.equal(css.status, 200)
+    assert.match(css.headers.get('content-type'), /text\/css/)
+    assert.ok((await css.text()).length > 1000)
+  } finally {
+    plugin.dispose()
+  }
 })
 
 test('real CLI: state of the control fixture', async (t) => {
