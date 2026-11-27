@@ -1,6 +1,6 @@
 # План: плагин DeepSeek Harness для чтения конфигураций 1С (.cf/.cfe)
 
-Статус: утверждён, реализация — ветка `feature/dsh-v8kit`.
+Статус: утверждён, M1–M6 реализованы и влиты в `main`; M7 — следующая итерация.
 Трекер этапов — раздел 12; отметки о выполнении ведутся там же.
 
 ## 1. Цель и критерии готовности
@@ -146,6 +146,7 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 | `/v8reader/state?path=[&object=&module=]` | JSON из `view` |
 | `/v8reader/browse?path=[&all=1]` | один уровень каталога для обзора файлов: `dir`, `parent`, `breadcrumbs`, `entries[{name,path,kind,size?}]`, `truncated`, `hiddenCount`; без `path` — домашний каталог, путь к файлу сводится к его каталогу |
 | `/v8reader/form?path=&object=&form=` | HTML-страница формы: модель `form-model` вставлена в `model.html`, ассеты подключены через `<base href="/v8reader/assets/">` |
+| `/v8reader/mxl?path=&object=&template=` | HTML-страница табличного документа из `mxl --template <имя> --html -`; CSP без скриптов, кэш по поколению файла и выбору |
 | `/v8reader/assets/<путь>` | файлы `assets/formpreview`, `Cache-Control: no-cache` + ETag |
 | `/v8reader/health` | `{ ok, cli: { path, version }, schema }` |
 
@@ -182,10 +183,17 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 диске (`FilePicker` поверх `/v8reader/browse`, стартует с последнего каталога
 из `localStorage`).
 
-**Тип документа**: `id = '@fishca/dsh-v8reader/config'`,
-`extensions: ['cf','cfe','epf','erf']`, те же `binaryExtensions`,
-`priority: 'extension'`, `loading: 'renderer'`. Тело — `PanelView` в режиме
-`address`: `useResource<'file'>(tab.contentId)` → `absolutePath` → `state`.
+**Рендерер документа**: `ctx.inject(['documentPreviews'])` →
+`documentPreviews.register({ id: '@fishca/dsh-v8reader/config', extensions:
+['cf','cfe','epf','erf'], binaryExtensions: те же, priority: 'extension',
+loading: 'renderer' })` и тело под тем же `id` в keyed-слоте
+`sidebar.right.tab.document`. Тело берёт `absolutePath` и `version` из
+`useResource<'file'>(tab.contentId)` и монтирует `PanelView` в режиме
+`address`: без поля пути и обзора, без своего `bindCommands` (обновление и
+«файл изменился» принадлежат владельцу), новая `content.revision` перечитывает
+открытый экран, `content.loaded(version)` / `content.failed()` сообщают
+владельцу о результате. Регистрация опциональна: без пакета предпросмотра
+вкладка-страница работает.
 
 **PanelView** (общий): слева фильтр и дерево «категория → объект» (виртуализация);
 справа заголовок объекта, вкладки разделов, таблица реквизитов, деревья табличных
@@ -227,10 +235,13 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
 
 ## 9. Макеты
 
-1. `src/core/MxlHtmlExporter` — `Document` → HTML.
-2. `mxl --html` в CLI, `--template` для выбора макета, `--json` для сводки.
-3. Панель: список макетов, `<iframe src="/v8reader/mxl?...&zoom=100">`; масштаб
-   25–400 % и «по ширине» меняют `zoom` в URL.
+1. `src/core/MxlHtmlExporter` — `Document` → HTML (сделано в M1).
+2. `mxl --html` в CLI, `--template` для выбора макета, `--json` для сводки
+   (сделано в M1).
+3. Панель: кнопка у макета открывает `/v8reader/mxl?path=&object=&template=`;
+   масштаб 25–400 % и «по ширине» пишутся в `documentElement.style.zoom`
+   кадра, поэтому смена масштаба не перезапрашивает страницу. Страница
+   кэшируется на хосте по `(путь, размер, mtime, объект, макет)`.
 
 ## 10. Ошибки и крайние случаи
 
@@ -321,8 +332,20 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
       1500 строк; настройки в
       `localStorage['dsh.v8reader.code.v1']`; `test/bsl.test.js` — 6 кейсов,
       клиентские тесты настроек; `node --test` — 49 кейсов.
-- [ ] **M4** Документ-рендерер: `documentPreviews.register` + тело по `absolutePath`,
+- [x] **M4** Документ-рендерер: `documentPreviews.register` + тело по `absolutePath`,
       Reload, баннер изменения файла.
+      Готово: клиент регистрирует реализацию `@fishca/dsh-v8reader/config` для
+      `cf|cfe|epf|erf` (`loading: 'renderer'`, все четыре расширения —
+      `binaryExtensions`, поэтому текстовая подсказка для контейнера не
+      предлагается) и тело в keyed-слот `sidebar.right.tab.document` — через
+      `ctx.inject(['documentPreviews'])`, поэтому без пакета предпросмотра
+      вкладка-страница продолжает работать. Тело берёт `absolutePath` и
+      `version` из `useResource('file', tab.contentId)` и монтирует тот же
+      `PanelView` с `fixedPath`: без поля пути и обзора, без своего
+      `bindCommands` (обновление и «файл изменился» принадлежат владельцу
+      вкладки), а новая ревизия `content.revision` перечитывает открытый экран.
+      Пустой `version` не записывается как загруженный, иначе владелец считал бы
+      файл изменившимся и перезагружал экран по кругу.
 - [x] **M5** Формы: `sync-assets`, маршрут `form`, ассеты, iframe, кэш.
       Готово: `scripts/sync-assets.mjs` (429 файлов, 2,45 МБ, копия
       закоммичена); `/v8reader/form` вставляет модель в `model.html` и отдаёт
@@ -335,8 +358,28 @@ v8reader_cli view <файл> --json [--object <имя|guid|синоним>] [--m
       имени) — 200 с вставленной моделью, `/v8reader/assets/css/viewer.css` —
       200. Отрисовка панели глазами не проверена: браузерного канала к
       loopback-GUI в этой сессии нет.
-- [ ] **M6** Макеты и полировка: iframe макета, масштаб, объявленный `Config`,
-      i18n en, job CI, выпуск плагина 0.2.0.
+- [x] **M6** Макеты MXL: маршрут `mxl`, `MxlPreview`, масштаб 25–400 % и «по
+      ширине», настройки в `localStorage['dsh.v8reader.mxl.v1']`, листья
+      «Макеты» в дереве открывают макет, кнопка «Открыть макет» в составе.
+      Готово: `GET /v8reader/mxl?path=&object=&template=` запускает
+      `v8reader_cli mxl --template <имя> --html -` и отдаёт самодостаточную
+      страницу (`text/html`, CSP `default-src 'none'` без скриптов,
+      `no-store`, ETag версии файла), кэш — по `(путь, размер, mtime, объект,
+      макет)`; кадр `sandbox="allow-same-origin"` без `allow-scripts`, масштаб
+      пишется в `documentElement.style.zoom` кадра, «по ширине» измеряет
+      неотмасштабированную таблицу и следит за шириной панели через
+      `ResizeObserver`. Ошибка экспорта приходит JSON-ом в кадр и показывается
+      баннером панели. Проверено: `node --test` — 55 кейсов (host 30,
+      client 19, BSL 6), в т.ч. маршрут с фейковым CLI (аргументы, кэш, HEAD,
+      `400`/`500`/`502`) и реальный CLI на контейнере без макетов; живой маршрут
+      на БП (`E:\work\dt_cf\1Cv8_bp.cf`, объект «АвансовыйОтчет», макет
+      `ПФ_MXL_АвансовыйОтчет`) — 200, 129 630 байт за 1,34 с, повторно 6 мс из
+      кэша, 74 строки; страница снята headless Chrome — форма АО-1 с
+      объединениями, рамками и контуром областей читается. CI: job `plugin`
+      (Node 22, pnpm, артефакт CLI, `git diff -- client.js`, `npm pack
+      --dry-run`); версия плагина 0.2.1.
+- [ ] **M7** Полировка: объявленный `Config` строки плагина (сейчас настройки
+      читаются без схемы), `docs/release-notes` плагина, выпуск 0.3.0.
 
 Критерии приёмки каждого этапа — раздел 1 и соответствующие строки разделов 5–9.
 

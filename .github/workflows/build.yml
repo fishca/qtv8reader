@@ -133,3 +133,50 @@ jobs:
           name: qtv8reader-windows-x86_64
           path: dist/*
           if-no-files-found: error
+
+  plugin:
+    name: Plugin (Node 22, real CLI)
+    runs-on: windows-latest
+    needs: windows
+    defaults:
+      run:
+        working-directory: plugins/dsh-v8reader
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Тесты плагина по умолчанию пропускаются без v8reader_cli: артефакт
+      # соседнего job раскладывается туда, где плагин ищет сборку этого репозитория.
+      - name: Download the CLI artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: qtv8reader-windows-x86_64
+          path: out/cli-deploy
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: plugins/dsh-v8reader/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --allow-build=esbuild
+
+      - name: Build the client bundle
+        run: pnpm run build
+
+      - name: Committed bundle matches sources
+        run: git diff --exit-code -- client.js
+
+      - name: Test
+        run: pnpm test
+
+      - name: Package contents
+        run: npm pack --dry-run
