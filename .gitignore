@@ -35,3 +35,8 @@ Testing/
 # Python
 __pycache__/
 *.pyc
+
+# Плагин DSH: зависимости и собранные пакеты
+plugins/**/node_modules/
+plugins/**/*.tgz
+*.tgz

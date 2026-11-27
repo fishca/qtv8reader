@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qtv8reader
-    VERSION 0.13.3
+    VERSION 0.14.0
     DESCRIPTION "Read-only viewer for 1C:Enterprise configuration files"
     LANGUAGES CXX
 )
@@ -49,6 +49,8 @@ add_library(qtv8reader_core STATIC
     src/core/MxlDocument.cpp
     src/core/MxlReader.h
     src/core/MxlReader.cpp
+    src/core/MxlHtmlExporter.h
+    src/core/MxlHtmlExporter.cpp
     src/core/FormDocument.h
     src/core/FormDocument.cpp
     src/core/FormOwner.h
@@ -177,6 +179,8 @@ add_library(qtv8reader_cli_lib STATIC
     src/cli/MetadataCommand.cpp
     src/cli/ModulesCommand.cpp
     src/cli/CompositionCommand.cpp
+    src/cli/ViewCommand.h
+    src/cli/ViewCommand.cpp
     src/cli/FormModelCommand.cpp
     src/cli/MxlCommand.cpp
     src/cli/ExtractCommand.cpp
@@ -200,6 +204,7 @@ qt_add_executable(qtv8reader_tests
     tests/test_v8container.cpp
     tests/test_metadata.cpp
     tests/test_mxl.cpp
+    tests/SyntheticMxl.h
     tests/test_form.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
@@ -214,6 +219,7 @@ qt_add_executable(qtv8reader_cli_tests
     tests/test_cli.cpp
     tests/TestContainerBuilder.h
     tests/TestContainerBuilder.cpp
+    tests/SyntheticMxl.h
     tests/TestPaths.h
 )
 

@@ -18,6 +18,14 @@ public:
         QString output;
         // Имя или синоним формы для команды form-model.
         QString form;
+        // Имя модуля для команды view.
+        QString module;
+        // Имя макета для команды mxl.
+        QString templateName;
+        // Файл HTML для команды mxl; «-» — в stdout.
+        QString htmlOutput;
+        // Машиночитаемый вывод (команды view и mxl).
+        bool json = false;
         bool raw = false;
         // Только дерево элементов формы (отладка разбора).
         bool items = false;

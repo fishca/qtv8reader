@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-v8reader
+      name: '@fishca/dsh-v8reader'

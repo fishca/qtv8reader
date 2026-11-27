@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "1C: configuration reader",
+    "description": "Opens .cf/.cfe/.epf/.erf in the right sidebar: a 1C-style metadata tree, BSL syntax highlighting, and exact-view forms through v8reader_cli.",
+    "detail": "docs/DETAIL.md"
+  }
+}
