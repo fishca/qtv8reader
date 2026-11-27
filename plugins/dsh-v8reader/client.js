@@ -2197,7 +2197,7 @@ window.__ModuleLoader__.load({
     function DocumentView({ useTabInfo, useResource, content, t: provided, scheme = "light" }) {
       const t = typeof provided === "function" ? provided : (key) => key;
       const tab = useTabInfo().tab;
-      const meta = useResource("file", tab.contentId);
+      const meta = useResource(tab.contentId);
       const path = documentPath(meta);
       if (path === "") {
         return /* @__PURE__ */ import_react7.default.createElement("div", { className: "v8r v8r--document", "data-scheme": scheme }, /* @__PURE__ */ import_react7.default.createElement("style", null, PANEL_CSS), /* @__PURE__ */ import_react7.default.createElement("p", { className: "v8r-muted v8r-document-wait" }, t("document.waiting")));

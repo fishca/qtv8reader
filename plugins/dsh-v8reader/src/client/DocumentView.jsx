@@ -18,7 +18,7 @@ import { PANEL_CSS } from './styles.js'
  * The preview body.
  * @param {{
  *   useTabInfo: () => { tab: { contentId: string } },
- *   useResource: (kind: string, address: string) => object,
+ *   useResource: (address: string) => object,
  *   content?: object,
  *   t?: (key: string, params?: object) => string,
  *   scheme?: 'light'|'dark'
@@ -28,7 +28,7 @@ import { PANEL_CSS } from './styles.js'
 export function DocumentView({ useTabInfo, useResource, content, t: provided, scheme = 'light' }) {
   const t = typeof provided === 'function' ? provided : (key) => key
   const tab = useTabInfo().tab
-  const meta = useResource('file', tab.contentId)
+  const meta = useResource(tab.contentId)
   const path = documentPath(meta)
 
   if (path === '') {
