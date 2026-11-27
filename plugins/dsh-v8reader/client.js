@@ -854,6 +854,17 @@ window.__ModuleLoader__.load({
     var import_react3 = __toESM(require("react"), 1);
     
     // src/client/form.js
+    function sameFrameUrl(actualHref, source, baseHref) {
+      try {
+        const actual = new URL(actualHref);
+        const wanted = new URL(source, baseHref ?? `${actual.origin}/`);
+        if (actual.origin !== wanted.origin) return false;
+        if (actual.pathname !== wanted.pathname) return false;
+        return new URLSearchParams(actual.search).toString() === new URLSearchParams(wanted.search).toString();
+      } catch {
+        return false;
+      }
+    }
     function frameDocumentError(doc) {
       if (doc === null || doc === void 0) return null;
       const type = String(doc.contentType ?? "");
@@ -894,11 +905,7 @@ window.__ModuleLoader__.load({
         let alive = true;
         let timer;
         const startedAt = Date.now();
-        let expectedUrl = src;
-        try {
-          expectedUrl = new URL(src, globalThis.location?.href ?? "http://localhost/").href;
-        } catch {
-        }
+        const baseHref = globalThis.location?.href ?? "http://localhost/";
         const check = () => {
           if (!alive) return;
           if (Date.now() - startedAt > TIMEOUT_MS) {
@@ -924,7 +931,7 @@ window.__ModuleLoader__.load({
           } catch {
             currentUrl = "";
           }
-          if (currentUrl !== expectedUrl) {
+          if (!sameFrameUrl(currentUrl, src, baseHref)) {
             schedule();
             return;
           }
