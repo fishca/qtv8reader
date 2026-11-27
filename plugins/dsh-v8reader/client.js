@@ -1519,11 +1519,11 @@ window.__ModuleLoader__.load({
       onZoom,
       onReload
     }) {
-      return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react5.default.createElement("h3", { className: "v8r-viewhead-title" }, formName), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name)), /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-zoom" }, /* @__PURE__ */ import_react5.default.createElement("label", { htmlFor: "v8r-form-zoom" }, t("form.zoom")), /* @__PURE__ */ import_react5.default.createElement(
+      return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "v8r-button", onClick: onBack }, `\u2190 ${t("panel.back")}`), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-text" }, /* @__PURE__ */ import_react5.default.createElement("h3", { className: "v8r-viewhead-title" }, formName), /* @__PURE__ */ import_react5.default.createElement("div", { className: "v8r-viewhead-sub" }, object.name)), /* @__PURE__ */ import_react5.default.createElement("span", { className: "v8r-zoom" }, /* @__PURE__ */ import_react5.default.createElement("span", null, t("form.zoom")), /* @__PURE__ */ import_react5.default.createElement(
         "select",
         {
-          id: "v8r-form-zoom",
           className: "v8r-select",
+          "aria-label": t("form.zoom"),
           value: String(zoom),
           onChange: (event) => {
             onZoom(Number(event.target.value));

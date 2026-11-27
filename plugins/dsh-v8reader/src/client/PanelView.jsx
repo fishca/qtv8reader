@@ -189,10 +189,10 @@ function FormView({
           <div className="v8r-viewhead-sub">{object.name}</div>
         </div>
         <span className="v8r-zoom">
-          <label htmlFor="v8r-form-zoom">{t('form.zoom')}</label>
+          <span>{t('form.zoom')}</span>
           <select
-            id="v8r-form-zoom"
             className="v8r-select"
+            aria-label={t('form.zoom')}
             value={String(zoom)}
             onChange={(event) => { onZoom(Number(event.target.value)) }}
           >
