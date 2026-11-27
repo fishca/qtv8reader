@@ -1230,6 +1230,7 @@ window.__ModuleLoader__.load({
     .v8r-mxl{position:relative;flex:1 1 auto;min-height:280px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-1)}
     .v8r-mxl-frame{display:block;width:100%;height:100%;border:0;background:var(--dsw-alias-bg-base)}
     .v8r-mxl[data-status="error"] .v8r-mxl-frame{visibility:hidden}
+    .v8r--document{white-space:normal;font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif}
     .v8r--document .v8r-document-wait{padding:12px 16px}
     .v8r--document .v8r-tree{flex:0 0 min(260px,42%)}
     .v8r-empty{display:flex;flex-direction:column;gap:10px;align-items:flex-start;color:var(--dsw-alias-label-secondary);padding:16px 4px;max-width:520px}
